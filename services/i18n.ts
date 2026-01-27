@@ -1,0 +1,241 @@
+export const translations = {
+  zh: {
+    appName: "MangaType Live",
+    undo: "撤销",
+    redo: "重做",
+    settings: "设置",
+    help: "帮助",
+    addFiles: "添加图片",
+    addFolder: "添加文件夹",
+    gallery: "图库",
+    current: "当前",
+    processAll: "全部处理",
+    saveImage: "保存图片",
+    zipAll: "打包下载",
+    noImageSelected: "未选择图片",
+    dragDrop: "拖拽文件，粘贴图片，或使用侧边栏。",
+    properties: "属性",
+    deleteBubble: "删除气泡",
+    content: "内容",
+    enterText: "输入文本...",
+    aiAssistant: "AI 助手",
+    aiThinking: "AI 思考中...",
+    dramatic: "戏剧化",
+    casual: "口语化",
+    translate: "翻译",
+    maskGeometry: "遮罩形状",
+    width: "宽",
+    height: "高",
+    whiteBg: "白底遮罩",
+    typography: "排版",
+    direction: "方向",
+    horizontal: "横排",
+    vertical: "竖排",
+    size: "字号",
+    rotation: "旋转",
+    fontFamily: "字体",
+    manualAdd: "添加气泡",
+    importJson: "导入 JSON",
+    merge: "合并图层",
+    globalStyles: "全局样式",
+    concurrency: "并发数",
+    noBubbleSelected: "未选中气泡",
+    clickBubbleHint: "点击画布上的气泡进行编辑。",
+    aiSettings: "AI 设置",
+    aiProvider: "AI 提供商",
+    baseUrl: "Base URL",
+    apiKey: "API Key",
+    modelSelection: "模型选择",
+    textDetection: "本地文本检测",
+    allowAiRotation: "允许 AI 旋转",
+    allowAiRotationHint: "尝试让 AI 识别文字倾斜角度（实验性）。",
+    defaultFontSize: "默认字号",
+    systemPrompt: "系统提示词",
+    cancel: "取消",
+    saveSettings: "保存设置",
+    manualJsonImport: "手动 JSON 导入",
+    pasteJson: "在此粘贴 AI 输出的 JSON...",
+    copyPrompt: "复制提示词",
+    loadTemplate: "加载模板",
+    applyBubbles: "应用气泡",
+    envConfigured: "环境变量已配置",
+    refreshModels: "刷新模型",
+    fetching: "获取中...",
+    noModels: "未找到模型",
+    failedFetch: "获取失败",
+    promptCopied: "提示词已复制！",
+    jsonError: "JSON 格式错误",
+    processing: "处理中",
+    done: "完成",
+    error: "错误",
+    language: "语言 / Language",
+    sure: "确定?",
+    galleryTitle: "图库",
+    generatedHtml: "生成的 HTML",
+    close: "关闭",
+    copyHtml: "复制 HTML",
+    helpDocs: {
+      title: "使用指南",
+      intro: "MangaType Live 是一个网页原生的漫画嵌字工具，集成了 AI 翻译和自动化排版功能。",
+      step1Title: "1. 导入图片",
+      step1Desc: "点击侧边栏的“添加图片”或直接将图片/文件夹**拖拽**到窗口中。支持粘贴剪贴板中的图片。",
+      step2Title: "2. AI 识别与翻译",
+      step2Desc: "在左侧面板下方，点击 **Current (当前)** 处理单张，或 **Process All (全部处理)** 批量处理。AI 会自动识别气泡位置、翻译文本并生成遮罩。",
+      step3Title: "3. 编辑气泡",
+      step3Desc: "点击画布上的气泡选中。拖动**8个控制点**调整大小（角点等比缩放，边点单向缩放）。在右侧面板修改文字、字体、排版方向和遮罩样式。",
+      step4Title: "4. 导出结果",
+      step4Desc: "点击 **Save Image (保存图片)** 下载当前页，或 **ZIP All (打包下载)** 下载所有处理完的图片。**Merge (合并)** 功能可将文字烧录进图片（不可逆）。",
+      advancedTitle: "进阶功能解析",
+      advancedFeatures: [
+        {
+          title: "本地文本检测 (Local OCR)",
+          desc: "这是一个辅助 AI 的功能。需要在本地运行我们提供的 Python OCR 服务。开启后，App 会先通过 OCR 精确提取文本坐标，将这些“空间提示”发送给 AI。这能显著解决 AI “找不到气泡”或“框选范围不准”的问题，极大提高复杂页面的识别率。"
+        },
+        {
+          title: "手动 JSON 导入 (Manual Import)",
+          desc: "如果你没有配置 API Key，或者想用更强大的模型（如 Claude 3.5 / DeepSeek），可以使用此功能。点击工具栏的 JSON 按钮 -> 复制提示词 -> 将提示词和图片发给任意 AI 网页端 -> 将 AI 返回的 JSON 代码粘贴回来。这样可以“白嫖”外部 AI 的能力来生成气泡。"
+        },
+        {
+          title: "合并图层 (Merge Layers)",
+          desc: "类似于 Photoshop 的“向下合并”。它会将当前所有悬浮的气泡**永久烧录**进图片的像素数据中。合并后，气泡文字变成图片的一部分，无法再被编辑。这适用于：1. 处理超多气泡防止卡顿；2. 想要在已有的文字上叠加新的效果；3. 导出前确认定稿。"
+        }
+      ],
+      tipsTitle: "快捷键与技巧",
+      tipsList: [
+        "Ctrl+Z / Ctrl+Y: 撤销 / 重做",
+        "选中气泡后 + 鼠标滚轮: 调整字体大小",
+        "选中气泡后 + Alt + 鼠标滚轮: 调整气泡遮罩大小",
+        "按住 Ctrl 拖动: 精细调整",
+        "双击画布空白处: 取消选中"
+      ]
+    }
+  },
+  en: {
+    appName: "MangaType Live",
+    undo: "Undo",
+    redo: "Redo",
+    settings: "Settings",
+    help: "Help",
+    addFiles: "Add Files",
+    addFolder: "Add Folder",
+    gallery: "Gallery",
+    current: "Current",
+    processAll: "Process All",
+    saveImage: "Save Image",
+    zipAll: "ZIP All",
+    noImageSelected: "No Image Selected",
+    dragDrop: "Drag & Drop files, Paste image, or use the Sidebar.",
+    properties: "Properties",
+    deleteBubble: "Delete Bubble",
+    content: "Content",
+    enterText: "Enter text...",
+    aiAssistant: "AI Assistant",
+    aiThinking: "AI thinking...",
+    dramatic: "Dramatic",
+    casual: "Casual",
+    translate: "Translate",
+    maskGeometry: "Mask Geometry",
+    width: "Width",
+    height: "Height",
+    whiteBg: "White Background",
+    typography: "Typography",
+    direction: "Direction",
+    horizontal: "Horizontal",
+    vertical: "Vertical",
+    size: "Size",
+    rotation: "Rotation",
+    fontFamily: "Font Family",
+    manualAdd: "Add",
+    importJson: "JSON",
+    merge: "Merge",
+    globalStyles: "Global Styles",
+    concurrency: "Concurrency",
+    noBubbleSelected: "No Bubble Selected",
+    clickBubbleHint: "Click on a bubble in the canvas to edit its text and properties here.",
+    aiSettings: "AI Settings",
+    aiProvider: "AI Provider",
+    baseUrl: "Base URL",
+    apiKey: "API Key",
+    modelSelection: "Model Selection",
+    textDetection: "Local Text Detection",
+    allowAiRotation: "Allow AI Rotation",
+    allowAiRotationHint: "Attempt to detect text rotation angle (Experimental).",
+    defaultFontSize: "Default Font Size",
+    systemPrompt: "System Prompt",
+    cancel: "Cancel",
+    saveSettings: "Save Settings",
+    manualJsonImport: "Manual JSON Import",
+    pasteJson: "Paste AI JSON output here...",
+    copyPrompt: "Copy AI Prompt",
+    loadTemplate: "Load Draft Template",
+    applyBubbles: "Apply Bubbles",
+    envConfigured: "Environment Configured",
+    refreshModels: "Refresh Models",
+    fetching: "Fetching...",
+    noModels: "No models found",
+    failedFetch: "Failed to fetch",
+    promptCopied: "Prompt copied!",
+    jsonError: "Invalid JSON format",
+    processing: "Processing",
+    done: "Done",
+    error: "Error",
+    language: "Language / 语言",
+    sure: "Sure?",
+    galleryTitle: "Gallery",
+    generatedHtml: "Generated HTML",
+    close: "Close",
+    copyHtml: "Copy HTML",
+    helpDocs: {
+      title: "User Guide",
+      intro: "MangaType Live is a web-native comic typesetting tool with integrated AI translation and automated layout features.",
+      step1Title: "1. Import Images",
+      step1Desc: "Click 'Add Files' in the sidebar or simply **Drag & Drop** images/folders into the window. Clipboard pasting is also supported.",
+      step2Title: "2. AI Detection & Translation",
+      step2Desc: "Click **Current** to process the active image or **Process All** for batch processing. AI will detect bubbles, translate text, and generate masks automatically.",
+      step3Title: "3. Edit Bubbles",
+      step3Desc: "Click a bubble to select it. Drag the **8 control points** to resize (corners for proportional, edges for directional). Use the right panel to edit text, font, direction, and mask style.",
+      step4Title: "4. Export Results",
+      step4Desc: "Click **Save Image** to download the current page, or **ZIP All** for the entire batch. The **Merge** function burns the text into the image permanently (irreversible).",
+      advancedTitle: "Advanced Features",
+      advancedFeatures: [
+        {
+          title: "Local Text Detection (Local OCR)",
+          desc: "A helper for the AI. Requires running our Python OCR service locally. When enabled, it extracts precise text coordinates and sends them as 'spatial hints' to the LLM. This significantly fixes issues where the AI 'misses bubbles' or 'draws inaccurate boxes' on complex pages."
+        },
+        {
+          title: "Manual JSON Import",
+          desc: "The 'Manual Mode'. If you don't have an API Key or prefer a smarter model (like Claude 3.5 / DeepSeek), use this. Click the JSON button -> Copy Prompt -> Send prompt & image to any AI Chatbot -> Paste the returned JSON back here. This lets you generate bubbles using external tools without using app quota."
+        },
+        {
+          title: "Merge Layers",
+          desc: "Similar to 'Merge Down' in Photoshop. It permanently 'burns' all current floating bubbles into the image pixels. Once merged, bubbles become part of the image and can no longer be edited. Use this to finalize a page or prevent lag with too many objects."
+        }
+      ],
+      tipsTitle: "Shortcuts & Tips",
+      tipsList: [
+        "Ctrl+Z / Ctrl+Y: Undo / Redo",
+        "Selected + Mouse Wheel: Adjust Font Size",
+        "Selected + Alt + Mouse Wheel: Adjust Mask Size",
+        "Hold Ctrl while dragging: Fine precision",
+        "Double click background: Deselect"
+      ]
+    }
+  }
+};
+
+export type Language = 'zh' | 'en';
+export type TranslationKey = keyof typeof translations.zh;
+
+// Update type definition to handle nested objects purely for type safety if needed, 
+// but for simple 't' function usage, we might just cast or suppress if deep keys are needed.
+// For this simple implementation, we will access helpDocs manually in the component.
+
+export const t = (key: string, lang: Language): string => {
+  // Simple deep access support for 'helpDocs.title' etc.
+  const keys = key.split('.');
+  let value: any = translations[lang];
+  for (const k of keys) {
+    value = value?.[k];
+  }
+  return typeof value === 'string' ? value : key;
+};
