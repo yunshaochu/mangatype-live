@@ -329,42 +329,73 @@ const App: React.FC = () => {
     });
   };
 
-  const processFiles = async (files: FileList | File[]) => {
+  const processFiles = async (inputFiles: FileList | File[]) => {
+    // Immediately convert FileList to Array to prevent issues if input is cleared
+    const files = Array.from(inputFiles);
+    
     const newImages: ImageState[] = [];
+    
+    // Process files sequentially to avoid overwhelming browser with large folders
+    // but ensure we don't hang on errors.
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (!file.type.startsWith('image/')) continue;
-      const url = URL.createObjectURL(file);
+      
       try {
+        const url = URL.createObjectURL(file);
         const base64 = await blobToBase64(file);
-        await new Promise<void>((resolve) => {
+        
+        // Wrap image loading in a promise that handles errors correctly
+        // IMPORTANT: Must handle onerror to prevent Promise hanging forever
+        const loadedImgState = await new Promise<ImageState | null>((resolve) => {
           const img = new Image();
           img.onload = () => {
-            newImages.push({
+            resolve({
               id: crypto.randomUUID(), name: file.name, url, base64,
               width: img.width, height: img.height, bubbles: [], status: 'idle'
             });
-            resolve();
+          };
+          img.onerror = () => {
+            console.warn(`Skipping invalid image: ${file.name}`);
+            // Resolve null instead of rejecting so the loop continues
+            resolve(null);
           };
           img.src = url;
         });
-      } catch (e) { console.error("Failed to load image", file.name); }
+
+        if (loadedImgState) {
+          newImages.push(loadedImgState);
+        }
+      } catch (e) { 
+        console.error("Failed to read file", file.name, e); 
+      }
     }
+
     if (newImages.length > 0) {
       setImages(prev => {
-        const updated = [...prev, ...newImages];
-        if (!currentId) setCurrentId(newImages[0].id);
-        return updated;
+        // Apply Natural Sorting (1, 2, 10 instead of 1, 10, 2)
+        const combined = [...prev, ...newImages];
+        return combined.sort((a, b) => 
+          a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
+        );
       });
+      // Select the first new image if nothing selected
+      if (!currentId) setCurrentId(newImages[0].id);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) processFiles(e.target.files);
+    if (e.target.files && e.target.files.length > 0) {
+        processFiles(e.target.files);
+    }
+    // Only clear after processing started
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
+
   const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) processFiles(e.target.files);
+    if (e.target.files && e.target.files.length > 0) {
+        processFiles(e.target.files);
+    }
     if (folderInputRef.current) folderInputRef.current.value = '';
   };
 
@@ -455,7 +486,7 @@ const App: React.FC = () => {
       startX: e.clientX, 
       startY: e.clientY, 
       startBx: bubble.x, 
-      startBy: bubble.y,
+      startBy: bubble.y, 
       startBw: bubble.width,
       startBh: bubble.height,
       rotation: bubble.rotation,
@@ -479,7 +510,7 @@ const App: React.FC = () => {
       startX: e.clientX, 
       startY: e.clientY, 
       startBx: bubble.x, 
-      startBy: bubble.y,
+      startBy: bubble.y, 
       startBw: bubble.width,
       startBh: bubble.height,
       rotation: bubble.rotation,

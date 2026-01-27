@@ -88,12 +88,12 @@ export const translations = {
       advancedTitle: "进阶功能解析",
       advancedFeatures: [
         {
-          title: "本地文本检测 (Local OCR)",
-          desc: "这是一个辅助 AI 的功能。需要在本地运行我们提供的 Python OCR 服务。开启后，App 会先通过 OCR 精确提取文本坐标，将这些“空间提示”发送给 AI。这能显著解决 AI “找不到气泡”或“框选范围不准”的问题，极大提高复杂页面的识别率。"
+          title: "文本检测 (comic-text-detector)",
+          desc: "这是一个辅助 AI 的功能。需要在本地运行comic-text-detector服务。开启后，App 会先通过 comic-text-detector 精确提取文本坐标，将这些“空间提示”发送给 AI。这能显著解决 AI “找不到气泡”或“框选范围不准”的问题，极大提高复杂页面的识别率。"
         },
         {
           title: "手动 JSON 导入 (Manual Import)",
-          desc: "如果你没有配置 API Key，或者想用更强大的模型（如 Claude 3.5 / DeepSeek），可以使用此功能。点击工具栏的 JSON 按钮 -> 复制提示词 -> 将提示词和图片发给任意 AI 网页端 -> 将 AI 返回的 JSON 代码粘贴回来。这样可以“白嫖”外部 AI 的能力来生成气泡。"
+          desc: "如果你没有配置 API Key，或者想临时测试某个还没去弄api的模型，可以使用此功能。点击工具栏的 JSON 按钮 -> 复制提示词 -> 将提示词和图片发给任意 AI 网页端 -> 将 AI 返回的 JSON 代码粘贴回来。这样可以“白嫖”外部 AI 的能力来生成气泡。"
         },
         {
           title: "合并图层 (Merge Layers)",
