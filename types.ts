@@ -16,6 +16,15 @@ export interface Bubble {
   isSelected?: boolean;
 }
 
+// Mode 2: Simple selection region without text/style properties
+export interface MaskRegion {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface DetectedBubble {
   text: string;
   x: number;
@@ -34,8 +43,10 @@ export interface ImageState {
   width: number;
   height: number;
   bubbles: Bubble[];
+  maskRegions?: MaskRegion[]; // Store Mode 2 regions
   status: 'idle' | 'processing' | 'done' | 'error';
   errorMessage?: string; // Reason for failure
+  skipped?: boolean; // If true, skip AI processing but include in export
 }
 
 export type FontOption = {
@@ -52,6 +63,11 @@ export const FONTS: FontOption[] = [
 
 export type AIProvider = 'gemini' | 'openai';
 
+export interface CustomMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
+
 export interface AIConfig {
   provider: AIProvider;
   apiKey: string;
@@ -63,5 +79,7 @@ export interface AIConfig {
   useTextDetectionApi?: boolean;
   textDetectionApiUrl?: string;
   language: 'zh' | 'en'; 
-  allowAiRotation?: boolean; // New setting
+  allowAiRotation?: boolean; 
+  customMessages?: CustomMessage[]; // Pre-request messages
+  useMasksAsHints?: boolean; // Send manual red boxes as hints to AI
 }

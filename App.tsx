@@ -1,15 +1,14 @@
 
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { BubbleEditor } from './components/BubbleEditor';
 import { SettingsModal } from './components/SettingsModal';
 import { ManualJsonModal } from './components/ManualJsonModal';
 import { HelpModal } from './components/HelpModal';
 import { Gallery } from './components/Gallery';
-import { Bubble, ImageState, AIConfig } from './types';
-import { Upload, Download, Plus, Maximize, Loader2, Settings, FileJson, Archive, Play, Layers, Image as ImageIcon, Undo2, Redo2, FileStack, Minus, Type, MessageSquareDashed, CircleHelp } from 'lucide-react';
+import { Bubble, ImageState, AIConfig, MaskRegion } from './types';
+import { Upload, Download, Plus, Maximize, Loader2, Settings, FileJson, Archive, Play, Layers, Image as ImageIcon, Undo2, Redo2, FileStack, Minus, Type, MessageSquareDashed, CircleHelp, Square, Crop, X, MousePointer2, Scan, ScanFace } from 'lucide-react';
 import { detectAndTypesetComic, DEFAULT_SYSTEM_PROMPT } from './services/geminiService';
-import { downloadSingleImage, downloadAllAsZip, compositeImage } from './services/exportService';
+import { downloadSingleImage, downloadAllAsZip, compositeImage, generateMaskedImage } from './services/exportService';
 import { t } from './services/i18n';
 
 // Storage Key for localStorage
@@ -25,29 +24,56 @@ const DEFAULT_CONFIG: AIConfig = {
   defaultFontSize: 1.0,
   useTextDetectionApi: false,
   textDetectionApiUrl: 'http://localhost:5000',
-  language: 'zh' // Default to Chinese
+  language: 'zh', // Default to Chinese
+  customMessages: [
+    { role: 'user', content: '翻译' }
+  ]
 };
 
 // Updated createBubble to accept a default font size
-const createBubble = (x: number, y: number, defaultFontSize: number): Bubble => ({
+const createBubble = (x: number, y: number, defaultFontSize: number, width = 15, height = 25, isVertical = true): Bubble => ({
   id: crypto.randomUUID(),
   x,
   y,
-  width: 15,
-  height: 25,
+  width,
+  height,
   text: '...',
-  isVertical: true,
-  fontFamily: 'noto',
+  isVertical,
+  fontFamily: 'zhimang', // Default to cursive style as requested
   fontSize: defaultFontSize,
   color: '#0f172a',
   backgroundColor: '#ffffff',
   rotation: 0,
 });
 
-// --- Bubble Component with Native Event Listeners ---
+// Create Mask Region for Mode 2
+const createMaskRegion = (x: number, y: number): MaskRegion => ({
+    id: crypto.randomUUID(),
+    x, y, width: 0, height: 0
+});
 
-// Define Handle Types
+// Helper to clamp values between min and max
+const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max);
+
+// --- Handle Helpers ---
 type HandleType = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+const handleStyle = (cursor: string): React.CSSProperties => ({
+    position: 'absolute',
+    width: '10px',
+    height: '10px',
+    backgroundColor: '#ffffff',
+    border: '2px solid #3b82f6', // blue-500
+    borderRadius: '50%',
+    zIndex: 30,
+    cursor: cursor,
+    pointerEvents: 'auto',
+    boxShadow: '0 0 4px rgba(0,0,0,0.4)',
+});
+
+const HANDLE_OFFSET = '-6px'; 
+
+// --- Bubble Component (Mode 1) ---
 
 interface BubbleLayerProps {
   bubble: Bubble;
@@ -55,9 +81,10 @@ interface BubbleLayerProps {
   onMouseDown: (e: React.MouseEvent) => void;
   onResizeStart: (e: React.MouseEvent, handle: HandleType) => void;
   onUpdate: (id: string, updates: Partial<Bubble>) => void;
+  onDelete: () => void;
 }
 
-const BubbleLayer: React.FC<BubbleLayerProps> = ({ bubble, isSelected, onMouseDown, onResizeStart, onUpdate }) => {
+const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isSelected, onMouseDown, onResizeStart, onUpdate, onDelete }) => {
   const divRef = useRef<HTMLDivElement>(null);
   const bubbleRef = useRef(bubble);
   bubbleRef.current = bubble;
@@ -84,8 +111,10 @@ const BubbleLayer: React.FC<BubbleLayerProps> = ({ bubble, isSelected, onMouseDo
         } else if (e.altKey) {
             // Alt + Wheel: Mask Size
             const scale = delta > 0 ? 1.05 : 0.95;
-            const newWidth = Math.max(5, currentBubble.width * scale);
-            const newHeight = Math.max(5, currentBubble.height * scale);
+            let newWidth = currentBubble.width * scale;
+            let newHeight = currentBubble.height * scale;
+            newWidth = clamp(newWidth, 2, 100);
+            newHeight = clamp(newHeight, 2, 100);
             onUpdate(currentBubble.id, {
                 width: parseFloat(newWidth.toFixed(1)),
                 height: parseFloat(newHeight.toFixed(1))
@@ -99,23 +128,6 @@ const BubbleLayer: React.FC<BubbleLayerProps> = ({ bubble, isSelected, onMouseDo
       el.removeEventListener('wheel', handleWheel);
     };
   }, [isSelected, onUpdate]);
-
-  // Handle Styles
-  const handleStyle = (cursor: string): React.CSSProperties => ({
-    position: 'absolute',
-    width: '12px',
-    height: '12px',
-    backgroundColor: '#ffffff',
-    border: '2px solid #3b82f6', // blue-500
-    borderRadius: '50%',
-    zIndex: 30,
-    cursor: cursor,
-    pointerEvents: 'auto',
-    boxShadow: '0 0 4px rgba(0,0,0,0.3)', // Added shadow for better visibility
-  });
-
-  // Visual Alignment Constants
-  const HANDLE_OFFSET = '-14px';
 
   return (
     <div
@@ -142,16 +154,19 @@ const BubbleLayer: React.FC<BubbleLayerProps> = ({ bubble, isSelected, onMouseDo
       {/* Selection Indicator & Handles */}
       {isSelected && (
         <>
-            {/* The Blue Frame: -inset-2 corresponds to roughly 8px padding */}
-            <div className="absolute -inset-2 border-2 border-blue-500 rounded-lg pointer-events-none z-20 opacity-70"></div>
-            
-            {/* Corners (Proportional) */}
+            <div className="absolute inset-0 border-2 border-blue-500 rounded-[20%] pointer-events-none z-20 opacity-80 shadow-sm"></div>
+            <div 
+              className="absolute -top-8 left-1/2 -translate-x-1/2 cursor-pointer z-40 transform hover:scale-110 transition-transform"
+              onMouseDown={(e) => { e.stopPropagation(); onDelete(); }}
+            >
+               <div className="bg-red-500 text-white rounded-full p-1.5 shadow-md border-2 border-white hover:bg-red-600">
+                 <X size={14} strokeWidth={3} />
+               </div>
+            </div>
             <div style={{ ...handleStyle('nw-resize'), top: HANDLE_OFFSET, left: HANDLE_OFFSET }} onMouseDown={(e) => onResizeStart(e, 'nw')} />
             <div style={{ ...handleStyle('ne-resize'), top: HANDLE_OFFSET, right: HANDLE_OFFSET }} onMouseDown={(e) => onResizeStart(e, 'ne')} />
             <div style={{ ...handleStyle('se-resize'), bottom: HANDLE_OFFSET, right: HANDLE_OFFSET }} onMouseDown={(e) => onResizeStart(e, 'se')} />
             <div style={{ ...handleStyle('sw-resize'), bottom: HANDLE_OFFSET, left: HANDLE_OFFSET }} onMouseDown={(e) => onResizeStart(e, 'sw')} />
-            
-            {/* Edges (Directional) */}
             <div style={{ ...handleStyle('n-resize'), top: HANDLE_OFFSET, left: '50%', transform: 'translateX(-50%)' }} onMouseDown={(e) => onResizeStart(e, 'n')} />
             <div style={{ ...handleStyle('e-resize'), top: '50%', right: HANDLE_OFFSET, transform: 'translateY(-50%)' }} onMouseDown={(e) => onResizeStart(e, 'e')} />
             <div style={{ ...handleStyle('s-resize'), bottom: HANDLE_OFFSET, left: '50%', transform: 'translateX(-50%)' }} onMouseDown={(e) => onResizeStart(e, 's')} />
@@ -178,7 +193,73 @@ const BubbleLayer: React.FC<BubbleLayerProps> = ({ bubble, isSelected, onMouseDo
       </div>
     </div>
   );
-};
+}, (prev, next) => {
+    // Custom memo comparison to avoid useless re-renders
+    return (
+        prev.isSelected === next.isSelected && 
+        prev.bubble === next.bubble
+    );
+});
+
+// --- Region Component (Mode 2) ---
+
+interface RegionLayerProps {
+  region: MaskRegion;
+  isSelected: boolean;
+  onMouseDown: (e: React.MouseEvent) => void;
+  onResizeStart: (e: React.MouseEvent, handle: HandleType) => void;
+  onDelete: () => void;
+}
+
+const RegionLayer: React.FC<RegionLayerProps> = React.memo(({ region, isSelected, onMouseDown, onResizeStart, onDelete }) => {
+    // Red styling for Mode 2 selection boxes
+    const regionHandleStyle = (cursor: string): React.CSSProperties => ({
+        ...handleStyle(cursor),
+        borderColor: '#ef4444', // red-500
+    });
+
+    return (
+        <div
+            onMouseDown={onMouseDown}
+            className={`absolute cursor-move select-none z-30 group`} // z-30 higher than bubbles (z-10) to edit easily
+            style={{
+                top: `${region.y}%`,
+                left: `${region.x}%`,
+                width: `${region.width}%`,
+                height: `${region.height}%`,
+                transform: `translate(-50%, -50%)`, // No rotation for masks currently
+            }}
+        >
+            {/* The Box Itself */}
+            <div className={`absolute inset-0 border-2 border-dashed border-red-500 bg-red-500/10 pointer-events-none transition-opacity ${isSelected ? 'opacity-100' : 'opacity-60 hover:opacity-80'}`}></div>
+
+            {isSelected && (
+                <>
+                    {/* Delete X */}
+                    <div 
+                        className="absolute -top-8 left-1/2 -translate-x-1/2 cursor-pointer z-40 transform hover:scale-110 transition-transform"
+                        onMouseDown={(e) => { e.stopPropagation(); onDelete(); }}
+                    >
+                        <div className="bg-red-500 text-white rounded-full p-1.5 shadow-md border-2 border-white hover:bg-red-600">
+                            <X size={14} strokeWidth={3} />
+                        </div>
+                    </div>
+                    {/* Handles */}
+                    <div style={{ ...regionHandleStyle('nw-resize'), top: HANDLE_OFFSET, left: HANDLE_OFFSET }} onMouseDown={(e) => onResizeStart(e, 'nw')} />
+                    <div style={{ ...regionHandleStyle('ne-resize'), top: HANDLE_OFFSET, right: HANDLE_OFFSET }} onMouseDown={(e) => onResizeStart(e, 'ne')} />
+                    <div style={{ ...regionHandleStyle('se-resize'), bottom: HANDLE_OFFSET, right: HANDLE_OFFSET }} onMouseDown={(e) => onResizeStart(e, 'se')} />
+                    <div style={{ ...regionHandleStyle('sw-resize'), bottom: HANDLE_OFFSET, left: HANDLE_OFFSET }} onMouseDown={(e) => onResizeStart(e, 'sw')} />
+                    <div style={{ ...regionHandleStyle('n-resize'), top: HANDLE_OFFSET, left: '50%', transform: 'translateX(-50%)' }} onMouseDown={(e) => onResizeStart(e, 'n')} />
+                    <div style={{ ...regionHandleStyle('e-resize'), top: '50%', right: HANDLE_OFFSET, transform: 'translateY(-50%)' }} onMouseDown={(e) => onResizeStart(e, 'e')} />
+                    <div style={{ ...regionHandleStyle('s-resize'), bottom: HANDLE_OFFSET, left: '50%', transform: 'translateX(-50%)' }} onMouseDown={(e) => onResizeStart(e, 's')} />
+                    <div style={{ ...regionHandleStyle('w-resize'), top: '50%', left: HANDLE_OFFSET, transform: 'translateY(-50%)' }} onMouseDown={(e) => onResizeStart(e, 'w')} />
+                </>
+            )}
+        </div>
+    );
+}, (prev, next) => {
+    return prev.isSelected === next.isSelected && prev.region === next.region;
+});
 
 
 const App: React.FC = () => {
@@ -195,6 +276,7 @@ const App: React.FC = () => {
 
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
+  const [selectedMaskId, setSelectedMaskId] = useState<string | null>(null); // New Selection for Masks
   
   // UI State
   const [showSettings, setShowSettings] = useState(false);
@@ -204,43 +286,45 @@ const App: React.FC = () => {
   const [concurrency, setConcurrency] = useState(1);
   const [isMerging, setIsMerging] = useState(false);
   
+  // Tool State
+  const [drawTool, setDrawTool] = useState<'none' | 'bubble' | 'mask'>('none'); 
+  
   // AI Config
   const [aiConfig, setAiConfig] = useState<AIConfig>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) return { ...DEFAULT_CONFIG, ...JSON.parse(saved) };
-    } catch (e) {
-      console.warn("Failed to load settings", e);
-    }
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (!parsed.customMessages) parsed.customMessages = DEFAULT_CONFIG.customMessages;
+        return { ...DEFAULT_CONFIG, ...parsed };
+      }
+    } catch (e) { console.warn("Failed to load settings", e); }
     return DEFAULT_CONFIG;
   });
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(aiConfig));
-    } catch (e) {
-      console.warn("Failed to save settings", e);
-    }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(aiConfig)); } catch (e) { console.warn("Failed to save settings", e); }
   }, [aiConfig]);
 
   // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   
   // Drag Logic Ref
   const dragRef = useRef<{ 
-    mode: 'move' | 'resize';
+    mode: 'move' | 'resize' | 'drawing';
+    targetType: 'bubble' | 'mask'; // Track what we are dragging
     id: string;
-    handle?: HandleType; // Only for resize
+    handle?: HandleType; 
     startX: number; 
     startY: number; 
-    // Initial Bubble State
     startBx: number; 
     startBy: number;
     startBw: number;
     startBh: number;
-    rotation: number; // Stored to avoid lookups
+    rotation: number;
     initialSnapshot: ImageState[]; 
     hasMoved: boolean;
   } | null>(null);
@@ -249,9 +333,10 @@ const App: React.FC = () => {
   const images = history.present;
   const currentImage = images.find(img => img.id === currentId);
   const bubbles = currentImage?.bubbles || [];
+  const maskRegions = currentImage?.maskRegions || []; // Mode 2 regions
   const selectedBubble = selectedBubbleId ? bubbles.find(b => b.id === selectedBubbleId) : undefined;
   
-  const lang = aiConfig.language; // Current Language
+  const lang = aiConfig.language; 
 
   // --- History Logic ---
   const setImages = (
@@ -259,16 +344,13 @@ const App: React.FC = () => {
     skipHistory: boolean = false
   ) => {
     setHistory(curr => {
-      const newPresent = typeof newImagesOrUpdater === 'function' 
-        ? newImagesOrUpdater(curr.present) 
-        : newImagesOrUpdater;
+      const newPresent = typeof newImagesOrUpdater === 'function' ? newImagesOrUpdater(curr.present) : newImagesOrUpdater;
       
-      if (JSON.stringify(newPresent) === JSON.stringify(curr.present)) return curr;
+      // CRITICAL FIX: Removed JSON.stringify deep comparison. 
+      // Deep comparing large ImageState arrays with Base64 data was causing severe lag.
+      if (newPresent === curr.present) return curr;
 
-      if (skipHistory) {
-        return { ...curr, present: newPresent };
-      }
-
+      if (skipHistory) return { ...curr, present: newPresent };
       return {
         past: [...curr.past, curr.present].slice(-20),
         present: newPresent,
@@ -303,11 +385,13 @@ const App: React.FC = () => {
     });
   }, []);
 
+  // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
       
+      // Undo/Redo
       if (!isInput && (e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault();
         e.shiftKey ? handleRedo() : handleUndo();
@@ -315,10 +399,39 @@ const App: React.FC = () => {
         e.preventDefault();
         handleRedo();
       }
+
+      // Arrow Keys for Image Navigation
+      if (!isInput && currentId) {
+          const currentIndex = images.findIndex(img => img.id === currentId);
+          if (e.key === 'ArrowLeft' && currentIndex > 0) {
+              e.preventDefault();
+              setCurrentId(images[currentIndex - 1].id);
+              setSelectedBubbleId(null);
+              setSelectedMaskId(null);
+          } else if (e.key === 'ArrowRight' && currentIndex < images.length - 1) {
+              e.preventDefault();
+              setCurrentId(images[currentIndex + 1].id);
+              setSelectedBubbleId(null);
+              setSelectedMaskId(null);
+          }
+      }
+
+      // Delete Selection
+      if (!isInput && (e.key === 'Delete' || e.key === 'Backspace')) {
+        if (selectedBubbleId && currentId) {
+             e.preventDefault();
+             setImages(prev => prev.map(img => img.id === currentId ? { ...img, bubbles: img.bubbles.filter(b => b.id !== selectedBubbleId) } : img));
+             setSelectedBubbleId(null);
+        } else if (selectedMaskId && currentId) {
+             e.preventDefault();
+             setImages(prev => prev.map(img => img.id === currentId ? { ...img, maskRegions: (img.maskRegions || []).filter(m => m.id !== selectedMaskId) } : img));
+             setSelectedMaskId(null);
+        }
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo]);
+  }, [handleUndo, handleRedo, selectedBubbleId, selectedMaskId, currentId, images]);
 
 
   // --- Image Handling Logic ---
@@ -332,13 +445,9 @@ const App: React.FC = () => {
   };
 
   const processFiles = async (inputFiles: FileList | File[]) => {
-    // Immediately convert FileList to Array to prevent issues if input is cleared
     const files = Array.from(inputFiles);
-    
     const newImages: ImageState[] = [];
     
-    // Process files sequentially to avoid overwhelming browser with large folders
-    // but ensure we don't hang on errors.
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (!file.type.startsWith('image/')) continue;
@@ -347,57 +456,40 @@ const App: React.FC = () => {
         const url = URL.createObjectURL(file);
         const base64 = await blobToBase64(file);
         
-        // Wrap image loading in a promise that handles errors correctly
-        // IMPORTANT: Must handle onerror to prevent Promise hanging forever
         const loadedImgState = await new Promise<ImageState | null>((resolve) => {
           const img = new Image();
           img.onload = () => {
             resolve({
               id: crypto.randomUUID(), name: file.name, url, base64,
-              width: img.width, height: img.height, bubbles: [], status: 'idle'
+              width: img.width, height: img.height, bubbles: [], maskRegions: [], status: 'idle', skipped: false
             });
           };
           img.onerror = () => {
             console.warn(`Skipping invalid image: ${file.name}`);
-            // Resolve null instead of rejecting so the loop continues
             resolve(null);
           };
           img.src = url;
         });
 
-        if (loadedImgState) {
-          newImages.push(loadedImgState);
-        }
-      } catch (e) { 
-        console.error("Failed to read file", file.name, e); 
-      }
+        if (loadedImgState) newImages.push(loadedImgState);
+      } catch (e) { console.error("Failed to read file", file.name, e); }
     }
 
     if (newImages.length > 0) {
       setImages(prev => {
-        // Apply Natural Sorting (1, 2, 10 instead of 1, 10, 2)
         const combined = [...prev, ...newImages];
-        return combined.sort((a, b) => 
-          a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' })
-        );
+        return combined.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
       });
-      // Select the first new image if nothing selected
       if (!currentId) setCurrentId(newImages[0].id);
     }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-        processFiles(e.target.files);
-    }
-    // Only clear after processing started
+    if (e.target.files && e.target.files.length > 0) processFiles(e.target.files);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
-
   const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-        processFiles(e.target.files);
-    }
+    if (e.target.files && e.target.files.length > 0) processFiles(e.target.files);
     if (folderInputRef.current) folderInputRef.current.value = '';
   };
 
@@ -429,8 +521,51 @@ const App: React.FC = () => {
     ));
   }, [currentId]);
 
-  const handleCanvasClick = (e: React.MouseEvent) => {
-    if (selectedBubbleId) setSelectedBubbleId(null);
+  const handleToggleSkip = useCallback((imgId: string) => {
+    setImages(prev => prev.map(img => img.id === imgId ? { ...img, skipped: !img.skipped } : img));
+  }, []);
+
+  // --- CANVAS INTERACTION (DRAW & SELECT) ---
+
+  const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    if (!currentId || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const startXPct = clamp((e.clientX - rect.left) / rect.width * 100, 0, 100);
+    const startYPct = clamp((e.clientY - rect.top) / rect.height * 100, 0, 100);
+
+    if (drawTool === 'bubble') {
+        const newBubble = createBubble(startXPct, startYPct, aiConfig.defaultFontSize, 0, 0);
+        updateImageBubbles(currentId, [...bubbles, newBubble]);
+        setSelectedBubbleId(newBubble.id);
+        setSelectedMaskId(null);
+
+        dragRef.current = {
+            mode: 'drawing',
+            targetType: 'bubble',
+            id: newBubble.id,
+            startX: e.clientX, startY: e.clientY,
+            startBx: startXPct, startBy: startYPct, startBw: 0, startBh: 0, rotation: 0,
+            initialSnapshot: history.present, hasMoved: false
+        };
+    } else if (drawTool === 'mask') {
+        const newMask = createMaskRegion(startXPct, startYPct);
+        setImages(prev => prev.map(img => img.id === currentId ? { ...img, maskRegions: [...(img.maskRegions || []), newMask] } : img));
+        setSelectedMaskId(newMask.id);
+        setSelectedBubbleId(null);
+
+        dragRef.current = {
+            mode: 'drawing',
+            targetType: 'mask',
+            id: newMask.id,
+            startX: e.clientX, startY: e.clientY,
+            startBx: startXPct, startBy: startYPct, startBw: 0, startBh: 0, rotation: 0,
+            initialSnapshot: history.present, hasMoved: false
+        };
+    } else {
+        // Normal Mode: Deselect All
+        if (selectedBubbleId) setSelectedBubbleId(null);
+        if (selectedMaskId) setSelectedMaskId(null);
+    }
   };
 
   const handleAddManualBubble = () => {
@@ -438,6 +573,7 @@ const App: React.FC = () => {
     const newBubble = createBubble(50, 50, aiConfig.defaultFontSize);
     updateImageBubbles(currentId, [...bubbles, newBubble]);
     setSelectedBubbleId(newBubble.id);
+    setSelectedMaskId(null);
   };
 
   const handleGlobalFontScale = (scaleFactor: number) => {
@@ -473,163 +609,183 @@ const App: React.FC = () => {
     } catch (e) { console.error("Merge failed", e); alert("Failed to merge layers."); } finally { setIsMerging(false); }
   };
 
-  // --- MOUSE HANDLERS (Move & Resize) ---
+  // --- MOUSE HANDLERS (Move & Resize & Draw) ---
 
-  const handleMouseDown = (e: React.MouseEvent, id: string) => {
+  const handleMouseDown = (e: React.MouseEvent, id: string, type: 'bubble' | 'mask') => {
     e.stopPropagation();
-    e.preventDefault(); // Prevent text selection
-    setSelectedBubbleId(id);
-    const bubble = bubbles.find(b => b.id === id);
-    if (!bubble) return;
+    e.preventDefault(); 
     
-    dragRef.current = { 
-      mode: 'move',
-      id, 
-      startX: e.clientX, 
-      startY: e.clientY, 
-      startBx: bubble.x, 
-      startBy: bubble.y, 
-      startBw: bubble.width,
-      startBh: bubble.height,
-      rotation: bubble.rotation,
-      initialSnapshot: history.present,
-      hasMoved: false
-    };
+    if (type === 'bubble') {
+        setSelectedBubbleId(id);
+        setSelectedMaskId(null);
+        const bubble = bubbles.find(b => b.id === id);
+        if (!bubble) return;
+        dragRef.current = { 
+          mode: 'move', targetType: 'bubble', id, startX: e.clientX, startY: e.clientY, 
+          startBx: bubble.x, startBy: bubble.y, startBw: bubble.width, startBh: bubble.height, rotation: bubble.rotation,
+          initialSnapshot: history.present, hasMoved: false
+        };
+    } else {
+        setSelectedMaskId(id);
+        setSelectedBubbleId(null);
+        const mask = maskRegions.find(m => m.id === id);
+        if (!mask) return;
+        dragRef.current = { 
+          mode: 'move', targetType: 'mask', id, startX: e.clientX, startY: e.clientY, 
+          startBx: mask.x, startBy: mask.y, startBw: mask.width, startBh: mask.height, rotation: 0,
+          initialSnapshot: history.present, hasMoved: false
+        };
+    }
   };
 
-  const handleResizeStart = (e: React.MouseEvent, handle: HandleType) => {
+  const handleResizeStart = (e: React.MouseEvent, id: string, type: 'bubble' | 'mask', handle: HandleType) => {
     e.stopPropagation();
     e.preventDefault();
-    if (!selectedBubbleId) return;
-
-    const bubble = bubbles.find(b => b.id === selectedBubbleId);
-    if(!bubble) return;
-
-    dragRef.current = {
-      mode: 'resize',
-      id: bubble.id,
-      handle,
-      startX: e.clientX, 
-      startY: e.clientY, 
-      startBx: bubble.x, 
-      startBy: bubble.y, 
-      startBw: bubble.width,
-      startBh: bubble.height,
-      rotation: bubble.rotation,
-      initialSnapshot: history.present,
-      hasMoved: false
-    };
+    
+    if (type === 'bubble') {
+        const bubble = bubbles.find(b => b.id === id);
+        if(!bubble) return;
+        dragRef.current = {
+          mode: 'resize', targetType: 'bubble', id: bubble.id, handle,
+          startX: e.clientX, startY: e.clientY, startBx: bubble.x, startBy: bubble.y, 
+          startBw: bubble.width, startBh: bubble.height, rotation: bubble.rotation,
+          initialSnapshot: history.present, hasMoved: false
+        };
+    } else {
+        const mask = maskRegions.find(m => m.id === id);
+        if(!mask) return;
+        dragRef.current = {
+          mode: 'resize', targetType: 'mask', id: mask.id, handle,
+          startX: e.clientX, startY: e.clientY, startBx: mask.x, startBy: mask.y, 
+          startBw: mask.width, startBh: mask.height, rotation: 0,
+          initialSnapshot: history.present, hasMoved: false
+        };
+    }
   };
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!dragRef.current || !containerRef.current || !currentId) return;
     
-    const { mode, handle, startX, startY, startBx, startBy, startBw, startBh, rotation } = dragRef.current;
+    const { mode, handle, startX, startY, startBx, startBy, startBw, startBh, targetType, id } = dragRef.current;
     const rect = containerRef.current.getBoundingClientRect();
-    
-    // Global Delta (Pixel)
     const dxPx = e.clientX - startX;
     const dyPx = e.clientY - startY;
 
-    // Movement Check
-    if (Math.abs(dxPx) > 1 || Math.abs(dyPx) > 1) {
-       dragRef.current.hasMoved = true;
+    if (Math.abs(dxPx) > 1 || Math.abs(dyPx) > 1) dragRef.current.hasMoved = true;
+
+    // --- DRAWING MODE ---
+    if (mode === 'drawing') {
+        const currentXPct = clamp((e.clientX - rect.left) / rect.width * 100, 0, 100);
+        const currentYPct = clamp((e.clientY - rect.top) / rect.height * 100, 0, 100);
+        const left = Math.min(startBx, currentXPct);
+        const top = Math.min(startBy, currentYPct);
+        const w = Math.abs(currentXPct - startBx);
+        const h = Math.abs(currentYPct - startBy);
+        const centerX = left + w / 2;
+        const centerY = top + h / 2;
+
+        setImages(prev => {
+            const img = prev.find(i => i.id === currentId);
+            if(!img) return prev;
+            
+            if (targetType === 'bubble') {
+                const newBubbles = img.bubbles.map(b => b.id === id ? { ...b, x: centerX, y: centerY, width: Math.max(1, w), height: Math.max(1, h) } : b);
+                return prev.map(p => p.id === currentId ? { ...p, bubbles: newBubbles } : p);
+            } else {
+                const newMasks = (img.maskRegions || []).map(m => m.id === id ? { ...m, x: centerX, y: centerY, width: Math.max(1, w), height: Math.max(1, h) } : m);
+                return prev.map(p => p.id === currentId ? { ...p, maskRegions: newMasks } : p);
+            }
+        }, true);
+        return;
     }
 
+    // --- MOVE LOGIC ---
     if (mode === 'move') {
         const dxPct = (dxPx / rect.width) * 100;
         const dyPct = (dyPx / rect.height) * 100;
+        let newX = clamp(startBx + dxPct, startBw/2, 100 - startBw/2);
+        let newY = clamp(startBy + dyPct, startBh/2, 100 - startBh/2);
 
         setImages(prev => {
             const img = prev.find(i => i.id === currentId);
             if(!img) return prev;
-            const newBubbles = img.bubbles.map(b => 
-                b.id === dragRef.current?.id 
-                ? { ...b, x: startBx + dxPct, y: startBy + dyPct } 
-                : b
-            );
-            return prev.map(p => p.id === currentId ? { ...p, bubbles: newBubbles } : p);
+            if (targetType === 'bubble') {
+                const newBubbles = img.bubbles.map(b => b.id === id ? { ...b, x: newX, y: newY } : b);
+                return prev.map(p => p.id === currentId ? { ...p, bubbles: newBubbles } : p);
+            } else {
+                const newMasks = (img.maskRegions || []).map(m => m.id === id ? { ...m, x: newX, y: newY } : m);
+                return prev.map(p => p.id === currentId ? { ...p, maskRegions: newMasks } : p);
+            }
         }, true);
 
+    // --- RESIZE LOGIC ---
     } else if (mode === 'resize' && handle) {
-        const rad = rotation * (Math.PI / 180);
-        // Project screen delta onto bubble local axis
-        const localDxPx = dxPx * Math.cos(-rad) - dyPx * Math.sin(-rad);
-        const localDyPx = dxPx * Math.sin(-rad) + dyPx * Math.cos(-rad);
+        const startLeft = startBx - startBw / 2;
+        const startTop = startBy - startBh / 2;
+        const startRight = startBx + startBw / 2;
+        const startBottom = startBy + startBh / 2;
+        const deltaXPct = (dxPx / rect.width) * 100;
+        const deltaYPct = (dyPx / rect.height) * 100;
 
-        // Convert Local Pixel Delta to Percentage
-        const localDxPct = (localDxPx / rect.width) * 100;
-        const localDyPct = (localDyPx / rect.height) * 100;
-
-        let newX = startBx;
-        let newY = startBy;
-        let newW = startBw;
-        let newH = startBh;
-
-        const isCorner = ['nw', 'ne', 'se', 'sw'].includes(handle);
-        const aspectRatio = startBw / startBh;
-
-        if (isCorner) {
-            let deltaW = 0;
-            if (handle === 'se') deltaW = localDxPct;
-            if (handle === 'sw') deltaW = -localDxPct;
-            if (handle === 'ne') deltaW = localDxPct;
-            if (handle === 'nw') deltaW = -localDxPct;
-
-            newW = Math.max(2, startBw + deltaW);
-            newH = newW / aspectRatio;
-
-            const dw = newW - startBw;
-            const dh = newH - startBh;
-
-            if (handle.includes('e')) newX += dw / 2;
-            else newX -= dw / 2;
-            if (handle.includes('s')) newY += dh / 2;
-            else newY -= dh / 2;
-
-        } else {
-            if (handle === 'e') {
-                newW = Math.max(2, startBw + localDxPct);
-                newX = startBx + (newW - startBw) / 2;
-            }
-            if (handle === 'w') {
-                newW = Math.max(2, startBw - localDxPct);
-                newX = startBx - (newW - startBw) / 2;
-            }
-            if (handle === 's') {
-                newH = Math.max(2, startBh + localDyPct);
-                newY = startBy + (newH - startBh) / 2;
-            }
-            if (handle === 'n') {
-                newH = Math.max(2, startBh - localDyPct);
-                newY = startBy - (newH - startBh) / 2;
-            }
-        }
+        let newLeft = startLeft, newRight = startRight, newTop = startTop, newBottom = startBottom;
+        if (handle.includes('e')) newRight = clamp(startRight + deltaXPct, newLeft + 2, 100);
+        if (handle.includes('w')) newLeft = clamp(startLeft + deltaXPct, 0, newRight - 2);
+        if (handle.includes('s')) newBottom = clamp(startBottom + deltaYPct, newTop + 2, 100);
+        if (handle.includes('n')) newTop = clamp(startTop + deltaYPct, 0, newBottom - 2);
+        
+        const newW = newRight - newLeft;
+        const newH = newBottom - newTop;
+        const newX = newLeft + newW / 2;
+        const newY = newTop + newH / 2;
 
         setImages(prev => {
             const img = prev.find(i => i.id === currentId);
             if(!img) return prev;
-            const newBubbles = img.bubbles.map(b => 
-                b.id === dragRef.current?.id 
-                ? { ...b, x: newX, y: newY, width: newW, height: newH } 
-                : b
-            );
-            return prev.map(p => p.id === currentId ? { ...p, bubbles: newBubbles } : p);
+             if (targetType === 'bubble') {
+                const newBubbles = img.bubbles.map(b => b.id === id ? { ...b, x: newX, y: newY, width: newW, height: newH } : b);
+                return prev.map(p => p.id === currentId ? { ...p, bubbles: newBubbles } : p);
+            } else {
+                const newMasks = (img.maskRegions || []).map(m => m.id === id ? { ...m, x: newX, y: newY, width: newW, height: newH } : m);
+                return prev.map(p => p.id === currentId ? { ...p, maskRegions: newMasks } : p);
+            }
         }, true);
     }
   }, [currentId]);
 
   const handleMouseUp = useCallback(() => { 
-    if (dragRef.current && dragRef.current.hasMoved) {
-      const snapshot = dragRef.current.initialSnapshot;
-      setHistory(curr => ({
-         past: [...curr.past, snapshot].slice(-20),
-         present: curr.present,
-         future: []
-      }));
+    if (dragRef.current) {
+        const { id, mode, targetType } = dragRef.current;
+        if (mode === 'drawing') {
+            setImages(prev => {
+                const img = prev.find(i => i.id === currentId);
+                if (!img) return prev;
+                // Cleanup tiny drawings
+                if (targetType === 'bubble') {
+                    const bubble = img.bubbles.find(b => b.id === id);
+                    if (bubble && (bubble.width < 1 || bubble.height < 1)) {
+                         return prev.map(p => p.id === currentId ? { ...p, bubbles: p.bubbles.filter(b => b.id !== id) } : p);
+                    }
+                } else {
+                    const mask = img.maskRegions?.find(m => m.id === id);
+                    if (mask && (mask.width < 1 || mask.height < 1)) {
+                         return prev.map(p => p.id === currentId ? { ...p, maskRegions: (p.maskRegions || []).filter(m => m.id !== id) } : p);
+                    }
+                }
+                return prev;
+            });
+        }
+
+        if (dragRef.current.hasMoved || dragRef.current.mode === 'drawing') {
+            const snapshot = dragRef.current.initialSnapshot;
+            setHistory(curr => ({
+                past: [...curr.past, snapshot].slice(-20),
+                present: curr.present,
+                future: []
+            }));
+        }
     }
     dragRef.current = null; 
-  }, []);
+  }, [currentId]);
 
   useEffect(() => {
     window.addEventListener('mousemove', handleMouseMove);
@@ -640,11 +796,21 @@ const App: React.FC = () => {
     };
   }, [handleMouseMove, handleMouseUp]);
 
-  // Batch / AI Logic
-  const runDetectionForImage = async (img: ImageState) => {
+  // --- Processing Logic ---
+
+  const runDetectionForImage = async (img: ImageState, signal?: AbortSignal, useMaskedImage: boolean = false) => {
      setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing', errorMessage: undefined } : p));
      try {
-       const detected = await detectAndTypesetComic(img.base64, aiConfig);
+       // Decide source image: Raw Base64 OR Masked Base64
+       let sourceBase64 = img.base64;
+       if (useMaskedImage && img.maskRegions && img.maskRegions.length > 0) {
+           sourceBase64 = await generateMaskedImage(img);
+       }
+
+       // Pass current mask regions as potential hints, even if useMaskedImage is false.
+       // The service layer will decide whether to use them based on config.useMasksAsHints.
+       const detected = await detectAndTypesetComic(sourceBase64, aiConfig, signal, img.maskRegions);
+       
        const newBubbles: Bubble[] = detected.map(d => ({
         id: crypto.randomUUID(),
         x: d.x, y: d.y, width: d.width, height: d.height,
@@ -652,28 +818,100 @@ const App: React.FC = () => {
         fontFamily: d.text.includes('JSON') ? 'zhimang' : 'noto',
         fontSize: aiConfig.defaultFontSize,
         color: '#0f172a', backgroundColor: '#ffffff', 
-        rotation: d.rotation || 0, // AI detected rotation or 0
+        rotation: d.rotation || 0,
       }));
-      setImages(prev => prev.map(p => p.id === img.id ? { ...p, bubbles: newBubbles, status: 'done' } : p));
+      
+      setImages(prev => prev.map(p => p.id === img.id ? { 
+          ...p, 
+          // Append new bubbles if using mask mode, otherwise replace? 
+          // Usually replace is safer for "Process All", but for Mask Mode we might want to APPEND.
+          // Let's Append if useMaskedImage is true (additive workflow), Replace if not (fresh start).
+          bubbles: useMaskedImage ? [...p.bubbles, ...newBubbles] : newBubbles,
+          // Removed clearing of maskRegions to allow persistence as per user request
+          status: 'done' 
+      } : p));
      } catch (e: any) {
+       if (e.message && e.message.includes('Aborted')) {
+          setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'idle', errorMessage: undefined } : p));
+          return;
+       }
        console.error("AI Error for " + img.name, e);
        setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'error', errorMessage: e.message || 'Unknown error occurred' } : p));
      }
   };
 
+  const handleStopProcessing = () => {
+    if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+        setIsProcessingBatch(false);
+    }
+  };
+
   const handleBatchProcess = async (onlyCurrent: boolean) => {
     if (isProcessingBatch) return;
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const signal = controller.signal;
     setIsProcessingBatch(true);
-    if (onlyCurrent && currentImage) {
-      await runDetectionForImage(currentImage);
-    } else {
-      const queue = images.filter(img => img.status === 'idle' || img.status === 'error');
-      for (let i = 0; i < queue.length; i += concurrency) {
-        const chunk = queue.slice(i, i + concurrency);
-        await Promise.all(chunk.map(img => runDetectionForImage(img)));
-      }
+
+    try {
+        if (onlyCurrent && currentImage) {
+          await runDetectionForImage(currentImage, signal);
+        } else {
+          const queue = images.filter(img => !img.skipped && (img.status === 'idle' || img.status === 'error'));
+          for (let i = 0; i < queue.length; i += concurrency) {
+            if (signal.aborted) break;
+            const chunk = queue.slice(i, i + concurrency);
+            await Promise.all(chunk.map(img => runDetectionForImage(img, signal)));
+          }
+        }
+    } catch (e) { /* catch */ } finally {
+        setIsProcessingBatch(false);
+        abortControllerRef.current = null;
     }
-    setIsProcessingBatch(false);
+  };
+
+  // Dedicated function for Mode 2 button (Current Image)
+  const handleTranslateMasks = async () => {
+      if (!currentImage || !currentImage.maskRegions || currentImage.maskRegions.length === 0) return;
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      setIsProcessingBatch(true);
+      try {
+          await runDetectionForImage(currentImage, controller.signal, true);
+          setDrawTool('none'); // Exit tool mode after success
+          setSelectedMaskId(null); // Ensure selection is cleared
+      } finally {
+          setIsProcessingBatch(false);
+          abortControllerRef.current = null;
+      }
+  };
+
+  // Dedicated function for Mode 2 button (Batch - All Images with Masks)
+  const handleBatchTranslateMasks = async () => {
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+      setIsProcessingBatch(true);
+      try {
+          // Filter images that have masks and are not skipped
+          const queue = images.filter(img => !img.skipped && img.maskRegions && img.maskRegions.length > 0);
+          
+          if (queue.length === 0) {
+              alert("No images with masks found to process.");
+              return;
+          }
+
+          for (let i = 0; i < queue.length; i += concurrency) {
+            if (controller.signal.aborted) break;
+            const chunk = queue.slice(i, i + concurrency);
+            // Pass true for useMaskedImage
+            await Promise.all(chunk.map(img => runDetectionForImage(img, controller.signal, true)));
+          }
+      } finally {
+          setIsProcessingBatch(false);
+          abortControllerRef.current = null;
+      }
   };
 
   return (
@@ -702,18 +940,82 @@ const App: React.FC = () => {
                   images={images} 
                   currentId={currentId} 
                   config={aiConfig}
-                  onSelect={(id) => { setCurrentId(id); setSelectedBubbleId(null); }} 
-                  onDelete={(id) => { setImages(prev => prev.filter(i => i.id !== id)); if (currentId === id) setCurrentId(null); if (selectedBubbleId && currentImage?.id === id) setSelectedBubbleId(null); }} 
-                  onClearAll={() => { setImages([]); setCurrentId(null); setSelectedBubbleId(null); }} 
+                  onSelect={(id) => { setCurrentId(id); setSelectedBubbleId(null); setSelectedMaskId(null); }} 
+                  onDelete={(id) => { setImages(prev => prev.filter(i => i.id !== id)); if (currentId === id) setCurrentId(null); }} 
+                  onClearAll={() => { setImages([]); setCurrentId(null); }} 
+                  onToggleSkip={handleToggleSkip}
                 />
             </div>
             {images.length > 0 && (
                 <div className="p-4 bg-gray-900 border-t border-gray-800 space-y-3 shrink-0">
-                    <div className="grid grid-cols-3 gap-2 mb-2">
+                    
+                    {/* Tool Bar */}
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <label className="text-xs text-gray-500 font-bold uppercase tracking-wider">{t('toolMode', lang)}</label>
+                            {/* Clear Selection Button if in Tool Mode */}
+                            {drawTool !== 'none' && (
+                                <button onClick={() => { setDrawTool('none'); setSelectedMaskId(null); setSelectedBubbleId(null); }} className="text-[10px] text-gray-400 hover:text-white px-2 py-0.5 bg-gray-800 rounded">{t('cancel', lang)}</button>
+                            )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                            {/* Mode 1: Bubble Tool */}
+                            <button 
+                                onClick={() => { setDrawTool(drawTool === 'bubble' ? 'none' : 'bubble'); setSelectedMaskId(null); setSelectedBubbleId(null); }} 
+                                disabled={!currentImage}
+                                className={`py-2 border rounded text-xs flex items-center justify-center gap-1 transition-all ${drawTool === 'bubble' ? 'bg-blue-600 border-blue-500 text-white shadow-lg ring-1 ring-blue-500' : 'bg-gray-800/60 hover:bg-gray-700 border-gray-600 text-gray-300'}`}
+                                title={t('toolBubble', lang)}
+                            >
+                                <MessageSquareDashed size={14} /> {t('toolBubble', lang)}
+                            </button>
+                            {/* Mode 2: Mask Tool */}
+                            <button 
+                                onClick={() => { setDrawTool(drawTool === 'mask' ? 'none' : 'mask'); setSelectedBubbleId(null); setSelectedMaskId(null); }} 
+                                disabled={!currentImage}
+                                className={`py-2 border rounded text-xs flex items-center justify-center gap-1 transition-all ${drawTool === 'mask' ? 'bg-red-600 border-red-500 text-white shadow-lg ring-1 ring-red-500' : 'bg-gray-800/60 hover:bg-gray-700 border-gray-600 text-gray-300'}`}
+                                title={t('toolMask', lang)}
+                            >
+                                <Scan size={14} /> {t('toolMask', lang)}
+                            </button>
+                        </div>
+                    </div>
+                    
+                    {/* Mode 2 Special Action: Translate Regions - Only visible in Mask Mode */}
+                    {drawTool === 'mask' && (
+                        <div className="animate-fade-in space-y-1">
+                            <div className="flex gap-1">
+                                {/* Current Image */}
+                                <button 
+                                    onClick={handleTranslateMasks}
+                                    disabled={isProcessingBatch || !currentImage || !currentImage.maskRegions || currentImage.maskRegions.length === 0}
+                                    className="flex-1 py-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white rounded text-xs font-bold flex items-center justify-center gap-1 shadow-lg transition-transform transform active:scale-95 disabled:opacity-50 disabled:scale-100"
+                                    title={t('translateRegionsDesc', lang)}
+                                >
+                                    {isProcessingBatch ? <Loader2 size={12} className="animate-spin"/> : <ScanFace size={12}/>}
+                                    Translate
+                                </button>
+                                {/* Batch All Images */}
+                                <button 
+                                    onClick={handleBatchTranslateMasks}
+                                    disabled={isProcessingBatch}
+                                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white rounded text-xs font-bold flex items-center justify-center shadow-lg transition-transform transform active:scale-95 disabled:opacity-50 disabled:scale-100"
+                                    title="Translate all images with red boxes"
+                                >
+                                    All (Masks)
+                                </button>
+                            </div>
+                            <p className="text-[10px] text-gray-500 text-center mt-1">{t('translateRegionsDesc', lang)}</p>
+                        </div>
+                    )}
+
+                    <div className="h-px bg-gray-800 my-1"></div>
+
+                    {/* Standard Controls */}
+                    <div className="grid grid-cols-2 gap-2">
                         <button onClick={handleAddManualBubble} disabled={!currentImage} className="py-2 bg-green-900/40 hover:bg-green-800/60 border border-green-800 text-green-200 rounded text-xs flex items-center justify-center gap-1"><Plus size={14}/> {t('manualAdd', lang)}</button>
                         <button onClick={() => setShowManualJson(true)} disabled={!currentImage} className="py-2 bg-teal-900/40 hover:bg-teal-800/60 border border-teal-800 text-teal-200 rounded text-xs flex items-center justify-center gap-1"><FileJson size={14}/> {t('importJson', lang)}</button>
-                        <button onClick={handleMergeLayers} disabled={!currentImage || isMerging || currentImage.bubbles.length === 0} className="py-2 bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50">{isMerging ? <Loader2 className="animate-spin" size={14}/> : <FileStack size={14}/>} {t('merge', lang)}</button>
                     </div>
+
                     <div className="space-y-1 mb-2 bg-gray-800/50 p-2 rounded border border-gray-700/50">
                         <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 flex items-center gap-1"><Type size={10} /> {t('globalStyles', lang)}</div>
                         <div className="flex gap-1 mb-1">
@@ -727,24 +1029,23 @@ const App: React.FC = () => {
                         </div>
                     </div>
                     <div className="space-y-2">
-                         <div className="flex items-center justify-between text-xs text-gray-500">
-                             <span>{t('concurrency', lang)}</span>
-                             <input 
-                                 type="number" 
-                                 min="1" 
-                                 max="10" 
-                                 value={concurrency} 
-                                 onChange={(e) => setConcurrency(Math.max(1, parseInt(e.target.value) || 1))} 
-                                 className="w-12 bg-gray-800 border border-gray-700 rounded px-1 text-center text-xs text-gray-200 focus:border-blue-500 outline-none"
-                             />
-                         </div>
-                         <div className="grid grid-cols-2 gap-2">
-                            <button onClick={() => handleBatchProcess(true)} disabled={isProcessingBatch || !currentImage} className="py-2 bg-purple-900/50 hover:bg-purple-800 border border-purple-700 rounded text-xs text-purple-200 flex items-center justify-center gap-1 disabled:opacity-50">{isProcessingBatch ? <Loader2 className="animate-spin" size={12}/> : <Play size={12}/>} {t('current', lang)}</button>
-                            <button onClick={() => handleBatchProcess(false)} disabled={isProcessingBatch} className="py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white rounded text-xs font-bold flex items-center justify-center gap-1 disabled:opacity-50">{isProcessingBatch ? <Loader2 className="animate-spin" size={12}/> : <Layers size={12}/>} {t('processAll', lang)}</button>
-                         </div>
+                         {isProcessingBatch ? (
+                            <button 
+                                onClick={handleStopProcessing}
+                                className="w-full py-2 bg-red-900/50 hover:bg-red-800 border border-red-700 rounded text-xs text-red-200 flex items-center justify-center gap-1 animate-pulse"
+                            >
+                                <Square size={12} fill="currentColor" /> {t('stop', lang)}
+                            </button>
+                         ) : (
+                             <div className="grid grid-cols-2 gap-2">
+                                <button onClick={() => handleBatchProcess(true)} disabled={!currentImage} className="py-2 bg-purple-900/50 hover:bg-purple-800 border border-purple-700 rounded text-xs text-purple-200 flex items-center justify-center gap-1 disabled:opacity-50"><Play size={12}/> {t('current', lang)}</button>
+                                <button onClick={() => handleBatchProcess(false)} className="py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white rounded text-xs font-bold flex items-center justify-center gap-1 disabled:opacity-50"><Layers size={12}/> {t('processAll', lang)}</button>
+                             </div>
+                         )}
                     </div>
                     <div className="h-px bg-gray-800 my-2"></div>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-3 gap-2">
+                         <button onClick={handleMergeLayers} disabled={!currentImage || isMerging || currentImage.bubbles.length === 0} className="py-2 bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50">{isMerging ? <Loader2 className="animate-spin" size={14}/> : <FileStack size={14}/>} {t('merge', lang)}</button>
                         <button onClick={() => currentImage && downloadSingleImage(currentImage)} disabled={!currentImage} className="py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-xs text-gray-300 flex items-center justify-center gap-1"><ImageIcon size={12}/> {t('saveImage', lang)}</button>
                         <button onClick={() => downloadAllAsZip(images)} className="py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-xs text-gray-300 flex items-center justify-center gap-1"><Download size={12}/> {t('zipAll', lang)}</button>
                     </div>
@@ -762,15 +1063,39 @@ const App: React.FC = () => {
             <div className="relative shadow-2xl inline-block" ref={containerRef} style={{ maxWidth: '100%' }}>
               <img src={currentImage.url} alt="Workspace" className="max-h-[90vh] max-w-full block select-none pointer-events-none" />
               <div className="absolute inset-0" style={{ containerType: 'inline-size' } as React.CSSProperties}>
-                  <div className="absolute inset-0 cursor-crosshair-text z-0" onClick={handleCanvasClick} />
+                  <div 
+                    className={`absolute inset-0 z-0 ${drawTool !== 'none' ? 'cursor-crosshair' : 'cursor-default'}`} 
+                    onMouseDown={handleCanvasMouseDown}
+                  />
+                  
+                  {/* Mode 2: Mask Regions - Only visible in mask mode */}
+                  {drawTool === 'mask' && maskRegions.map(region => (
+                      <RegionLayer
+                          key={region.id}
+                          region={region}
+                          isSelected={selectedMaskId === region.id}
+                          onMouseDown={(e) => handleMouseDown(e, region.id, 'mask')}
+                          onResizeStart={(e, handle) => handleResizeStart(e, region.id, 'mask', handle)}
+                          onDelete={() => {
+                               setImages(prev => prev.map(img => img.id === currentId ? { ...img, maskRegions: (img.maskRegions || []).filter(m => m.id !== region.id) } : img));
+                               setSelectedMaskId(null);
+                          }}
+                      />
+                  ))}
+
+                  {/* Mode 1: Bubbles */}
                   {bubbles.map(bubble => (
                     <BubbleLayer
                       key={bubble.id}
                       bubble={bubble}
                       isSelected={selectedBubbleId === bubble.id}
-                      onMouseDown={(e) => handleMouseDown(e, bubble.id)}
-                      onResizeStart={handleResizeStart}
+                      onMouseDown={(e) => handleMouseDown(e, bubble.id, 'bubble')}
+                      onResizeStart={(e, handle) => handleResizeStart(e, bubble.id, 'bubble', handle)}
                       onUpdate={handleBubbleUpdate}
+                      onDelete={() => {
+                           setImages(prev => prev.map(img => img.id === currentId ? { ...img, bubbles: img.bubbles.filter(b => b.id !== bubble.id) } : img));
+                           setSelectedBubbleId(null);
+                      }}
                     />
                   ))}
               </div>
@@ -791,6 +1116,20 @@ const App: React.FC = () => {
                     setSelectedBubbleId(null);
                 }}
               />
+         ) : selectedMaskId ? (
+              // Simple info panel for Mask Mode
+              <div className="flex-1 flex flex-col items-center justify-center text-gray-600 select-none p-6 text-center">
+                   <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center mb-4 border border-red-500/30">
+                        <Scan size={32} className="text-red-500"/>
+                   </div>
+                   <h3 className="text-sm font-semibold text-gray-300">{t('toolMask', lang)}</h3>
+                   <p className="text-xs mt-2 text-gray-500 leading-relaxed">
+                       {t('translateRegionsDesc', lang)}
+                       <br/>
+                       <br/>
+                       Draw more boxes to include multiple areas in one request.
+                   </p>
+              </div>
          ) : (
              <div className="flex-1 flex flex-col items-center justify-center text-gray-600 select-none p-6 text-center"><div className="w-16 h-16 bg-gray-800/50 rounded-full flex items-center justify-center mb-4"><MessageSquareDashed size={32} className="opacity-50"/></div><h3 className="text-sm font-semibold text-gray-500">{t('noBubbleSelected', lang)}</h3><p className="text-xs mt-2 max-w-[200px]">{t('clickBubbleHint', lang)}</p></div>
          )}

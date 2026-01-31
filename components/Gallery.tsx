@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ImageState, AIConfig } from '../types';
-import { X, Trash2, Image as ImageIcon, CheckCircle, Loader2, XCircle } from 'lucide-react';
+import { X, Trash2, Image as ImageIcon, CheckCircle, Loader2, XCircle, Ban } from 'lucide-react';
 import { t } from '../services/i18n';
 
 interface GalleryProps {
@@ -12,9 +12,10 @@ interface GalleryProps {
   onSelect: (id: string) => void;
   onDelete: (id: string) => void;
   onClearAll: () => void;
+  onToggleSkip: (id: string) => void;
 }
 
-export const Gallery: React.FC<GalleryProps> = ({ images, currentId, config, onSelect, onDelete, onClearAll }) => {
+export const Gallery: React.FC<GalleryProps> = ({ images, currentId, config, onSelect, onDelete, onClearAll, onToggleSkip }) => {
   const [clearStage, setClearStage] = useState(0); // 0 = normal, 1 = confirm
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lang = config.language || 'zh';
@@ -67,8 +68,24 @@ export const Gallery: React.FC<GalleryProps> = ({ images, currentId, config, onS
                 currentId === img.id ? 'border-purple-500 ring-2 ring-purple-500/30' : 'border-gray-700 hover:border-gray-500'
               }`}
             >
-              <img src={img.url} className="w-full h-full object-cover" alt="thumb" />
+              <img src={img.url} className={`w-full h-full object-cover transition-opacity duration-300 ${img.skipped ? 'opacity-50 grayscale' : ''}`} alt="thumb" />
               
+              {/* Skip Button - Top Left */}
+              <button
+                  onClick={(e) => {
+                      e.stopPropagation();
+                      onToggleSkip(img.id);
+                  }}
+                  className={`absolute top-1 left-1 p-1 rounded-full z-20 transition-all ${
+                      img.skipped 
+                      ? 'bg-red-500/80 text-white opacity-100 hover:bg-red-600' 
+                      : 'bg-black/50 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-black/70 hover:text-white'
+                  }`}
+                  title={img.skipped ? "已跳过 API 处理 (点击恢复)" : "跳过 API 处理"}
+              >
+                  <Ban size={12} />
+              </button>
+
               {/* Status Indicator - z-10 to stay above filename overlay */}
               <div 
                 className="absolute bottom-1 right-1 z-10"

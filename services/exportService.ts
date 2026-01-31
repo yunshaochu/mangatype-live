@@ -1,4 +1,5 @@
-import { ImageState, Bubble } from '../types';
+
+import { ImageState, Bubble, MaskRegion } from '../types';
 import JSZip from 'jszip';
 
 // Helper to escape HTML characters to prevent breaking SVG XML
@@ -19,6 +20,59 @@ const loadImage = (src: string): Promise<HTMLImageElement> => {
         img.onload = () => resolve(img);
         img.onerror = (e) => reject(new Error("Failed to load image"));
         img.src = src;
+    });
+};
+
+/**
+ * Generates a base64 image where only the content inside maskRegions is visible.
+ * Everything else is painted white.
+ */
+export const generateMaskedImage = async (imageState: ImageState): Promise<string> => {
+    if (!imageState.maskRegions || imageState.maskRegions.length === 0) {
+        return imageState.base64;
+    }
+
+    const { width, height, maskRegions } = imageState;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(width);
+    canvas.height = Math.floor(height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error("No Context");
+
+    // 1. Fill entire canvas with white
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. Load original image
+    const bgSrc = imageState.url || `data:image/png;base64,${imageState.base64}`;
+    const imgBg = await loadImage(bgSrc);
+
+    // 3. Draw ONLY the regions specified by masks
+    // Iterate through masks, and for each mask, copy that specific rectangle 
+    // from the source image to the destination canvas.
+    for (const region of maskRegions) {
+        const rx = width * (region.x / 100);
+        const ry = height * (region.y / 100);
+        const rw = width * (region.width / 100);
+        const rh = height * (region.height / 100);
+        
+        // Calculate Top-Left from Center-based coordinates
+        const tlX = rx - rw / 2;
+        const tlY = ry - rh / 2;
+
+        ctx.drawImage(
+            imgBg, 
+            tlX, tlY, rw, rh, // Source rect
+            tlX, tlY, rw, rh  // Dest rect (same position)
+        );
+    }
+
+    // 4. Return as base64
+    return new Promise((resolve, reject) => {
+        // Use JPEG for smaller size sent to API
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        // Strip prefix if needed by the consumer, but usually it's stripped later
+        resolve(dataUrl); 
     });
 };
 

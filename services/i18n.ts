@@ -12,6 +12,7 @@ export const translations = {
     gallery: "图库",
     current: "当前",
     processAll: "全部处理",
+    stop: "停止",
     saveImage: "保存图片",
     zipAll: "打包下载",
     noImageSelected: "未选择图片",
@@ -36,7 +37,13 @@ export const translations = {
     size: "字号",
     rotation: "旋转",
     fontFamily: "字体",
-    manualAdd: "添加气泡",
+    manualAdd: "点击添加",
+    toolMode: "工具模式",
+    toolBubble: "气泡工具 (Mode 1)",
+    toolMask: "选区工具 (Mode 2)",
+    toolNone: "浏览模式",
+    translateRegions: "翻译选区",
+    translateRegionsDesc: "仅发送选框内的图像给 AI，其余部分留白。",
     importJson: "导入 JSON",
     merge: "合并图层",
     globalStyles: "全局样式",
@@ -51,6 +58,8 @@ export const translations = {
     textDetection: "本地文本检测",
     allowAiRotation: "允许 AI 旋转",
     allowAiRotationHint: "尝试让 AI 识别文字倾斜角度（实验性）。",
+    useMasksAsHints: "使用红框作为提示",
+    useMasksAsHintsHint: "即使不开启本地检测，也将手动绘制的红框坐标发送给 AI 作为强提示。",
     defaultFontSize: "默认字号",
     systemPrompt: "系统提示词",
     cancel: "取消",
@@ -78,6 +87,11 @@ export const translations = {
     copyHtml: "复制 HTML",
     baseUrlHint: "格式如 https://api.provider.com 或 https://api.provider.com/v1 均可。",
     modelFilterHint: "输入部分字符过滤列表；留空或输入完整模型名则显示全部。",
+    preRequestMessages: "请求前置消息",
+    preRequestHint: "这些消息将作为对话历史插入在请求图片之前。",
+    role: "角色",
+    msgContent: "消息内容",
+    addMessage: "添加消息",
     helpDocs: {
       title: "使用指南",
       intro: "MangaType Live 是一个网页原生的漫画嵌字工具，集成了 AI 翻译和自动化排版功能。",
@@ -91,6 +105,10 @@ export const translations = {
       step4Desc: "点击 **Save Image (保存图片)** 下载当前页，或 **ZIP All (打包下载)** 下载所有处理完的图片。**Merge (合并)** 功能可将文字烧录进图片（不可逆）。",
       advancedTitle: "进阶功能解析",
       advancedFeatures: [
+        {
+          title: "选区工具 (Mode 2)",
+          desc: "使用工具栏的“选区工具”框选图片中的特定区域。点击“翻译选区”后，系统会生成一张仅包含选框内容的图片（其余留白）发送给 AI。这对于 AI 难以识别的复杂页面非常有用。"
+        },
         {
           title: "文本检测 (comic-text-detector)",
           desc: "这是一个辅助 AI 的功能。需要在本地运行comic-text-detector服务。开启后，App 会先通过 comic-text-detector 精确提取文本坐标，将这些“空间提示”发送给 AI。这能显著解决 AI “找不到气泡”或“框选范围不准”的问题，极大提高复杂页面的识别率。"
@@ -109,6 +127,7 @@ export const translations = {
         "Ctrl+Z / Ctrl+Y: 撤销 / 重做",
         "选中气泡后 + 鼠标滚轮: 调整字体大小",
         "选中气泡后 + Alt + 鼠标滚轮: 调整气泡遮罩大小",
+        "Delete / Backspace: 删除选中气泡",
         "按住 Ctrl 拖动: 精细调整",
         "双击画布空白处: 取消选中"
       ]
@@ -125,6 +144,7 @@ export const translations = {
     gallery: "Gallery",
     current: "Current",
     processAll: "Process All",
+    stop: "Stop",
     saveImage: "Save Image",
     zipAll: "ZIP All",
     noImageSelected: "No Image Selected",
@@ -149,7 +169,13 @@ export const translations = {
     size: "Size",
     rotation: "Rotation",
     fontFamily: "Font Family",
-    manualAdd: "Add",
+    manualAdd: "Click Add",
+    toolMode: "Tool Mode",
+    toolBubble: "Bubble Tool (Mode 1)",
+    toolMask: "Mask Tool (Mode 2)",
+    toolNone: "View Mode",
+    translateRegions: "Translate Regions",
+    translateRegionsDesc: "Send only the boxed areas to AI. The rest will be white.",
     importJson: "JSON",
     merge: "Merge",
     globalStyles: "Global Styles",
@@ -164,6 +190,8 @@ export const translations = {
     textDetection: "Local Text Detection",
     allowAiRotation: "Allow AI Rotation",
     allowAiRotationHint: "Attempt to detect text rotation angle (Experimental).",
+    useMasksAsHints: "Use Red Boxes as Hints",
+    useMasksAsHintsHint: "Send manual red box coordinates to AI as strong spatial hints, even without local OCR.",
     defaultFontSize: "Default Font Size",
     systemPrompt: "System Prompt",
     cancel: "Cancel",
@@ -191,6 +219,11 @@ export const translations = {
     copyHtml: "Copy HTML",
     baseUrlHint: "Format like https://api.provider.com or https://api.provider.com/v1 both work.",
     modelFilterHint: "Partial text filters list. Empty or exact match shows all.",
+    preRequestMessages: "Pre-request Messages",
+    preRequestHint: "Messages inserted before the main image request.",
+    role: "Role",
+    msgContent: "Content",
+    addMessage: "Add Message",
     helpDocs: {
       title: "User Guide",
       intro: "MangaType Live is a web-native comic typesetting tool with integrated AI translation and automated layout features.",
@@ -204,6 +237,10 @@ export const translations = {
       step4Desc: "Click **Save Image** to download the current page, or **ZIP All** for the entire batch. The **Merge** function burns the text into the image permanently (irreversible).",
       advancedTitle: "Advanced Features",
       advancedFeatures: [
+        {
+          title: "Mask Tool (Mode 2)",
+          desc: "Use the Mask Tool from the toolbar to draw boxes around specific areas. Click 'Translate Regions' to send ONLY the boxed content to the AI (the rest of the image will be whitened out). Great for complex pages."
+        },
         {
           title: "Local Text Detection (Local OCR)",
           desc: "A helper for the AI. Requires running our Python OCR service locally. When enabled, it extracts precise text coordinates and sends them as 'spatial hints' to the LLM. This significantly fixes issues where the AI 'misses bubbles' or 'draws inaccurate boxes' on complex pages."
@@ -222,6 +259,7 @@ export const translations = {
         "Ctrl+Z / Ctrl+Y: Undo / Redo",
         "Selected + Mouse Wheel: Adjust Font Size",
         "Selected + Alt + Mouse Wheel: Adjust Mask Size",
+        "Delete / Backspace: Delete selected bubble",
         "Hold Ctrl while dragging: Fine precision",
         "Double click background: Deselect"
       ]
@@ -232,12 +270,7 @@ export const translations = {
 export type Language = 'zh' | 'en';
 export type TranslationKey = keyof typeof translations.zh;
 
-// Update type definition to handle nested objects purely for type safety if needed, 
-// but for simple 't' function usage, we might just cast or suppress if deep keys are needed.
-// For this simple implementation, we will access helpDocs manually in the component.
-
 export const t = (key: string, lang: Language): string => {
-  // Simple deep access support for 'helpDocs.title' etc.
   const keys = key.split('.');
   let value: any = translations[lang];
   for (const k of keys) {

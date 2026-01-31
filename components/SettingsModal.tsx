@@ -1,8 +1,8 @@
 
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AIConfig, AIProvider } from '../types';
-import { Settings, X, RefreshCw, CheckCircle, AlertCircle, Server, RotateCcw, Type, ScanText, Globe, RotateCw, ChevronDown, Check } from 'lucide-react';
+import { AIConfig, AIProvider, CustomMessage } from '../types';
+import { Settings, X, RefreshCw, CheckCircle, AlertCircle, Server, RotateCcw, Type, ScanText, Globe, RotateCw, ChevronDown, Check, MessageSquarePlus, Trash2, Plus, Scan } from 'lucide-react';
 import { fetchAvailableModels, DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
 import { t } from '../services/i18n';
 
@@ -101,6 +101,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
 
   const resetPrompt = () => {
       setLocalConfig(prev => ({ ...prev, systemPrompt: DEFAULT_SYSTEM_PROMPT }));
+  };
+
+  const handleAddCustomMessage = () => {
+    setLocalConfig(prev => ({
+      ...prev,
+      customMessages: [
+        ...(prev.customMessages || []),
+        { role: 'user', content: '' }
+      ]
+    }));
+  };
+
+  const handleRemoveCustomMessage = (index: number) => {
+    setLocalConfig(prev => ({
+      ...prev,
+      customMessages: (prev.customMessages || []).filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleUpdateCustomMessage = (index: number, field: keyof CustomMessage, value: string) => {
+    setLocalConfig(prev => {
+        const newMsgs = [...(prev.customMessages || [])];
+        newMsgs[index] = { ...newMsgs[index], [field]: value };
+        return { ...prev, customMessages: newMsgs };
+    });
   };
 
   // Logic to determine which models to display in the list
@@ -284,7 +309,57 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
             </p>
           </div>
 
-          {/* AI Rotation Toggle (New) */}
+          {/* Pre-request Messages (Custom Conversation History) */}
+          <div className="space-y-3 p-4 bg-gray-900/50 rounded-lg border border-gray-700">
+             <div className="flex justify-between items-center mb-2">
+                 <div className="flex items-center gap-2">
+                    <MessageSquarePlus size={16} className="text-teal-400" />
+                    <label className="text-sm text-gray-300 font-medium">{t('preRequestMessages', lang)}</label>
+                 </div>
+             </div>
+             <p className="text-[10px] text-gray-500 mb-2">
+                {t('preRequestHint', lang)}
+             </p>
+             
+             <div className="space-y-2">
+                {(localConfig.customMessages || []).map((msg, idx) => (
+                    <div key={idx} className="flex items-start gap-2 bg-gray-800 p-2 rounded border border-gray-700">
+                        <select 
+                            value={msg.role}
+                            onChange={(e) => handleUpdateCustomMessage(idx, 'role', e.target.value as any)}
+                            className="bg-gray-700 text-xs text-white p-1.5 rounded border border-gray-600 outline-none w-24 shrink-0 focus:border-teal-500"
+                        >
+                            <option value="user">User</option>
+                            <option value="system">System</option>
+                            <option value="assistant">Assistant</option>
+                        </select>
+                        <textarea
+                            rows={1}
+                            value={msg.content}
+                            onChange={(e) => handleUpdateCustomMessage(idx, 'content', e.target.value)}
+                            placeholder={t('msgContent', lang)}
+                            className="flex-1 bg-gray-700 text-xs text-white p-1.5 rounded border border-gray-600 outline-none focus:border-teal-500 resize-y min-h-[30px]"
+                            style={{ minHeight: '30px' }}
+                        />
+                        <button 
+                            onClick={() => handleRemoveCustomMessage(idx)}
+                            className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-gray-700 rounded transition-colors"
+                        >
+                            <Trash2 size={14} />
+                        </button>
+                    </div>
+                ))}
+                
+                <button 
+                    onClick={handleAddCustomMessage}
+                    className="w-full py-1.5 border border-dashed border-gray-600 rounded text-xs text-gray-400 hover:text-white hover:border-gray-500 hover:bg-gray-800 transition-colors flex items-center justify-center gap-1"
+                >
+                    <Plus size={12} /> {t('addMessage', lang)}
+                </button>
+             </div>
+          </div>
+
+          {/* AI Rotation Toggle */}
           <div className="space-y-3 p-4 bg-gray-900/50 rounded-lg border border-gray-700">
              <div className="flex justify-between items-center">
                  <div className="flex items-center gap-2">
@@ -305,6 +380,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
              </div>
              <p className="text-[10px] text-gray-500">
                 {t('allowAiRotationHint', lang)}
+             </p>
+          </div>
+
+          {/* Manual Masks as Hints (NEW) */}
+           <div className="space-y-3 p-4 bg-gray-900/50 rounded-lg border border-gray-700">
+             <div className="flex justify-between items-center">
+                 <div className="flex items-center gap-2">
+                    <Scan size={16} className="text-red-400" />
+                    <label className="text-sm text-gray-300 font-medium">{t('useMasksAsHints', lang)}</label>
+                 </div>
+                 <div className="relative inline-block w-10 h-5 align-middle select-none transition duration-200 ease-in">
+                    <input 
+                      type="checkbox" 
+                      name="toggle-masks" 
+                      id="use-masks-hints-toggle" 
+                      checked={localConfig.useMasksAsHints || false}
+                      onChange={(e) => setLocalConfig({...localConfig, useMasksAsHints: e.target.checked})}
+                      className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white border-4 appearance-none cursor-pointer transition-transform duration-200 ease-in-out checked:translate-x-5 checked:border-red-500"
+                    />
+                    <label htmlFor="use-masks-hints-toggle" className={`toggle-label block overflow-hidden h-5 rounded-full cursor-pointer transition-colors ${localConfig.useMasksAsHints ? 'bg-red-500' : 'bg-gray-600'}`}></label>
+                 </div>
+             </div>
+             <p className="text-[10px] text-gray-500">
+                {t('useMasksAsHintsHint', lang)}
              </p>
           </div>
 

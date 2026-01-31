@@ -1,7 +1,7 @@
 
 
 import { GoogleGenAI, FunctionDeclaration, Type, FunctionCallingConfigMode } from "@google/genai";
-import { AIConfig, DetectedBubble } from "../types";
+import { AIConfig, DetectedBubble, MaskRegion } from "../types";
 
 export const DEFAULT_SYSTEM_PROMPT = `You are an expert Manga Typesetter and Translator. 
 1. Look at this manga page.
@@ -149,6 +149,46 @@ const getOpenAiBaseUrl = (baseUrl: string): string => {
   return `${cleaned}/v1`;
 };
 
+/**
+ * Constructs the message history based on config.customMessages.
+ * 
+ * For Gemini:
+ * - Maps 'assistant' to 'model'.
+ * - Maps 'user' to 'user'.
+ * - 'system' messages are extracted separately and should be appended to the system prompt text,
+ *   because Gemini 'contents' array strictly allows only 'user' and 'model' turns.
+ * 
+ * For OpenAI:
+ * - Maps everything as is ('user', 'assistant', 'system').
+ */
+const getCustomMessages = (config: AIConfig, provider: 'gemini' | 'openai'): { history: any[], systemInjection: string } => {
+  const rawMsgs = config.customMessages || [];
+  let systemInjection = "";
+  let history: any[] = [];
+
+  if (provider === 'gemini') {
+    // Filter out system messages and collect them
+    rawMsgs.forEach(msg => {
+        if (msg.role === 'system') {
+            systemInjection += `\n${msg.content}`;
+        } else {
+            history.push({
+                role: msg.role === 'assistant' ? 'model' : 'user',
+                parts: [{ text: msg.content }]
+            });
+        }
+    });
+  } else {
+    // OpenAI supports system messages in the messages array
+    history = rawMsgs.map(msg => ({
+        role: msg.role,
+        content: msg.content
+    }));
+  }
+  
+  return { history, systemInjection };
+};
+
 // --- API Methods ---
 
 export const fetchAvailableModels = async (config: AIConfig): Promise<string[]> => {
@@ -171,8 +211,6 @@ export const fetchAvailableModels = async (config: AIConfig): Promise<string[]> 
       return (data.data || []).map((m: any) => m.id);
     }
   } catch (e) {
-    // FIX: Only return Gemini defaults for Gemini provider.
-    // For OpenAI, we return empty list to indicate failure/no models, rather than misleading Gemini models.
     if (config.provider === 'gemini') {
       return ['gemini-3-flash-preview', 'gemini-3-pro-preview'];
     }
@@ -189,19 +227,30 @@ export const polishDialogue = async (text: string, style: 'dramatic' | 'casual' 
 
   if (config.provider === 'gemini') {
     const ai = getGeminiClient();
+    const { history, systemInjection } = getCustomMessages(config, 'gemini');
+    
+    const finalContents = [...history];
+    const userPart = { role: 'user', parts: [{ text: (systemInjection ? `[System Note: ${systemInjection}]\n\n` : "") + prompt }] };
+    finalContents.push(userPart);
+
     const response = await ai.models.generateContent({
       model: config.model || 'gemini-3-flash-preview',
-      contents: prompt,
+      contents: finalContents as any,
     });
     return cleanDetectedText(response.text?.trim() || text);
   } else {
     const baseUrl = getOpenAiBaseUrl(config.baseUrl);
+    const { history } = getCustomMessages(config, 'openai');
+    
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
       body: JSON.stringify({
         model: config.model,
-        messages: [{ role: 'user', content: prompt }]
+        messages: [
+            ...history,
+            { role: 'user', content: prompt }
+        ]
       })
     });
     const data = await response.json();
@@ -264,9 +313,17 @@ const detectTextRegions = async (base64Image: string, apiUrl: string): Promise<s
 
 // --- Main Function ---
 
-export const detectAndTypesetComic = async (base64Image: string, config: AIConfig): Promise<DetectedBubble[]> => {
+export const detectAndTypesetComic = async (
+    base64Image: string, 
+    config: AIConfig, 
+    signal?: AbortSignal,
+    maskRegions?: MaskRegion[]
+): Promise<DetectedBubble[]> => {
   const data = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
   let systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+
+  // Check cancellation before heavy lifting
+  if (signal?.aborted) throw new Error("Aborted by user");
 
   // 1. Call External Detection API if enabled
   if (config.useTextDetectionApi && config.textDetectionApiUrl) {
@@ -277,10 +334,22 @@ export const detectAndTypesetComic = async (base64Image: string, config: AIConfi
       }
   }
 
+  // 1.5 Inject Manual Mask Hints if enabled
+  if (config.useMasksAsHints && maskRegions && maskRegions.length > 0) {
+      const hints = maskRegions.map(m => {
+          return `- [x:${m.x.toFixed(1)}%, y:${m.y.toFixed(1)}%, w:${m.width.toFixed(1)}%, h:${m.height.toFixed(1)}%] (User Marked Region)`;
+      }).join('\n');
+      
+      systemPrompt += `\n\n[HINT] The user has manually marked specific regions containing text. Please prioritize detecting bubbles in these approximate coordinates (Center X, Center Y, Width, Height):\n${hints}`;
+      console.log("Injected Manual Mask Hints into Prompt");
+  }
+
   // 2. Inject Rotation Instruction if enabled
   if (config.allowAiRotation) {
       systemPrompt += `\n- DETECT ROTATION: Examine the visual orientation of the text. If the text line is tilted, estimate the 'rotation' angle in degrees (e.g., -15 for counter-clockwise, 10 for clockwise). Default is 0.`;
   }
+
+  if (signal?.aborted) throw new Error("Aborted by user");
 
   // 3. Prepare Dynamic Tools/Schemas
   const geminiToolSchema = JSON.parse(JSON.stringify(baseGeminiToolSchema));
@@ -300,17 +369,31 @@ export const detectAndTypesetComic = async (base64Image: string, config: AIConfi
 
   if (config.provider === 'gemini') {
     const ai = getGeminiClient();
+    const { history, systemInjection } = getCustomMessages(config, 'gemini');
+
+    // If there were any 'system' messages in customMessages, we append them to the main systemPrompt text.
+    // This effectively treats them as part of the instructions.
+    if (systemInjection) {
+        systemPrompt += `\n\n[Additional Instructions]:${systemInjection}`;
+    }
     
     // Tier 1: Function Calling
     try {
+      if (signal?.aborted) throw new Error("Aborted by user");
+      // Note: @google/genai SDK cancellation support varies. 
+      // We perform pre-flight check, but logic relies mainly on App.tsx loop break for batch aborts.
       const response = await ai.models.generateContent({
         model: config.model || 'gemini-3-pro-preview',
-        contents: {
-          parts: [
-            { inlineData: { mimeType: 'image/jpeg', data: data } },
-            { text: systemPrompt + "\nCall the 'create_bubbles_for_comic' function with the results." }
-          ]
-        },
+        contents: [
+            ...history,
+            { 
+              role: 'user', 
+              parts: [
+                { inlineData: { mimeType: 'image/jpeg', data: data } },
+                { text: systemPrompt + "\nCall the 'create_bubbles_for_comic' function with the results." }
+              ]
+            }
+        ],
         config: {
           tools: [{ functionDeclarations: [geminiToolSchema] }],
           toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.ANY } }
@@ -323,20 +406,26 @@ export const detectAndTypesetComic = async (base64Image: string, config: AIConfi
         return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text) }));
       }
     } catch (e: any) {
+      if (e.message?.includes('Aborted')) throw e;
       console.warn("Tier 1 (Function Calling) failed:", e.message);
       // Explicitly proceed to Tier 2
     }
 
     // Tier 2: Official JSON Mode
     try {
+      if (signal?.aborted) throw new Error("Aborted by user");
       const fallbackResponse = await ai.models.generateContent({
         model: config.model || 'gemini-3-flash-preview',
-        contents: {
-          parts: [
-            { inlineData: { mimeType: 'image/jpeg', data: data } },
-            { text: systemPrompt + "\nCRITICAL: You must return a JSON object with a 'bubbles' key containing the list of speech bubbles." }
-          ]
-        },
+        contents: [
+            ...history,
+            { 
+              role: 'user', 
+              parts: [
+                { inlineData: { mimeType: 'image/jpeg', data: data } },
+                { text: systemPrompt + "\nCRITICAL: You must return a JSON object with a 'bubbles' key containing the list of speech bubbles." }
+              ]
+            }
+        ],
         config: {
           responseMimeType: "application/json",
         }
@@ -345,25 +434,32 @@ export const detectAndTypesetComic = async (base64Image: string, config: AIConfi
       const bubbles = validateBubblesArray(json); // Will throw if 'bubbles' missing
       return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text) }));
     } catch (e: any) {
+      if (e.message?.includes('Aborted')) throw e;
       console.warn("Tier 2 (JSON Mode) failed:", e.message);
       // Explicitly proceed to Tier 3
     }
 
     // Tier 3: Raw Text Extraction (Dumb Luck Mode)
     try {
+      if (signal?.aborted) throw new Error("Aborted by user");
       const rawResponse = await ai.models.generateContent({
         model: config.model || 'gemini-3-flash-preview',
-        contents: {
-          parts: [
-            { inlineData: { mimeType: 'image/jpeg', data: data } },
-            { text: systemPrompt + "\nRespond ONLY with a valid JSON object. Example: {\"bubbles\": [...]}. Do not include any other text." }
-          ]
-        }
+        contents: [
+            ...history,
+            { 
+              role: 'user', 
+              parts: [
+                { inlineData: { mimeType: 'image/jpeg', data: data } },
+                { text: systemPrompt + "\nRespond ONLY with a valid JSON object. Example: {\"bubbles\": [...]}. Do not include any other text." }
+              ]
+            }
+        ]
       });
       const json = extractJsonFromText(rawResponse.text || "{}");
       const bubbles = validateBubblesArray(json); // Will throw if 'bubbles' missing
       return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text) }));
     } catch (e: any) {
+      if (e.message?.includes('Aborted')) throw e;
       console.error("Tier 3 (Raw Text) failed too:", e.message);
       // This final throw ensures App.tsx receives an error status
       throw new Error("AI failed to return structured data. " + e.message);
@@ -372,14 +468,17 @@ export const detectAndTypesetComic = async (base64Image: string, config: AIConfi
   } else {
     // OpenAI Provider
     const baseUrl = getOpenAiBaseUrl(config.baseUrl);
+    const { history } = getCustomMessages(config, 'openai');
     
     try {
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
+        signal: signal,
         body: JSON.stringify({
           model: config.model,
           messages: [
+            ...history,
             {
               role: "user",
               content: [
@@ -414,6 +513,7 @@ export const detectAndTypesetComic = async (base64Image: string, config: AIConfi
         return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text) }));
       }
     } catch (e: any) {
+      if (e.name === 'AbortError') throw new Error("Aborted by user");
       throw new Error("Failed to process OpenAI vision request: " + e.message);
     }
   }
