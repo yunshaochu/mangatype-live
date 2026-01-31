@@ -144,7 +144,7 @@ const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isSelected
     >
       {/* Mask Layer */}
       <div 
-        className="absolute inset-0 rounded-[50%] transition-colors duration-200"
+        className="absolute inset-0 rounded-[20%] transition-colors duration-200"
         style={{ 
           backgroundColor: bubble.backgroundColor,
           boxShadow: bubble.backgroundColor !== 'transparent' ? `0 0 10px 5px ${bubble.backgroundColor}` : 'none'

@@ -126,7 +126,7 @@ export const compositeImage = async (imageState: ImageState): Promise<Blob | nul
                 position: absolute;
                 top: 0; left: 0; width: 100%; height: 100%;
                 background-color: ${b.backgroundColor};
-                border-radius: 50%;
+                border-radius: 20%;
                 box-shadow: ${b.backgroundColor === 'transparent' ? 'none' : `0 0 ${blurRadius}px ${spreadRadius}px ${b.backgroundColor}`};
                 z-index: 1;
             "></div>
