@@ -1,5 +1,4 @@
 
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { BubbleEditor } from './components/BubbleEditor';
 import { SettingsModal } from './components/SettingsModal';
@@ -7,7 +6,7 @@ import { ManualJsonModal } from './components/ManualJsonModal';
 import { HelpModal } from './components/HelpModal';
 import { Gallery } from './components/Gallery';
 import { Bubble, ImageState, AIConfig, MaskRegion } from './types';
-import { Upload, Download, Plus, Maximize, Loader2, Settings, FileJson, Archive, Play, Layers, Image as ImageIcon, Undo2, Redo2, FileStack, Minus, Type, MessageSquareDashed, CircleHelp, Square, Crop, X, MousePointer2, Scan, ScanFace } from 'lucide-react';
+import { Upload, Download, Plus, Maximize, Loader2, Settings, FileJson, Archive, Play, Layers, Image as ImageIcon, Undo2, Redo2, FileStack, Minus, Type, MessageSquareDashed, CircleHelp, Square, Crop, X, MousePointer2, Scan, ScanFace, FilePlus, ChevronUp, ChevronDown, Palette, Sparkles } from 'lucide-react';
 import { detectAndTypesetComic, DEFAULT_SYSTEM_PROMPT } from './services/geminiService';
 import { downloadSingleImage, downloadAllAsZip, compositeImage, generateMaskedImage, detectBubbleColor } from './services/exportService';
 import { t } from './services/i18n';
@@ -288,6 +287,7 @@ const App: React.FC = () => {
   const [isProcessingBatch, setIsProcessingBatch] = useState(false);
   const [concurrency, setConcurrency] = useState(1);
   const [isMerging, setIsMerging] = useState(false);
+  const [showGlobalStyles, setShowGlobalStyles] = useState(false); // Collapsible styles
   
   // Tool State
   const [drawTool, setDrawTool] = useState<'none' | 'bubble' | 'mask'>('none'); 
@@ -793,23 +793,15 @@ const App: React.FC = () => {
         }));
     }
 
-    // 3. Auto-detect color (Asynchronous / Fire-and-forget)
-    // We launch this as a side effect so we don't block the UI thread.
-    if (mode === 'drawing' && targetType === 'bubble' && currentId) {
-        // We use an async IIFE to avoid making the whole callback async
-        (async () => {
-             // Access latest images from closure (should be fine as we just rendered)
-             // However, to be safe, we use the functional update pattern or just read from scope 
-             // knowing that images array is the one from the render cycle where mouseUp was created.
+    // 3. Auto-detect color (Asynchronous / Fire-and-forget) with 300ms debounce
+    // Trigger on drawing, move, or resize for bubbles
+    if (targetType === 'bubble' && currentId && (mode === 'drawing' || mode === 'move' || mode === 'resize')) {
+        setTimeout(async () => {
              const imgState = images.find(i => i.id === currentId);
              if (imgState) {
                  const bubble = imgState.bubbles.find(b => b.id === id);
-                 // Double check existence (it might have been deleted by the tiny-cleanup above, 
-                 // but since we are in the closure of the render *before* the cleanup state update...
-                 // Wait, setImages is async. 
-                 // Actually, if we just drew it, it's in 'images' (the state we are currently rendering).
-                 // The 'tiny cleanup' setImages runs in the future.
-                 // So 'bubble' should exist here.
+                 
+                 // Double check existence and size
                  if (bubble && bubble.width >= 1 && bubble.height >= 1) {
                      const detectedColor = await detectBubbleColor(
                          imgState.url || `data:image/png;base64,${imgState.base64}`,
@@ -825,7 +817,7 @@ const App: React.FC = () => {
                      ));
                  }
              }
-        })();
+        }, 300);
     }
   }, [currentId, images]); 
 
@@ -969,140 +961,184 @@ const App: React.FC = () => {
     <div className="flex h-screen bg-gray-900 overflow-hidden">
       {/* Left Sidebar */}
       <aside className="w-80 bg-gray-900 border-r border-gray-800 flex flex-col z-20 shadow-2xl shrink-0">
-        <div className="p-4 border-b border-gray-800 flex justify-between items-center shrink-0">
-          <div><h1 className="text-xl font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">{t('appName', lang)}</h1></div>
+        <div className="p-3 border-b border-gray-800 flex justify-between items-center shrink-0">
+          <div><h1 className="text-lg font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">{t('appName', lang)}</h1></div>
           <div className="flex items-center gap-1">
-            <button onClick={handleUndo} disabled={history.past.length === 0} className="text-gray-500 hover:text-white disabled:opacity-30 p-1" title={t('undo', lang)}><Undo2 size={18} /></button>
-            <button onClick={handleRedo} disabled={history.future.length === 0} className="text-gray-500 hover:text-white disabled:opacity-30 p-1" title={t('redo', lang)}><Redo2 size={18} /></button>
+            <button onClick={handleUndo} disabled={history.past.length === 0} className="text-gray-500 hover:text-white disabled:opacity-30 p-1" title={t('undo', lang)}><Undo2 size={16} /></button>
+            <button onClick={handleRedo} disabled={history.future.length === 0} className="text-gray-500 hover:text-white disabled:opacity-30 p-1" title={t('redo', lang)}><Redo2 size={16} /></button>
             <div className="w-px h-4 bg-gray-700 mx-1"></div>
-            <button onClick={() => setShowHelp(true)} className="text-gray-500 hover:text-white p-1" title={t('help', lang)}><CircleHelp size={18} /></button>
-            <button onClick={() => setShowSettings(true)} className="text-gray-500 hover:text-white p-1" title={t('settings', lang)}><Settings size={18} /></button>
+            <button onClick={() => setShowHelp(true)} className="text-gray-500 hover:text-white p-1" title={t('help', lang)}><CircleHelp size={16} /></button>
+            <button onClick={() => setShowSettings(true)} className="text-gray-500 hover:text-white p-1" title={t('settings', lang)}><Settings size={16} /></button>
           </div>
         </div>
-        <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="p-4 grid grid-cols-2 gap-2 border-b border-gray-800 shrink-0">
-                <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" multiple />
-                <input type="file" ref={folderInputRef} onChange={handleFolderChange} className="hidden" {...({ webkitdirectory: "", directory: "" } as any)} />
-                <button onClick={() => fileInputRef.current?.click()} className="flex flex-col items-center justify-center p-3 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-xs text-gray-300"><Upload size={16} className="mb-1"/>{t('addFiles', lang)}</button>
-                <button onClick={() => folderInputRef.current?.click()} className="flex flex-col items-center justify-center p-3 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-xs text-gray-300"><Archive size={16} className="mb-1"/>{t('addFolder', lang)}</button>
-            </div>
-            <div className="flex-1 overflow-hidden bg-gray-900/50">
-               <Gallery 
-                  images={images} 
-                  currentId={currentId} 
-                  config={aiConfig}
-                  onSelect={(id) => { setCurrentId(id); setSelectedBubbleId(null); setSelectedMaskId(null); }} 
-                  onDelete={(id) => { setImages(prev => prev.filter(i => i.id !== id)); if (currentId === id) setCurrentId(null); }} 
-                  onClearAll={() => { setImages([]); setCurrentId(null); }} 
-                  onToggleSkip={handleToggleSkip}
-                />
-            </div>
-            {images.length > 0 && (
-                <div className="p-4 bg-gray-900 border-t border-gray-800 space-y-3 shrink-0">
-                    
-                    {/* Tool Bar */}
-                    <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                            <label className="text-xs text-gray-500 font-bold uppercase tracking-wider">{t('toolMode', lang)}</label>
-                            {/* Clear Selection Button if in Tool Mode */}
-                            {drawTool !== 'none' && (
-                                <button onClick={() => { setDrawTool('none'); setSelectedMaskId(null); setSelectedBubbleId(null); }} className="text-[10px] text-gray-400 hover:text-white px-2 py-0.5 bg-gray-800 rounded">{t('cancel', lang)}</button>
-                            )}
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                            {/* Mode 1: Bubble Tool */}
-                            <button 
-                                onClick={() => { setDrawTool(drawTool === 'bubble' ? 'none' : 'bubble'); setSelectedMaskId(null); setSelectedBubbleId(null); }} 
-                                disabled={!currentImage}
-                                className={`py-2 border rounded text-xs flex items-center justify-center gap-1 transition-all ${drawTool === 'bubble' ? 'bg-blue-600 border-blue-500 text-white shadow-lg ring-1 ring-blue-500' : 'bg-gray-800/60 hover:bg-gray-700 border-gray-600 text-gray-300'}`}
-                                title={t('toolBubble', lang)}
-                            >
-                                <MessageSquareDashed size={14} /> {t('toolBubble', lang)}
-                            </button>
-                            {/* Mode 2: Mask Tool */}
-                            <button 
-                                onClick={() => { setDrawTool(drawTool === 'mask' ? 'none' : 'mask'); setSelectedBubbleId(null); setSelectedMaskId(null); }} 
-                                disabled={!currentImage}
-                                className={`py-2 border rounded text-xs flex items-center justify-center gap-1 transition-all ${drawTool === 'mask' ? 'bg-red-600 border-red-500 text-white shadow-lg ring-1 ring-red-500' : 'bg-gray-800/60 hover:bg-gray-700 border-gray-600 text-gray-300'}`}
-                                title={t('toolMask', lang)}
-                            >
-                                <Scan size={14} /> {t('toolMask', lang)}
-                            </button>
-                        </div>
-                    </div>
-                    
-                    {/* Mode 2 Special Action: Translate Regions - Only visible in Mask Mode */}
-                    {drawTool === 'mask' && (
-                        <div className="animate-fade-in space-y-1">
-                            <div className="flex gap-1">
-                                {/* Current Image */}
-                                <button 
-                                    onClick={handleTranslateMasks}
-                                    disabled={isProcessingBatch || !currentImage || !currentImage.maskRegions || currentImage.maskRegions.length === 0}
-                                    className="flex-1 py-2 bg-gradient-to-r from-red-600 to-orange-600 hover:from-red-500 hover:to-orange-500 text-white rounded text-xs font-bold flex items-center justify-center gap-1 shadow-lg transition-transform transform active:scale-95 disabled:opacity-50 disabled:scale-100"
-                                    title={t('translateRegionsDesc', lang)}
-                                >
-                                    {isProcessingBatch ? <Loader2 size={12} className="animate-spin"/> : <ScanFace size={12}/>}
-                                    Translate
-                                </button>
-                                {/* Batch All Images */}
-                                <button 
-                                    onClick={handleBatchTranslateMasks}
-                                    disabled={isProcessingBatch}
-                                    className="px-3 py-2 bg-gray-700 hover:bg-gray-600 border border-gray-600 text-white rounded text-xs font-bold flex items-center justify-center shadow-lg transition-transform transform active:scale-95 disabled:opacity-50 disabled:scale-100"
-                                    title="Translate all images with red boxes"
-                                >
-                                    All (Masks)
-                                </button>
-                            </div>
-                            <p className="text-[10px] text-gray-500 text-center mt-1">{t('translateRegionsDesc', lang)}</p>
-                        </div>
-                    )}
+        
+        {/* Hidden Inputs */}
+        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" multiple />
+        <input type="file" ref={folderInputRef} onChange={handleFolderChange} className="hidden" {...({ webkitdirectory: "", directory: "" } as any)} />
 
-                    <div className="h-px bg-gray-800 my-1"></div>
+        <div className="flex-1 overflow-hidden bg-gray-900/50">
+            <Gallery 
+                images={images} 
+                currentId={currentId} 
+                config={aiConfig}
+                onSelect={(id) => { setCurrentId(id); setSelectedBubbleId(null); setSelectedMaskId(null); }} 
+                onDelete={(id) => { setImages(prev => prev.filter(i => i.id !== id)); if (currentId === id) setCurrentId(null); }} 
+                onClearAll={() => { setImages([]); setCurrentId(null); }} 
+                onToggleSkip={handleToggleSkip}
+                onAddFile={() => fileInputRef.current?.click()}
+                onAddFolder={() => folderInputRef.current?.click()}
+            />
+        </div>
 
-                    {/* Standard Controls */}
-                    <div className="grid grid-cols-2 gap-2">
-                        <button onClick={handleAddManualBubble} disabled={!currentImage} className="py-2 bg-green-900/40 hover:bg-green-800/60 border border-green-800 text-green-200 rounded text-xs flex items-center justify-center gap-1"><Plus size={14}/> {t('manualAdd', lang)}</button>
-                        <button onClick={() => setShowManualJson(true)} disabled={!currentImage} className="py-2 bg-teal-900/40 hover:bg-teal-800/60 border border-teal-800 text-teal-200 rounded text-xs flex items-center justify-center gap-1"><FileJson size={14}/> {t('importJson', lang)}</button>
-                    </div>
-
-                    <div className="space-y-1 mb-2 bg-gray-800/50 p-2 rounded border border-gray-700/50">
-                        <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-1 flex items-center gap-1"><Type size={10} /> {t('globalStyles', lang)}</div>
+        {images.length > 0 && (
+            <div className="bg-gray-900 border-t border-gray-800 shrink-0 flex flex-col relative z-20">
+                
+                {/* Collapsible Global Styles Panel - Renders ABOVE the bar */}
+                {showGlobalStyles && (
+                     <div className="bg-gray-800/95 border-t border-gray-700 p-3 space-y-2 animate-slide-up-fade shadow-xl absolute bottom-full w-full z-10">
+                        <div className="flex justify-between items-center mb-1">
+                            <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider flex items-center gap-1"><Type size={10} /> {t('globalStyles', lang)}</div>
+                            <button onClick={() => setShowGlobalStyles(false)} className="text-gray-500 hover:text-white"><ChevronDown size={14}/></button>
+                        </div>
                         <div className="flex gap-1 mb-1">
-                             <button onClick={() => handleGlobalFontScale(0.9)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Minus size={12}/> {t('size', lang)}</button>
-                             <button onClick={() => handleGlobalFontScale(1.1)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Plus size={12}/> {t('size', lang)}</button>
+                             <button onClick={() => handleGlobalFontScale(0.9)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Minus size={12}/> {t('size', lang)}</button>
+                             <button onClick={() => handleGlobalFontScale(1.1)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Plus size={12}/> {t('size', lang)}</button>
                         </div>
                         <div className="grid grid-cols-3 gap-1">
-                            <button onClick={() => handleGlobalFontFamily('noto')} className="text-[10px] py-1 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-gray-300">Noto</button>
-                            <button onClick={() => handleGlobalFontFamily('zhimang')} className="text-[10px] py-1 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-gray-300 font-zhimang">Zhi</button>
-                            <button onClick={() => handleGlobalFontFamily('mashan')} className="text-[10px] py-1 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded text-gray-300 font-mashan">Ma</button>
+                            <button onClick={() => handleGlobalFontFamily('noto')} className="text-[10px] py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded text-gray-300">Noto</button>
+                            <button onClick={() => handleGlobalFontFamily('zhimang')} className="text-[10px] py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded text-gray-300 font-zhimang">Zhi</button>
+                            <button onClick={() => handleGlobalFontFamily('mashan')} className="text-[10px] py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded text-gray-300 font-mashan">Ma</button>
                         </div>
                     </div>
-                    <div className="space-y-2">
-                         {isProcessingBatch ? (
+                )}
+
+                {/* Main Compact Control Bar */}
+                <div className="p-3 space-y-3">
+                    
+                    {/* Row 1: Tool Selector (Segmented Control) */}
+                    <div className="flex p-1 bg-gray-800 rounded-lg">
+                        <button 
+                            onClick={() => { setDrawTool('none'); setSelectedBubbleId(null); setSelectedMaskId(null); }}
+                            className={`flex-1 py-1 text-xs rounded-md transition-all flex items-center justify-center gap-1 ${drawTool === 'none' ? 'bg-gray-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+                        >
+                            <MousePointer2 size={12}/> View
+                        </button>
+                         <button 
+                            onClick={() => { setDrawTool('bubble'); setSelectedBubbleId(null); setSelectedMaskId(null); }}
+                            className={`flex-1 py-1 text-xs rounded-md transition-all flex items-center justify-center gap-1 ${drawTool === 'bubble' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+                        >
+                            <MessageSquareDashed size={12}/> Bubble
+                        </button>
+                         <button 
+                            onClick={() => { setDrawTool('mask'); setSelectedBubbleId(null); setSelectedMaskId(null); }}
+                            className={`flex-1 py-1 text-xs rounded-md transition-all flex items-center justify-center gap-1 ${drawTool === 'mask' ? 'bg-red-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+                        >
+                            <Scan size={12}/> Mask
+                        </button>
+                    </div>
+
+                    {/* Row 2: Contextual Action Area - Redesigned to be mode-specific */}
+                    <div className="h-10 relative"> 
+                        {isProcessingBatch ? (
                             <button 
                                 onClick={handleStopProcessing}
-                                className="w-full py-2 bg-red-900/50 hover:bg-red-800 border border-red-700 rounded text-xs text-red-200 flex items-center justify-center gap-1 animate-pulse"
+                                className="w-full h-full bg-red-900/50 hover:bg-red-800 border border-red-700 rounded text-xs text-red-200 flex items-center justify-center gap-2 animate-pulse"
                             >
                                 <Square size={12} fill="currentColor" /> {t('stop', lang)}
                             </button>
-                         ) : (
-                             <div className="grid grid-cols-2 gap-2">
-                                <button onClick={() => handleBatchProcess(true)} disabled={!currentImage} className="py-2 bg-purple-900/50 hover:bg-purple-800 border border-purple-700 rounded text-xs text-purple-200 flex items-center justify-center gap-1 disabled:opacity-50"><Play size={12}/> {t('current', lang)}</button>
-                                <button onClick={() => handleBatchProcess(false)} className="py-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white rounded text-xs font-bold flex items-center justify-center gap-1 disabled:opacity-50"><Layers size={12}/> {t('processAll', lang)}</button>
-                             </div>
-                         )}
+                        ) : (
+                            <>
+                                {/* VIEW MODE: Auto Detect Buttons */}
+                                {drawTool === 'none' && (
+                                    <div className="grid grid-cols-5 gap-1 h-full">
+                                        <button 
+                                            onClick={() => handleBatchProcess(true)} 
+                                            disabled={!currentImage}
+                                            className="col-span-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded text-xs font-bold flex items-center justify-center gap-1 disabled:opacity-50"
+                                            title={t('current', lang)}
+                                        >
+                                            <Sparkles size={14}/> {t('current', lang)}
+                                        </button>
+                                        <button 
+                                            onClick={() => handleBatchProcess(false)}
+                                            className="col-span-2 bg-gray-700 hover:bg-gray-600 text-gray-200 rounded text-xs flex items-center justify-center gap-1"
+                                            title={t('processAll', lang)}
+                                        >
+                                            <Layers size={14}/> {t('processAll', lang)}
+                                        </button>
+                                        <button 
+                                            onClick={() => setShowManualJson(true)} 
+                                            disabled={!currentImage} 
+                                            className="col-span-1 bg-teal-900/40 hover:bg-teal-800/60 border border-teal-800 text-teal-200 rounded text-xs flex items-center justify-center" 
+                                            title={t('importJson', lang)}
+                                        >
+                                            <FileJson size={16}/>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* MASK MODE: Mask Translate Buttons */}
+                                {drawTool === 'mask' && (
+                                    <div className="grid grid-cols-2 gap-1 h-full">
+                                        <button 
+                                            onClick={handleTranslateMasks}
+                                            disabled={!currentImage || !currentImage.maskRegions || currentImage.maskRegions.length === 0}
+                                            className="bg-red-600 hover:bg-red-500 text-white rounded text-xs font-bold flex items-center justify-center gap-1 disabled:opacity-50 shadow-sm"
+                                        >
+                                            <ScanFace size={14}/> {t('current', lang)}
+                                        </button>
+                                        <button 
+                                            onClick={handleBatchTranslateMasks}
+                                            disabled={images.every(i => !i.maskRegions?.length)}
+                                            className="bg-gray-700 hover:bg-gray-600 text-gray-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
+                                        >
+                                            <Scan size={14}/> {t('processAll', lang)}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* BUBBLE MODE: Manual Add */}
+                                {drawTool === 'bubble' && (
+                                    <button 
+                                        onClick={handleAddManualBubble} 
+                                        disabled={!currentImage} 
+                                        className="w-full h-full bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
+                                    >
+                                        <Plus size={16}/> {t('manualAdd', lang)}
+                                    </button>
+                                )}
+                            </>
+                        )}
                     </div>
-                    <div className="h-px bg-gray-800 my-2"></div>
-                    <div className="grid grid-cols-3 gap-2">
-                         <button onClick={handleMergeLayers} disabled={!currentImage || isMerging || currentImage.bubbles.length === 0} className="py-2 bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50">{isMerging ? <Loader2 className="animate-spin" size={14}/> : <FileStack size={14}/>} {t('merge', lang)}</button>
-                        <button onClick={() => currentImage && downloadSingleImage(currentImage)} disabled={!currentImage} className="py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-xs text-gray-300 flex items-center justify-center gap-1"><ImageIcon size={12}/> {t('saveImage', lang)}</button>
-                        <button onClick={() => downloadAllAsZip(images)} className="py-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded text-xs text-gray-300 flex items-center justify-center gap-1"><Download size={12}/> {t('zipAll', lang)}</button>
+
+                    <div className="h-px bg-gray-800"></div>
+
+                    {/* Row 3: Utility & Export Icons */}
+                    <div className="flex justify-between items-center px-1">
+                        <button 
+                            onClick={() => setShowGlobalStyles(!showGlobalStyles)} 
+                            className={`p-2 rounded hover:bg-gray-700 transition-colors ${showGlobalStyles ? 'text-blue-400 bg-gray-800' : 'text-gray-400'}`}
+                            title={t('globalStyles', lang)}
+                        >
+                            <Palette size={16}/>
+                        </button>
+                        
+                        <div className="flex gap-1">
+                             <button onClick={handleMergeLayers} disabled={!currentImage || isMerging || currentImage.bubbles.length === 0} className="p-2 text-orange-400 hover:bg-gray-800 rounded disabled:opacity-30 transition-colors" title={t('merge', lang)}>
+                                {isMerging ? <Loader2 className="animate-spin" size={16}/> : <FileStack size={16}/>}
+                            </button>
+                            <button onClick={() => currentImage && downloadSingleImage(currentImage)} disabled={!currentImage} className="p-2 text-gray-300 hover:text-white hover:bg-gray-800 rounded disabled:opacity-30 transition-colors" title={t('saveImage', lang)}>
+                                <ImageIcon size={16}/>
+                            </button>
+                            <button onClick={() => downloadAllAsZip(images)} className="p-2 text-gray-300 hover:text-white hover:bg-gray-800 rounded transition-colors" title={t('zipAll', lang)}>
+                                <Archive size={16}/>
+                            </button>
+                        </div>
                     </div>
+
                 </div>
-            )}
-        </div>
+            </div>
+        )}
       </aside>
 
       {/* Main Canvas */}
