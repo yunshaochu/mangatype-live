@@ -530,24 +530,10 @@ const App: React.FC = () => {
     setImages(prev => prev.map(img => img.id === imgId ? { ...img, bubbles: newBubbles } : img));
   };
 
-  const handleBubbleUpdate = useCallback((bubbleId: string, updates: Partial<Bubble>) => {
-    if (!currentId) return;
-    setImages(prev => prev.map(img => 
-        img.id === currentId ? {
-            ...img,
-            bubbles: img.bubbles.map(b => b.id === bubbleId ? { ...b, ...updates } : b)
-        } : img
-    ));
-  }, [currentId]);
-
-  const handleToggleSkip = useCallback((imgId: string) => {
-    setImages(prev => prev.map(img => img.id === imgId ? { ...img, skipped: !img.skipped } : img));
-  }, []);
-
   // --- AUTO DETECT COLOR LOGIC ---
 
   const triggerAutoColorDetection = useCallback((bubbleId: string) => {
-      if (aiConfigRef.current.autoDetectBackground === false || !currentId) return;
+      if (!currentId) return;
 
       if (detectionTimerRef.current) clearTimeout(detectionTimerRef.current);
 
@@ -560,6 +546,14 @@ const App: React.FC = () => {
               const bubble = imgState.bubbles.find(b => b.id === bubbleId);
               
               if (bubble && bubble.width >= 1 && bubble.height >= 1) {
+                  // PRIORITY LOGIC: Bubble setting > Global Setting
+                  const globalSetting = aiConfigRef.current.autoDetectBackground;
+                  const bubbleSetting = bubble.autoDetectBackground;
+                  // If bubble setting exists (true/false), use it. If undefined, use global.
+                  const shouldDetect = bubbleSetting !== undefined ? bubbleSetting : globalSetting;
+
+                  if (shouldDetect === false) return; // Exit if detection is disabled
+
                   const detectedColor = await detectBubbleColor(
                       imgState.url || `data:image/png;base64,${imgState.base64}`,
                       bubble.x, bubble.y, bubble.width, bubble.height
@@ -575,7 +569,36 @@ const App: React.FC = () => {
               }
           }
       }, 300);
-  }, [currentId]); // Only depends on currentId, refs handle the rest
+  }, [currentId]); 
+
+  const handleBubbleUpdate = useCallback((bubbleId: string, updates: Partial<Bubble>) => {
+    if (!currentId) return;
+    
+    // Handle side-effects of autoDetectBackground toggle
+    const finalUpdates = { ...updates };
+    
+    // When Auto-Detect is explicitly turned OFF, reset background to White (#ffffff)
+    // UNLESS the user is also manually setting the background color in the same update (e.g. setting transparent)
+    if (finalUpdates.autoDetectBackground === false && !finalUpdates.backgroundColor) {
+        finalUpdates.backgroundColor = '#ffffff';
+    }
+
+    setImages(prev => prev.map(img => 
+        img.id === currentId ? {
+            ...img,
+            bubbles: img.bubbles.map(b => b.id === bubbleId ? { ...b, ...finalUpdates } : b)
+        } : img
+    ));
+
+    // If user explicitly enabled auto-detect for this bubble, trigger detection immediately
+    if (finalUpdates.autoDetectBackground === true) {
+        triggerAutoColorDetection(bubbleId);
+    }
+  }, [currentId, triggerAutoColorDetection]);
+
+  const handleToggleSkip = useCallback((imgId: string) => {
+    setImages(prev => prev.map(img => img.id === imgId ? { ...img, skipped: !img.skipped } : img));
+  }, []);
 
   // --- GLOBAL COLOR ACTIONS ---
 

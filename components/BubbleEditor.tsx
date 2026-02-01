@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
 import { Bubble, FONTS, AIConfig } from '../types';
-import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, Sparkles, RotateCw, Maximize2, Palette, Minus, Plus } from 'lucide-react';
+import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, Sparkles, RotateCw, Maximize2, Palette, Minus, Plus, Pipette, Hash, Ban } from 'lucide-react';
 import { polishDialogue } from '../services/geminiService';
 import { t } from '../services/i18n';
 
@@ -10,6 +11,16 @@ interface BubbleEditorProps {
   onUpdate: (id: string, updates: Partial<Bubble>) => void;
   onDelete: (id: string) => void;
 }
+
+const PRESET_COLORS = [
+  '#ffffff', // White
+  '#000000', // Black
+  '#f3f4f6', // Gray-100
+  '#d1d5db', // Gray-300
+  '#fecaca', // Red-200
+  '#fde68a', // Amber-200
+  '#bfdbfe', // Blue-200
+];
 
 export const BubbleEditor: React.FC<BubbleEditorProps> = ({ bubble, config, onUpdate, onDelete }) => {
   const [isAiLoading, setIsAiLoading] = useState(false);
@@ -23,9 +34,32 @@ export const BubbleEditor: React.FC<BubbleEditorProps> = ({ bubble, config, onUp
       onUpdate(bubble.id, { text: newText });
     } catch (e) {
       console.error("AI Request Failed", e);
-      // Suppressed alert as requested
     } finally {
       setIsAiLoading(false);
+    }
+  };
+  
+  // Calculate effective auto-detect state
+  const isAutoDetectEnabled = bubble.autoDetectBackground ?? config.autoDetectBackground ?? false;
+
+  const handleManualColorChange = (color: string) => {
+    onUpdate(bubble.id, { 
+        backgroundColor: color,
+        autoDetectBackground: false // Disable auto-detect when manually picking
+    });
+  };
+
+  const handleEyedropper = async () => {
+    if (!window.EyeDropper) {
+      alert("Your browser does not support the EyeDropper API (try Chrome or Edge).");
+      return;
+    }
+    const eyeDropper = new window.EyeDropper();
+    try {
+      const result = await eyeDropper.open();
+      handleManualColorChange(result.sRGBHex);
+    } catch (e) {
+      // User cancelled selection
     }
   };
 
@@ -93,8 +127,8 @@ export const BubbleEditor: React.FC<BubbleEditorProps> = ({ bubble, config, onUp
 
         <div className="h-px bg-gray-800"></div>
 
-        {/* Mask Dimensions */}
-        <div className="space-y-3">
+        {/* Mask Dimensions & Background */}
+        <div className="space-y-4">
            <label className="text-xs text-gray-500 font-medium uppercase tracking-wide flex items-center gap-1">
              <Maximize2 size={12}/> {t('maskGeometry', lang)}
            </label>
@@ -139,19 +173,91 @@ export const BubbleEditor: React.FC<BubbleEditorProps> = ({ bubble, config, onUp
                 </div>
               </div>
            </div>
-        </div>
         
-        {/* Background Toggle */}
-        <div className="flex items-center justify-between bg-gray-800/50 p-2 rounded border border-gray-700/50">
-            <label className="text-xs text-gray-400 flex items-center gap-2">
-              <Palette size={14}/> {t('whiteBg', lang)}
-            </label>
-            <button
-              onClick={() => onUpdate(bubble.id, { backgroundColor: bubble.backgroundColor === 'transparent' ? '#ffffff' : 'transparent' })}
-              className={`w-10 h-5 rounded-full relative transition-colors ${bubble.backgroundColor !== 'transparent' ? 'bg-blue-600' : 'bg-gray-600'}`}
-            >
-              <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${bubble.backgroundColor !== 'transparent' ? 'left-6' : 'left-1'}`}></div>
-            </button>
+           {/* Background Settings Group */}
+           <div className="space-y-2 pt-1">
+              <label className="text-[10px] text-gray-500 font-bold uppercase block">Background Fill</label>
+
+              {/* Row 1: Auto Detect Toggle */}
+              <div className="flex items-center justify-between bg-gray-800/30 p-2 rounded border border-gray-700/50">
+                <label className="text-xs text-gray-400 flex items-center gap-2" title={t('autoDetectBackgroundHint', lang)}>
+                    <Pipette size={14} className={isAutoDetectEnabled ? 'text-cyan-400' : 'text-gray-500'}/> 
+                    {t('autoDetect', lang)}
+                </label>
+                <label className="relative inline-flex items-center cursor-pointer">
+                    <input 
+                        type="checkbox" 
+                        className="sr-only peer"
+                        checked={isAutoDetectEnabled}
+                        onChange={(e) => onUpdate(bubble.id, { autoDetectBackground: e.target.checked })}
+                    />
+                    <div className="w-8 h-4 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-cyan-600"></div>
+                </label>
+              </div>
+
+              {/* Row 2: Manual Color Controls (Only active if Auto Detect OFF or overridden) */}
+              <div className={`space-y-2 transition-opacity ${isAutoDetectEnabled ? 'opacity-50 pointer-events-none' : 'opacity-100'}`}>
+                
+                {/* Hex Input & EyeDropper Row */}
+                <div className="flex gap-2">
+                    {/* Hex Input */}
+                    <div className="flex-1 relative">
+                        <div className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"><Hash size={12}/></div>
+                        <input 
+                            type="text" 
+                            value={bubble.backgroundColor === 'transparent' ? '' : bubble.backgroundColor.replace('#', '')}
+                            onChange={(e) => handleManualColorChange(`#${e.target.value}`)}
+                            placeholder="FFFFFF"
+                            className="w-full bg-gray-800 border border-gray-700 rounded h-8 pl-6 text-xs text-white uppercase font-mono focus:border-blue-500 outline-none"
+                        />
+                    </div>
+                    
+                    {/* Native Picker Trigger */}
+                    <div className="relative w-8 h-8 rounded border border-gray-600 overflow-hidden shrink-0 cursor-pointer group">
+                         <input 
+                            type="color"
+                            value={bubble.backgroundColor === 'transparent' ? '#ffffff' : bubble.backgroundColor}
+                            onChange={(e) => handleManualColorChange(e.target.value)}
+                            className="absolute -top-2 -left-2 w-16 h-16 p-0 border-0 cursor-pointer"
+                         />
+                         <div className="absolute inset-0 pointer-events-none flex items-center justify-center bg-black/10 group-hover:bg-transparent">
+                             <Palette size={14} className="text-white drop-shadow-md"/>
+                         </div>
+                    </div>
+
+                    {/* EyeDropper Button */}
+                    <button
+                        onClick={handleEyedropper}
+                        className="w-8 h-8 flex items-center justify-center bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 hover:text-white text-gray-400 transition-colors"
+                        title="Pick color from screen"
+                    >
+                        <Pipette size={14} />
+                    </button>
+                </div>
+
+                {/* Preset Palette */}
+                <div className="flex flex-wrap gap-1.5">
+                    <button
+                        onClick={() => handleManualColorChange('transparent')}
+                        className={`w-6 h-6 rounded border flex items-center justify-center transition-all ${bubble.backgroundColor === 'transparent' ? 'border-red-500 ring-1 ring-red-500/50' : 'border-gray-700 hover:border-gray-500'}`}
+                        title="Transparent (No Fill)"
+                    >
+                        <Ban size={12} className="text-red-400"/>
+                    </button>
+                    {PRESET_COLORS.map(c => (
+                        <button
+                            key={c}
+                            onClick={() => handleManualColorChange(c)}
+                            className={`w-6 h-6 rounded border transition-all ${bubble.backgroundColor.toLowerCase() === c ? 'border-blue-500 ring-1 ring-blue-500/50 scale-110' : 'border-gray-600 hover:scale-105'}`}
+                            style={{ backgroundColor: c }}
+                            title={c}
+                        />
+                    ))}
+                </div>
+
+              </div>
+           </div>
+
         </div>
 
         <div className="h-px bg-gray-800"></div>

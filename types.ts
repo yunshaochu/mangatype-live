@@ -13,6 +13,7 @@ export interface Bubble {
   backgroundColor: string; // For masking original text (e.g., #ffffff)
   rotation: number; // degrees
   isSelected?: boolean;
+  autoDetectBackground?: boolean; // Override global setting
 }
 
 // Mode 2: Simple selection region without text/style properties
@@ -82,4 +83,11 @@ export interface AIConfig {
   customMessages?: CustomMessage[]; // Pre-request messages
   useMasksAsHints?: boolean; // Send manual red boxes as hints to AI
   autoDetectBackground?: boolean; // New: Toggle for auto background color detection
+}
+
+// Add EyeDropper API type definition
+declare global {
+  interface Window {
+    EyeDropper: any;
+  }
 }
