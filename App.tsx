@@ -708,6 +708,17 @@ const App: React.FC = () => {
     updateImageBubbles(currentImage.id, newBubbles);
   };
 
+  // Added global mask scaling functionality
+  const handleGlobalMaskScale = (scaleFactor: number) => {
+    if (!currentImage) return;
+    const newBubbles = currentImage.bubbles.map(b => ({
+        ...b,
+        width: Math.max(2, Math.min(100, parseFloat((b.width * scaleFactor).toFixed(1)))),
+        height: Math.max(2, Math.min(100, parseFloat((b.height * scaleFactor).toFixed(1))))
+    }));
+    updateImageBubbles(currentImage.id, newBubbles);
+  };
+
   const handleGlobalFontFamily = (fontFamily: Bubble['fontFamily']) => {
       if (!currentImage) return;
       const newBubbles = currentImage.bubbles.map(b => ({ ...b, fontFamily }));
@@ -1152,11 +1163,26 @@ const App: React.FC = () => {
                             <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider flex items-center gap-1"><Type size={10} /> {t('globalStyles', lang)}</div>
                             <button onClick={() => setShowGlobalStyles(false)} className="text-gray-500 hover:text-white"><ChevronDown size={14}/></button>
                         </div>
-                        <div className="flex gap-1 mb-1">
-                             <button onClick={() => handleGlobalFontScale(0.9)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Minus size={12}/> {t('size', lang)}</button>
-                             <button onClick={() => handleGlobalFontScale(1.1)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Plus size={12}/> {t('size', lang)}</button>
+
+                        {/* Font Scale */}
+                        <div className="flex items-center gap-2">
+                             <div className="w-6 shrink-0 flex justify-center text-gray-400" title="Font Size"><Type size={14}/></div>
+                             <div className="flex flex-1 gap-1">
+                                <button onClick={() => handleGlobalFontScale(0.9)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Minus size={12}/></button>
+                                <button onClick={() => handleGlobalFontScale(1.1)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Plus size={12}/></button>
+                             </div>
                         </div>
-                        <div className="grid grid-cols-3 gap-1">
+
+                        {/* Mask Scale */}
+                        <div className="flex items-center gap-2">
+                             <div className="w-6 shrink-0 flex justify-center text-gray-400" title="Mask Size"><Maximize size={14}/></div>
+                             <div className="flex flex-1 gap-1">
+                                <button onClick={() => handleGlobalMaskScale(0.9)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Minus size={12}/></button>
+                                <button onClick={() => handleGlobalMaskScale(1.1)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Plus size={12}/></button>
+                             </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-1 mt-1">
                             <button onClick={() => handleGlobalFontFamily('noto')} className="text-[10px] py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded text-gray-300">Noto</button>
                             <button onClick={() => handleGlobalFontFamily('zhimang')} className="text-[10px] py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded text-gray-300 font-zhimang">Zhi</button>
                             <button onClick={() => handleGlobalFontFamily('mashan')} className="text-[10px] py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded text-gray-300 font-mashan">Ma</button>
