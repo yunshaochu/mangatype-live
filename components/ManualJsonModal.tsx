@@ -1,3 +1,5 @@
+
+
 import React, { useState } from 'react';
 import { FileJson, X, CheckCircle, AlertCircle, Copy, Terminal, ClipboardCopy } from 'lucide-react';
 import { AIConfig } from '../types';
@@ -47,6 +49,46 @@ const AI_PROMPT = `你是一个专业的漫画嵌字和翻译专家。请分析�
   ]
 }`;
 
+// Duplicate utility to avoid complex export/import in client-side only mode
+const repairJson = (jsonStr: string): string => {
+  let inString = false;
+  let escaped = false;
+  let result = '';
+
+  for (let i = 0; i < jsonStr.length; i++) {
+    const char = jsonStr[i];
+
+    if (inString) {
+      if (escaped) {
+        result += char;
+        escaped = false;
+      } else {
+        if (char === '\\') {
+          escaped = true;
+          result += char;
+        } else if (char === '"') {
+          inString = false;
+          result += char;
+        } else if (char === '\n') {
+          result += '\\n'; // Fix literal newlines inside strings
+        } else if (char === '\r') {
+          // Skip literal carriage return
+        } else if (char === '\t') {
+          result += '\\t';
+        } else {
+          result += char;
+        }
+      }
+    } else {
+      if (char === '"') {
+        inString = true;
+      }
+      result += char;
+    }
+  }
+  return result;
+};
+
 export const ManualJsonModal: React.FC<ManualJsonModalProps> = ({ onApply, onClose, config }) => {
   const [jsonText, setJsonText] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -56,14 +98,25 @@ export const ManualJsonModal: React.FC<ManualJsonModalProps> = ({ onApply, onClo
     try {
       setError(null);
       let content = jsonText.trim();
-      
+
       // Basic extraction logic similar to the service
       if (content.includes('```')) {
         const match = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/```([\s\S]*?)```/);
         if (match) content = match[1];
       }
 
-      const parsed = JSON.parse(content);
+      let parsed;
+      try {
+          parsed = JSON.parse(content);
+      } catch (e) {
+          // Fallback: Try repairing
+          try {
+              parsed = JSON.parse(repairJson(content));
+          } catch (e2) {
+              throw e; // Throw original error if repair fails
+          }
+      }
+
       if (!parsed.bubbles || !Array.isArray(parsed.bubbles)) {
         throw new Error('JSON must contain a "bubbles" array.');
       }
