@@ -215,8 +215,23 @@ export const compositeImage = async (imageState: ImageState): Promise<Blob | nul
                    : b.fontFamily === 'mashan' ? "'Ma Shan Zheng', cursive" 
                    : "'Noto Sans SC', sans-serif";
        
-       const blurRadius = width * 0.015;
-       const spreadRadius = width * 0.008;
+       // Calculate dynamic shape styles
+       // Fallback logic handled in App.tsx mainly, but here we need defaults if not present
+       const shape = b.maskShape || 'ellipse';
+       const radiusVal = b.maskCornerRadius !== undefined ? b.maskCornerRadius : 15;
+       const featherVal = b.maskFeather !== undefined ? b.maskFeather : 10;
+
+       let borderRadius = '0%';
+       if (shape === 'ellipse') borderRadius = '50%';
+       else if (shape === 'rounded') borderRadius = `${radiusVal}%`;
+
+       // Calculate feathering
+       // Since we are exporting to canvas via SVG, we can use absolute pixel values for consistency with screen logic
+       // In App.tsx we used calc(cqw), here we have actual 'w' in pixels.
+       // App logic: calc(${featherVal * 0.15}cqw) ~ 0.15% of width per feather point
+       const blurPx = w * (featherVal * 0.0015) * 10; // Approx logic to match screen appearance
+       const spreadPx = w * (featherVal * 0.0008) * 10;
+
        const safeText = escapeHtml(b.text);
 
        // --- THE FIX (VERSION 3) ---
@@ -226,13 +241,6 @@ export const compositeImage = async (imageState: ImageState): Promise<Blob | nul
        const renderText = b.isVertical ? `\n${safeText}` : safeText;
 
        // 2. Geometric Correction:
-       //    - Line Height is 1.5.
-       //    - Adding '\n' creates an empty column of width 1.5em on the RIGHT.
-       //    - Flexbox centers the whole block: [Empty(1.5em)] + [Text].
-       //    - This makes the [Text] appear shifted to the LEFT.
-       //    - To center the [Text], we must shift the container RIGHT.
-       //    - Shift amount = Half of the extra width = 1.5em / 2 = 0.75em.
-       //    - We use 'transform' because margins are unreliable in foreignObject.
        const verticalFixStyle = b.isVertical ? 'transform: translateX(0.75em);' : '';
 
        // Stroke logic: White stroke by default for better visibility
@@ -256,8 +264,8 @@ export const compositeImage = async (imageState: ImageState): Promise<Blob | nul
                 position: absolute;
                 top: 0; left: 0; width: 100%; height: 100%;
                 background-color: ${b.backgroundColor};
-                border-radius: 20%;
-                box-shadow: ${b.backgroundColor === 'transparent' ? 'none' : `0 0 ${blurRadius}px ${spreadRadius}px ${b.backgroundColor}`};
+                border-radius: ${borderRadius};
+                box-shadow: ${b.backgroundColor === 'transparent' ? 'none' : `0 0 ${blurPx}px ${spreadPx}px ${b.backgroundColor}`};
                 z-index: 1;
             "></div>
             

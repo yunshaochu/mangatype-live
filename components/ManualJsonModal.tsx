@@ -54,10 +54,10 @@ const repairJson = (jsonStr: string): string => {
   let inString = false;
   let escaped = false;
   let result = '';
-
+  
   for (let i = 0; i < jsonStr.length; i++) {
     const char = jsonStr[i];
-
+    
     if (inString) {
       if (escaped) {
         result += char;
@@ -98,7 +98,7 @@ export const ManualJsonModal: React.FC<ManualJsonModalProps> = ({ onApply, onClo
     try {
       setError(null);
       let content = jsonText.trim();
-
+      
       // Basic extraction logic similar to the service
       if (content.includes('```')) {
         const match = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/```([\s\S]*?)```/);

@@ -2,22 +2,46 @@
 
 import { GoogleGenAI, FunctionDeclaration, Type, FunctionCallingConfigMode } from "@google/genai";
 import { AIConfig, DetectedBubble, MaskRegion } from "../types";
+export const DEFAULT_SYSTEM_PROMPT = `You are an expert Manga Typesetter and Translator.
+Your task is to identify speech bubbles, translate them, and provide layout coordinates.
 
-export const DEFAULT_SYSTEM_PROMPT = `You are an expert Manga Typesetter and Translator. 
-1. Look at this manga page.
-2. Identify every speech bubble.
-3. Read the text inside.
-4. Translate the text to Chinese (Simplified). Use a natural, comic-book style.
-5. Determine the bounding box (x, y, width, height in %) to effectively MASK (cover) the original text.
-6. Return the data as a list of bubbles.
+### Steps:
+1. **Detection**: Identify every speech bubble containing meaningful dialogue.
+   - **IGNORE** Sound Effects (SFX)
+2. **Translation**: Translate the text to **Chinese (Simplified)**.
+   - Style: Natural, colloquial comic-book style.
+   - **Formatting**: Use REAL newlines (Enter key) to break lines. **Replace commas (，) with newlines** to fit vertical layouts.
+3. **Masking**: Calculate the bounding box (center x, center y, width, height in %) to cover the original text.
+   - **Constraint**: The mask must be a **TIGHT FIT**. It should cover the text pixels completely but be as small as possible to avoid hiding the artwork.
 
-Important Constraints:
-- 'x' and 'y' are the center coordinates (0-100).
-- 'width' and 'height' should be large enough to hide the original text but fit inside the bubble.
-- If the bubble is vertical (standard for most manga), set isVertical to true.
-- Use REAL newline characters (Enter key) for line breaks. 
-- CRITICAL: Do NOT output literal "\\n" strings. Do NOT use the letter "n" as a separator.
-- If the translation is long, use real line breaks to ensure it fits the vertical orientation.`;
+### Output Format (JSON Only):
+Return a strictly valid JSON object. Do not output markdown code blocks or explanations.
+Example:
+{
+  "bubbles": [
+    {
+      "text": "第一行\n第二行",
+      "x": 50.5,
+      "y": 30.0,
+      "width": 10.0,
+      "height": 15.0,
+      "isVertical": true
+    }
+  ]
+}
+
+### Important Constraints:
+- **isVertical**: Set to 'true' if the bubble is tall and narrow (standard manga style).
+- **Vertical Formatting**: If 'isVertical' is true, break lines frequently (every 2-6 characters) so the text block becomes tall and narrow, fitting the bubble shape.
+- **Coordinates**: 0-100 scale relative to the image size.
+- **Safety**: Do NOT output literal "\n" strings in the JSON, use actual escaped newlines if needed for the parser, but logically separate lines.
+
+
+
+约定结束，接下来提供一定程度的参考资料。
+
+以下坐标，已经确定是漫画文本的坐标了，请参考攥写文本框的数量进行思考——你生成的数量请和以下数量完全吻合：
+`;
 
 // --- Tool Definitions Base ---
 
@@ -96,10 +120,10 @@ export const repairJson = (jsonStr: string): string => {
   let inString = false;
   let escaped = false;
   let result = '';
-
+  
   for (let i = 0; i < jsonStr.length; i++) {
     const char = jsonStr[i];
-
+    
     if (inString) {
       if (escaped) {
         result += char;
@@ -140,7 +164,7 @@ export const repairJson = (jsonStr: string): string => {
  */
 const extractJsonFromText = (text: string): any => {
   if (!text) throw new Error("Empty response received from AI");
-
+  
   // 1. Try cleaning markdown code blocks first
   const markdownRegex = /```(?:json)?\s*([\s\S]*?)\s*```/;
   const match = text.match(markdownRegex);
@@ -158,7 +182,7 @@ const extractJsonFromText = (text: string): any => {
         // 4. Fallback: Extract innermost {} block and try repairing that
         const startIdx = content.indexOf('{');
         const endIdx = content.lastIndexOf('}');
-
+        
         if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
             const possibleJson = content.substring(startIdx, endIdx + 1);
             try {
@@ -169,7 +193,7 @@ const extractJsonFromText = (text: string): any => {
         }
     }
   }
-
+  
   throw new Error("Could not parse JSON structure from AI response. Raw content: " + text.substring(0, 50) + "...");
 };
 
@@ -217,7 +241,7 @@ const getCustomMessages = (config: AIConfig, provider: 'gemini' | 'openai'): { h
         content: msg.content
     }));
   }
-
+  
   return { history, systemInjection };
 };
 
@@ -231,7 +255,7 @@ export const fetchAvailableModels = async (config: AIConfig): Promise<string[]> 
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
       if (!res.ok) return ['gemini-3-flash-preview', 'gemini-3-pro-preview'];
       const data = await res.json();
-
+      
       const prohibitedModels = ['gemini-1.5-flash', 'gemini-1.5-flash-latest', 'gemini-1.5-pro', 'gemini-pro'];
       return (data.models || [])
         .map((m: any) => m.name.replace('models/', ''))
@@ -251,7 +275,7 @@ export const fetchAvailableModels = async (config: AIConfig): Promise<string[]> 
 };
 
 export const polishDialogue = async (text: string, style: 'dramatic' | 'casual' | 'english', config: AIConfig): Promise<string> => {
-  const prompt = style === 'dramatic'
+  const prompt = style === 'dramatic' 
     ? `Rewrite the following comic book dialogue to be more dramatic: "${text}"`
     : style === 'casual'
     ? `Rewrite the following comic book dialogue to be casual: "${text}"`
@@ -260,7 +284,7 @@ export const polishDialogue = async (text: string, style: 'dramatic' | 'casual' 
   if (config.provider === 'gemini') {
     const ai = getGeminiClient();
     const { history, systemInjection } = getCustomMessages(config, 'gemini');
-
+    
     const finalContents = [...history];
     const userPart = { role: 'user', parts: [{ text: (systemInjection ? `[System Note: ${systemInjection}]\n\n` : "") + prompt }] };
     finalContents.push(userPart);
@@ -273,7 +297,7 @@ export const polishDialogue = async (text: string, style: 'dramatic' | 'casual' 
   } else {
     const baseUrl = getOpenAiBaseUrl(config.baseUrl);
     const { history } = getCustomMessages(config, 'openai');
-
+    
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
@@ -298,7 +322,7 @@ export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: strin
             image: `data:image/jpeg;base64,${base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "")}`,
             return_mask: "false"
         };
-
+        
         const response = await fetch(`${apiUrl}/detect`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -311,19 +335,19 @@ export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: strin
         if (!data.success || !data.text_blocks || !data.image_size) return [];
 
         const { width: imgW, height: imgH } = data.image_size;
-
+        
         return data.text_blocks.map((block: any) => {
             const [x1, y1, x2, y2] = block.xyxy;
             const widthPx = x2 - x1;
             const heightPx = y2 - y1;
             const cxPx = x1 + widthPx / 2;
             const cyPx = y1 + heightPx / 2;
-
+            
             const x = (cxPx / imgW) * 100;
             const y = (cyPx / imgH) * 100;
             const w = (widthPx / imgW) * 100;
             const h = (heightPx / imgH) * 100;
-
+            
             return { x, y, width: w, height: h };
         });
 
@@ -336,8 +360,8 @@ export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: strin
 // --- Main Function ---
 
 export const detectAndTypesetComic = async (
-    base64Image: string,
-    config: AIConfig,
+    base64Image: string, 
+    config: AIConfig, 
     signal?: AbortSignal,
     maskRegions?: MaskRegion[]
 ): Promise<DetectedBubble[]> => {
@@ -363,11 +387,11 @@ export const detectAndTypesetComic = async (
   const openAIToolSchema = JSON.parse(JSON.stringify(baseOpenAIToolSchema));
 
   if (config.allowAiRotation) {
-    geminiToolSchema.parameters.properties.bubbles.items.properties.rotation = {
-        type: Type.NUMBER, description: 'Rotation angle in degrees (e.g. -15, 15)'
+    geminiToolSchema.parameters.properties.bubbles.items.properties.rotation = { 
+        type: Type.NUMBER, description: 'Rotation angle in degrees (e.g. -15, 15)' 
     };
-    openAIToolSchema.parameters.properties.bubbles.items.properties.rotation = {
-        type: 'number', description: 'Rotation angle in degrees (e.g. -15, 15)'
+    openAIToolSchema.parameters.properties.bubbles.items.properties.rotation = { 
+        type: 'number', description: 'Rotation angle in degrees (e.g. -15, 15)' 
     };
   }
 
@@ -376,7 +400,7 @@ export const detectAndTypesetComic = async (
     const { history, systemInjection } = getCustomMessages(config, 'gemini');
 
     if (systemInjection) systemPrompt += `\n\n[Additional Instructions]:${systemInjection}`;
-
+    
     // Tier 1: Function Calling
     try {
       if (signal?.aborted) throw new Error("Aborted by user");
@@ -384,8 +408,8 @@ export const detectAndTypesetComic = async (
         model: config.model || 'gemini-3-pro-preview',
         contents: [
             ...history,
-            {
-              role: 'user',
+            { 
+              role: 'user', 
               parts: [
                 { inlineData: { mimeType: 'image/jpeg', data: data } },
                 { text: systemPrompt + "\nCall the 'create_bubbles_for_comic' function with the results." }
@@ -400,7 +424,7 @@ export const detectAndTypesetComic = async (
 
       if (response.functionCalls && response.functionCalls.length > 0) {
         const args = response.functionCalls[0].args as any;
-        const bubbles = validateBubblesArray(args);
+        const bubbles = validateBubblesArray(args); 
         return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text || b.translation) }));
       }
     } catch (e: any) {
@@ -415,8 +439,8 @@ export const detectAndTypesetComic = async (
         model: config.model || 'gemini-3-flash-preview',
         contents: [
             ...history,
-            {
-              role: 'user',
+            { 
+              role: 'user', 
               parts: [
                 { inlineData: { mimeType: 'image/jpeg', data: data } },
                 { text: systemPrompt + "\nCRITICAL: You must return a JSON object with a 'bubbles' key containing the list of speech bubbles." }
@@ -440,8 +464,8 @@ export const detectAndTypesetComic = async (
         model: config.model || 'gemini-3-flash-preview',
         contents: [
             ...history,
-            {
-              role: 'user',
+            { 
+              role: 'user', 
               parts: [
                 { inlineData: { mimeType: 'image/jpeg', data: data } },
                 { text: systemPrompt + "\nRespond ONLY with a valid JSON object. Example: {\"bubbles\": [...]}. Do not include any other text." }
@@ -462,7 +486,7 @@ export const detectAndTypesetComic = async (
     // OpenAI Provider
     const baseUrl = getOpenAiBaseUrl(config.baseUrl);
     const { history } = getCustomMessages(config, 'openai');
-
+    
     try {
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
@@ -490,7 +514,7 @@ export const detectAndTypesetComic = async (
       if (resData.error) throw new Error("OpenAI API Error: " + resData.error.message);
 
       const toolCalls = resData.choices?.[0]?.message?.tool_calls;
-
+      
       if (toolCalls && toolCalls.length > 0) {
         // Often 'arguments' is also a JSON string, so we might need repair here too if the model is weird
         let argsStr = toolCalls[0].function.arguments;

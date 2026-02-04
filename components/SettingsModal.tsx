@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AIConfig, AIProvider, CustomMessage } from '../types';
-import { Settings, X, RefreshCw, CheckCircle, AlertCircle, Server, RotateCcw, Type, ScanText, Globe, RotateCw, ChevronDown, Check, MessageSquarePlus, Trash2, Plus, Scan, Pipette, Zap, Bot, Layout, Cpu, FileText, Magnet } from 'lucide-react';
+import { Settings, X, RefreshCw, CheckCircle, AlertCircle, Server, RotateCcw, Type, ScanText, Globe, RotateCw, ChevronDown, Check, MessageSquarePlus, Trash2, Plus, Scan, Pipette, Zap, Bot, Layout, Cpu, FileText, Magnet, Paintbrush, Square, Circle, Box } from 'lucide-react';
 import { fetchAvailableModels, DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
 import { t } from '../services/i18n';
 
@@ -13,7 +13,7 @@ interface SettingsModalProps {
 }
 
 // Renamed 'model' to 'prompt' to better reflect new structure
-type TabKey = 'general' | 'provider' | 'prompt' | 'advanced';
+type TabKey = 'general' | 'provider' | 'prompt' | 'style' | 'advanced';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, onClose }) => {
   const [localConfig, setLocalConfig] = useState<AIConfig>(config);
@@ -102,6 +102,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
       { id: 'general', label: 'General', icon: Layout },
       { id: 'provider', label: 'Provider & Model', icon: Server },
       { id: 'prompt', label: 'Prompts', icon: FileText },
+      { id: 'style', label: 'Styles', icon: Paintbrush },
       { id: 'advanced', label: 'Advanced', icon: Zap },
   ];
 
@@ -430,6 +431,80 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                         </div>
                     )}
 
+                    {/* --- STYLE TAB --- */}
+                    {activeTab === 'style' && (
+                        <div className="space-y-8 animate-fade-in-right">
+                            <div className="space-y-1">
+                                <h3 className="text-lg font-semibold text-white">{t('maskStyle', lang)}</h3>
+                                <p className="text-sm text-gray-500">Set default visual appearance for all speech bubbles.</p>
+                            </div>
+
+                            <div className="p-6 bg-gray-800/30 rounded-xl border border-gray-800 space-y-6">
+                                {/* Shape Selection */}
+                                <div className="space-y-3">
+                                    <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{t('shape', lang)}</label>
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {[
+                                            { id: 'rectangle', label: t('shapeRect', lang), icon: Square },
+                                            { id: 'rounded', label: t('shapeRound', lang), icon: Box },
+                                            { id: 'ellipse', label: t('shapeEllipse', lang), icon: Circle },
+                                        ].map((opt) => (
+                                            <button
+                                                key={opt.id}
+                                                onClick={() => setLocalConfig({ ...localConfig, defaultMaskShape: opt.id as any })}
+                                                className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl border transition-all ${
+                                                    localConfig.defaultMaskShape === opt.id 
+                                                    ? 'bg-blue-600/20 border-blue-500 text-blue-300 ring-1 ring-blue-500/30' 
+                                                    : 'bg-gray-900 border-gray-700 text-gray-400 hover:bg-gray-800 hover:border-gray-500'
+                                                }`}
+                                            >
+                                                <opt.icon size={20} className={localConfig.defaultMaskShape === opt.id ? "fill-current opacity-20" : ""} />
+                                                <span className="text-xs font-medium">{opt.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Corner Radius Slider (Only for Rounded) */}
+                                {localConfig.defaultMaskShape === 'rounded' && (
+                                    <div className="space-y-2 animate-fade-in-down">
+                                        <div className="flex justify-between items-center">
+                                            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{t('cornerRadius', lang)}</label>
+                                            <span className="text-xs font-mono text-gray-300 bg-gray-900 px-2 py-0.5 rounded border border-gray-700">{localConfig.defaultMaskCornerRadius}%</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min="0"
+                                            max="50"
+                                            step="1"
+                                            value={localConfig.defaultMaskCornerRadius}
+                                            onChange={(e) => setLocalConfig({ ...localConfig, defaultMaskCornerRadius: parseInt(e.target.value) })}
+                                            className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                        />
+                                    </div>
+                                )}
+
+                                {/* Feathering Slider */}
+                                <div className="space-y-2">
+                                    <div className="flex justify-between items-center">
+                                        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{t('feathering', lang)}</label>
+                                        <span className="text-xs font-mono text-gray-300 bg-gray-900 px-2 py-0.5 rounded border border-gray-700">{localConfig.defaultMaskFeather}</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="0"
+                                        max="50"
+                                        step="1"
+                                        value={localConfig.defaultMaskFeather}
+                                        onChange={(e) => setLocalConfig({ ...localConfig, defaultMaskFeather: parseInt(e.target.value) })}
+                                        className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                                    />
+                                    <p className="text-[10px] text-gray-500">Controls the blur amount of the mask edges.</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
                     {/* --- ADVANCED TAB --- */}
                     {activeTab === 'advanced' && (
                         <div className="space-y-8 animate-fade-in-right">
@@ -462,7 +537,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                                 </div>
 
                                 {/* Enable Dialog Snapping */}
-                                <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-yellow-500/30 rounded-xl transition-colors group">
+                                <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-yellow-500/30 rounded-xl transition-colors group flex flex-col gap-4">
                                     <div className="flex justify-between items-start">
                                         <div className="flex gap-3">
                                             <div className="mt-1 p-1.5 bg-yellow-500/10 rounded text-yellow-400"><Magnet size={18}/></div>
@@ -481,6 +556,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                                             <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-yellow-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-600"></div>
                                         </label>
                                     </div>
+
+                                    {/* Sub-Switch: Force Size */}
+                                    {localConfig.enableDialogSnap !== false && (
+                                        <div className="pl-11 pt-2 border-t border-gray-700/50 animate-fade-in-down">
+                                             <div className="flex justify-between items-center">
+                                                <div>
+                                                    <h5 className="text-xs font-medium text-gray-300">{t('forceSnapSize', lang)}</h5>
+                                                    <p className="text-[10px] text-gray-500 mt-0.5">{t('forceSnapSizeHint', lang)}</p>
+                                                </div>
+                                                <label className="relative inline-flex items-center cursor-pointer">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        className="sr-only peer"
+                                                        checked={localConfig.forceSnapSize || false}
+                                                        onChange={(e) => setLocalConfig({...localConfig, forceSnapSize: e.target.checked})}
+                                                    />
+                                                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-yellow-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-yellow-600"></div>
+                                                </label>
+                                             </div>
+                                        </div>
+                                    )}
                                 </div>
 
                                 {/* AI Rotation */}

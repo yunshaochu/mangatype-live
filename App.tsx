@@ -31,6 +31,11 @@ const DEFAULT_CONFIG: AIConfig = {
   ],
   autoDetectBackground: false, // Default to false
   enableDialogSnap: true, // Default to true
+  forceSnapSize: false, // Default to false
+  // Defaults for masks
+  defaultMaskShape: 'ellipse',
+  defaultMaskCornerRadius: 20, // Only for rounded
+  defaultMaskFeather: 12, // Intensity
 };
 
 // Updated createBubble to accept a default font size
@@ -81,6 +86,7 @@ const HANDLE_OFFSET = '-6px';
 interface BubbleLayerProps {
   bubble: Bubble;
   isSelected: boolean;
+  config: AIConfig; // Need config for defaults
   onMouseDown: (e: React.MouseEvent) => void;
   onResizeStart: (e: React.MouseEvent, handle: HandleType) => void;
   onUpdate: (id: string, updates: Partial<Bubble>) => void;
@@ -88,10 +94,33 @@ interface BubbleLayerProps {
   onTriggerAutoColor: (id: string) => void; // New prop for wheel events
 }
 
-const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isSelected, onMouseDown, onResizeStart, onUpdate, onDelete, onTriggerAutoColor }) => {
+const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isSelected, config, onMouseDown, onResizeStart, onUpdate, onDelete, onTriggerAutoColor }) => {
   const divRef = useRef<HTMLDivElement>(null);
   const bubbleRef = useRef(bubble);
   bubbleRef.current = bubble;
+
+  // Determine Effective Mask Style (Bubble Prop > Global Config)
+  const shape = bubble.maskShape || config.defaultMaskShape || 'ellipse';
+  const radiusVal = bubble.maskCornerRadius !== undefined ? bubble.maskCornerRadius : (config.defaultMaskCornerRadius || 15);
+  const featherVal = bubble.maskFeather !== undefined ? bubble.maskFeather : (config.defaultMaskFeather || 10);
+
+  let borderRadius = '0%';
+  if (shape === 'ellipse') borderRadius = '50%';
+  else if (shape === 'rounded') borderRadius = `${radiusVal}%`;
+  
+  // Calculate dynamic blur relative to size, but scaled by feather factor
+  // We use `cqw` logic for font, but here we can calculate a CSS variable or direct style
+  // Since we are inside a % based container, we can't easily get pixel width in styles.
+  // Instead, we use a shadow that scales.
+  // Actually, spread radius is relative to pixels.
+  // Let's rely on container query units for consistent visual scaling if supported, or calc.
+  // `blur` roughly proportional to bubble size. 
+  // Let's use `calc` with percentage of width.
+  const blur = `calc(${featherVal * 0.15}cqw)`;
+  const spread = `calc(${featherVal * 0.08}cqw)`;
+  const boxShadow = bubble.backgroundColor !== 'transparent' 
+    ? `0 0 ${blur} ${spread} ${bubble.backgroundColor}` 
+    : 'none';
 
   useEffect(() => {
     const el = divRef.current;
@@ -148,19 +177,23 @@ const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isSelected
         transform: `translate(-50%, -50%) rotate(${bubble.rotation}deg)`,
       }}
     >
-      {/* Mask Layer - Changed from rounded-[50%] to rounded-[20%] for rounded rectangle */}
+      {/* Mask Layer */}
       <div 
-        className="absolute inset-0 rounded-[20%] transition-colors duration-200"
+        className="absolute inset-0 transition-colors duration-200"
         style={{ 
           backgroundColor: bubble.backgroundColor,
-          boxShadow: bubble.backgroundColor !== 'transparent' ? `0 0 10px 5px ${bubble.backgroundColor}` : 'none'
+          borderRadius: borderRadius,
+          boxShadow: boxShadow
         }}
       />
 
       {/* Selection Indicator & Handles */}
       {isSelected && (
         <>
-            <div className="absolute inset-0 border-2 border-blue-500 rounded-[20%] pointer-events-none z-20 opacity-80 shadow-sm"></div>
+            <div 
+                className="absolute inset-0 border-2 border-blue-500 pointer-events-none z-20 opacity-80 shadow-sm"
+                style={{ borderRadius: borderRadius }}
+            ></div>
             <div 
               className="absolute -top-8 left-1/2 -translate-x-1/2 cursor-pointer z-40 transform hover:scale-110 transition-transform"
               onMouseDown={(e) => { e.stopPropagation(); onDelete(); }}
@@ -203,9 +236,13 @@ const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isSelected
   );
 }, (prev, next) => {
     // Custom memo comparison to avoid useless re-renders
+    // Need to re-render if config defaults change too
     return (
         prev.isSelected === next.isSelected && 
-        prev.bubble === next.bubble
+        prev.bubble === next.bubble &&
+        prev.config.defaultMaskShape === next.config.defaultMaskShape &&
+        prev.config.defaultMaskCornerRadius === next.config.defaultMaskCornerRadius &&
+        prev.config.defaultMaskFeather === next.config.defaultMaskFeather
     );
 });
 
@@ -978,9 +1015,16 @@ const App: React.FC = () => {
 
                 // Snap if within 15% distance (fairly generous for "drift", but prevents cross-page jumps)
                 if (nearestMask && minDistance < 15) {
-                    // Force AI bubble to center of manual mask, but keep AI-determined text/size (unless we want to enforce size too)
-                    // User requested "center adsorption", so we snap X/Y.
-                    return { ...b, x: (nearestMask as MaskRegion).x, y: (nearestMask as MaskRegion).y };
+                    const updates: any = { x: (nearestMask as MaskRegion).x, y: (nearestMask as MaskRegion).y };
+                    
+                    // Force size if enabled
+                    if (aiConfig.forceSnapSize) {
+                        updates.width = (nearestMask as MaskRegion).width;
+                        updates.height = (nearestMask as MaskRegion).height;
+                    }
+                    
+                    // Force AI bubble to snap to manual mask
+                    return { ...b, ...updates };
                 }
                 return b;
            });
@@ -1006,6 +1050,10 @@ const App: React.FC = () => {
                 color: '#0f172a', 
                 backgroundColor: color, // Apply detected color or default white
                 rotation: d.rotation || 0,
+                // Apply global defaults to new bubbles
+                maskShape: aiConfig.defaultMaskShape,
+                maskCornerRadius: aiConfig.defaultMaskCornerRadius,
+                maskFeather: aiConfig.defaultMaskFeather
            };
        }));
       
@@ -1400,6 +1448,7 @@ const App: React.FC = () => {
                     <BubbleLayer
                       key={bubble.id}
                       bubble={bubble}
+                      config={aiConfig}
                       isSelected={selectedBubbleId === bubble.id}
                       onMouseDown={(e) => handleMouseDown(e, bubble.id, 'bubble')}
                       onResizeStart={(e, handle) => handleResizeStart(e, bubble.id, 'bubble', handle)}

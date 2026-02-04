@@ -15,6 +15,10 @@ export interface Bubble {
   rotation: number; // degrees
   isSelected?: boolean;
   autoDetectBackground?: boolean; // Override global setting
+  // New Mask Visual Properties
+  maskShape?: 'rectangle' | 'rounded' | 'ellipse';
+  maskCornerRadius?: number; // 0-50 (percentage)
+  maskFeather?: number; // 0-50 (intensity)
 }
 
 // Mode 2: Simple selection region without text/style properties
@@ -85,6 +89,12 @@ export interface AIConfig {
   useMasksAsHints?: boolean; // Send manual red boxes as hints to AI
   autoDetectBackground?: boolean; // New: Toggle for auto background color detection
   enableDialogSnap?: boolean; // New: Snap AI bubbles to manual masks
+  forceSnapSize?: boolean; // New: Force snapped bubbles to use mask size
+  
+  // Global Defaults for Mask Style
+  defaultMaskShape: 'rectangle' | 'rounded' | 'ellipse';
+  defaultMaskCornerRadius: number;
+  defaultMaskFeather: number;
 }
 
 // Add EyeDropper API type definition

@@ -1,7 +1,8 @@
 
+
 import React, { useState } from 'react';
 import { Bubble, FONTS, AIConfig } from '../types';
-import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, Sparkles, RotateCw, Maximize2, Palette, Minus, Plus, Pipette, Hash, Ban } from 'lucide-react';
+import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, Sparkles, RotateCw, Maximize2, Palette, Minus, Plus, Pipette, Hash, Ban, Square, Circle, Box } from 'lucide-react';
 import { polishDialogue } from '../services/geminiService';
 import { t } from '../services/i18n';
 
@@ -41,6 +42,11 @@ export const BubbleEditor: React.FC<BubbleEditorProps> = ({ bubble, config, onUp
   
   // Calculate effective auto-detect state
   const isAutoDetectEnabled = bubble.autoDetectBackground ?? config.autoDetectBackground ?? false;
+
+  // Use effective values (fallback to global defaults if undefined in bubble)
+  const currentShape = bubble.maskShape || config.defaultMaskShape || 'ellipse';
+  const currentRadius = bubble.maskCornerRadius !== undefined ? bubble.maskCornerRadius : (config.defaultMaskCornerRadius || 15);
+  const currentFeather = bubble.maskFeather !== undefined ? bubble.maskFeather : (config.defaultMaskFeather || 10);
 
   const handleManualColorChange = (color: string) => {
     onUpdate(bubble.id, { 
@@ -127,7 +133,7 @@ export const BubbleEditor: React.FC<BubbleEditorProps> = ({ bubble, config, onUp
 
         <div className="h-px bg-gray-800"></div>
 
-        {/* Mask Dimensions & Background */}
+        {/* Mask Dimensions & Style */}
         <div className="space-y-4">
            <label className="text-xs text-gray-500 font-medium uppercase tracking-wide flex items-center gap-1">
              <Maximize2 size={12}/> {t('maskGeometry', lang)}
@@ -173,10 +179,71 @@ export const BubbleEditor: React.FC<BubbleEditorProps> = ({ bubble, config, onUp
                 </div>
               </div>
            </div>
+
+           {/* --- SHAPE CONTROLS --- */}
+           <div className="space-y-3 pt-2">
+                <label className="text-[10px] text-gray-500 font-bold uppercase block">{t('shape', lang)}</label>
+                <div className="grid grid-cols-3 gap-2">
+                    {[
+                        { id: 'rectangle', icon: Square, title: t('shapeRect', lang) },
+                        { id: 'rounded', icon: Box, title: t('shapeRound', lang) },
+                        { id: 'ellipse', icon: Circle, title: t('shapeEllipse', lang) },
+                    ].map((opt) => (
+                        <button
+                            key={opt.id}
+                            onClick={() => onUpdate(bubble.id, { maskShape: opt.id as any })}
+                            title={opt.title}
+                            className={`flex items-center justify-center p-2 rounded border transition-all ${
+                                currentShape === opt.id 
+                                ? 'bg-blue-600/30 border-blue-500 text-blue-300' 
+                                : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'
+                            }`}
+                        >
+                            <opt.icon size={16} className={currentShape === opt.id ? "fill-current opacity-30" : ""}/>
+                        </button>
+                    ))}
+                </div>
+
+                {/* Radius Slider (Conditional) */}
+                {currentShape === 'rounded' && (
+                    <div className="space-y-1 animate-fade-in-down">
+                        <div className="flex justify-between text-[10px] text-gray-400 mb-1">
+                            <span>{t('cornerRadius', lang)}</span>
+                            <span>{currentRadius}%</span>
+                        </div>
+                        <input
+                            type="range"
+                            min="0"
+                            max="50"
+                            step="1"
+                            value={currentRadius}
+                            onChange={(e) => onUpdate(bubble.id, { maskCornerRadius: parseInt(e.target.value) })}
+                            className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                        />
+                    </div>
+                )}
+
+                {/* Feathering */}
+                <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-gray-400 mb-1">
+                        <span>{t('feathering', lang)}</span>
+                        <span>{currentFeather}</span>
+                    </div>
+                    <input
+                        type="range"
+                        min="0"
+                        max="50"
+                        step="1"
+                        value={currentFeather}
+                        onChange={(e) => onUpdate(bubble.id, { maskFeather: parseInt(e.target.value) })}
+                        className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                    />
+                </div>
+           </div>
         
            {/* Background Settings Group */}
-           <div className="space-y-2 pt-1">
-              <label className="text-[10px] text-gray-500 font-bold uppercase block">Background Fill</label>
+           <div className="space-y-2 pt-2 border-t border-gray-800">
+              <label className="text-[10px] text-gray-500 font-bold uppercase block mt-2">Background Color</label>
 
               {/* Row 1: Auto Detect Toggle */}
               <div className="flex items-center justify-between bg-gray-800/30 p-2 rounded border border-gray-700/50">
