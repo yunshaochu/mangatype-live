@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AIConfig, AIProvider, CustomMessage } from '../types';
-import { Settings, X, RefreshCw, CheckCircle, AlertCircle, Server, RotateCcw, Type, ScanText, Globe, RotateCw, ChevronDown, Check, MessageSquarePlus, Trash2, Plus, Scan, Pipette, Zap, Bot, Layout, Cpu, FileText, Magnet, Paintbrush, Square, Circle, Box } from 'lucide-react';
+import { Settings, X, RefreshCw, CheckCircle, AlertCircle, Server, RotateCcw, Type, ScanText, Globe, RotateCw, ChevronDown, Check, MessageSquarePlus, Trash2, Plus, Scan, Pipette, Zap, Bot, Layout, Cpu, FileText, Magnet, Paintbrush, Square, Circle, Box, Eye } from 'lucide-react';
 import { fetchAvailableModels, DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
 import { t } from '../services/i18n';
 
@@ -13,7 +13,7 @@ interface SettingsModalProps {
 }
 
 // Renamed 'model' to 'prompt' to better reflect new structure
-type TabKey = 'general' | 'provider' | 'prompt' | 'style' | 'advanced';
+type TabKey = 'general' | 'provider' | 'prompt' | 'detection' | 'style' | 'advanced';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, onClose }) => {
   const [localConfig, setLocalConfig] = useState<AIConfig>(config);
@@ -102,6 +102,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
       { id: 'general', label: 'General', icon: Layout },
       { id: 'provider', label: 'Provider & Model', icon: Server },
       { id: 'prompt', label: 'Prompts', icon: FileText },
+      { id: 'detection', label: 'Detection', icon: Scan }, // New Tab
       { id: 'style', label: 'Styles', icon: Paintbrush },
       { id: 'advanced', label: 'Advanced', icon: Zap },
   ];
@@ -137,7 +138,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                 ))}
             </nav>
             <div className="p-4 border-t border-gray-800/50">
-                <p className="text-[10px] text-gray-600 text-center">MangaType Live v2.1</p>
+                <p className="text-[10px] text-gray-600 text-center">MangaType Live v2.2</p>
             </div>
         </div>
 
@@ -287,7 +288,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                                 )}
                             </div>
 
-                            {/* 3. Model Selector (Moved from separate tab) */}
+                            {/* 3. Model Selector */}
                             <div className="space-y-2" ref={dropdownRef}>
                                 <div className="flex justify-between items-end">
                                     <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{t('modelSelection', lang)}</label>
@@ -350,7 +351,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                         </div>
                     )}
 
-                    {/* --- PROMPTS TAB (Renamed from Model) --- */}
+                    {/* --- PROMPTS TAB --- */}
                     {activeTab === 'prompt' && (
                         <div className="space-y-8 animate-fade-in-right">
                              <div className="space-y-1">
@@ -426,6 +427,142 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                                             <Plus size={14} /> {t('addMessage', lang)}
                                         </button>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* --- DETECTION TAB (NEW) --- */}
+                    {activeTab === 'detection' && (
+                        <div className="space-y-8 animate-fade-in-right">
+                            <div className="space-y-1">
+                                <h3 className="text-lg font-semibold text-white">{t('detectionTab', lang)}</h3>
+                                <p className="text-sm text-gray-500">{t('detectionTabDesc', lang)}</p>
+                            </div>
+                            
+                            <div className="grid gap-4">
+                                {/* 1. Masked Image Mode (New) */}
+                                <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-pink-500/30 rounded-xl transition-colors group">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex gap-3">
+                                            <div className="mt-1 p-1.5 bg-pink-500/10 rounded text-pink-400"><Eye size={18}/></div>
+                                            <div>
+                                                <h4 className="text-sm font-medium text-white mb-1">{t('enableMaskedImageMode', lang)}</h4>
+                                                <p className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">{t('enableMaskedImageModeHint', lang)}</p>
+                                            </div>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input 
+                                                type="checkbox" 
+                                                className="sr-only peer"
+                                                checked={localConfig.enableMaskedImageMode || false}
+                                                onChange={(e) => setLocalConfig({...localConfig, enableMaskedImageMode: e.target.checked})}
+                                            />
+                                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-pink-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-pink-600"></div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* 2. Use Masks As Hints */}
+                                <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-red-500/30 rounded-xl transition-colors group">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex gap-3">
+                                            <div className="mt-1 p-1.5 bg-red-500/10 rounded text-red-400"><Scan size={18}/></div>
+                                            <div>
+                                                <h4 className="text-sm font-medium text-white mb-1">{t('useMasksAsHints', lang)}</h4>
+                                                <p className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">{t('useMasksAsHintsHint', lang)}</p>
+                                            </div>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input 
+                                                type="checkbox" 
+                                                className="sr-only peer"
+                                                checked={localConfig.useMasksAsHints || false}
+                                                onChange={(e) => setLocalConfig({...localConfig, useMasksAsHints: e.target.checked})}
+                                            />
+                                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-red-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                {/* 3. Local Text Detection */}
+                                <div className={`p-4 rounded-xl border transition-colors ${localConfig.useTextDetectionApi ? 'bg-orange-900/10 border-orange-500/30' : 'bg-gray-800/30 border-gray-800 hover:border-orange-500/30'}`}>
+                                     <div className="flex justify-between items-start mb-3">
+                                        <div className="flex gap-3">
+                                            <div className="mt-1 p-1.5 bg-orange-500/10 rounded text-orange-400"><ScanText size={18}/></div>
+                                            <div>
+                                                <h4 className="text-sm font-medium text-white mb-1 flex items-center gap-2">{t('textDetection', lang)} <span className="text-[10px] bg-orange-500 text-white px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">Beta</span></h4>
+                                                <p className="text-xs text-gray-500">Requires local Python service.</p>
+                                            </div>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input 
+                                                type="checkbox" 
+                                                className="sr-only peer"
+                                                checked={localConfig.useTextDetectionApi}
+                                                onChange={(e) => setLocalConfig({...localConfig, useTextDetectionApi: e.target.checked})}
+                                            />
+                                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
+                                        </label>
+                                    </div>
+                                    
+                                    {localConfig.useTextDetectionApi && (
+                                        <div className="animate-fade-in-down pl-11">
+                                            <input 
+                                                type="text" 
+                                                value={localConfig.textDetectionApiUrl}
+                                                onChange={(e) => setLocalConfig({ ...localConfig, textDetectionApiUrl: e.target.value })}
+                                                placeholder="http://localhost:5000"
+                                                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-xs text-white focus:border-orange-500 outline-none placeholder-gray-600 font-mono"
+                                            />
+                                            <p className="text-[10px] text-gray-500 mt-1">
+                                                Target endpoint. The app will POST to <code>/detect</code>.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                                
+                                {/* 4. Dialog Snapping */}
+                                <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-yellow-500/30 rounded-xl transition-colors group flex flex-col gap-4">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex gap-3">
+                                            <div className="mt-1 p-1.5 bg-yellow-500/10 rounded text-yellow-400"><Magnet size={18}/></div>
+                                            <div>
+                                                <h4 className="text-sm font-medium text-white mb-1">{t('enableDialogSnap', lang)}</h4>
+                                                <p className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors leading-relaxed">{t('enableDialogSnapHint', lang)}</p>
+                                            </div>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input 
+                                                type="checkbox" 
+                                                className="sr-only peer"
+                                                checked={localConfig.enableDialogSnap !== false}
+                                                onChange={(e) => setLocalConfig({...localConfig, enableDialogSnap: e.target.checked})}
+                                            />
+                                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-yellow-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-600"></div>
+                                        </label>
+                                    </div>
+
+                                    {/* Sub-Switch: Force Size */}
+                                    {localConfig.enableDialogSnap !== false && (
+                                        <div className="pl-11 pt-2 border-t border-gray-700/50 animate-fade-in-down">
+                                             <div className="flex justify-between items-center">
+                                                <div>
+                                                    <h5 className="text-xs font-medium text-gray-300">{t('forceSnapSize', lang)}</h5>
+                                                    <p className="text-[10px] text-gray-500 mt-0.5">{t('forceSnapSizeHint', lang)}</p>
+                                                </div>
+                                                <label className="relative inline-flex items-center cursor-pointer">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        className="sr-only peer"
+                                                        checked={localConfig.forceSnapSize || false}
+                                                        onChange={(e) => setLocalConfig({...localConfig, forceSnapSize: e.target.checked})}
+                                                    />
+                                                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-yellow-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-yellow-600"></div>
+                                                </label>
+                                             </div>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -536,49 +673,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                                     </div>
                                 </div>
 
-                                {/* Enable Dialog Snapping */}
-                                <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-yellow-500/30 rounded-xl transition-colors group flex flex-col gap-4">
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex gap-3">
-                                            <div className="mt-1 p-1.5 bg-yellow-500/10 rounded text-yellow-400"><Magnet size={18}/></div>
-                                            <div>
-                                                <h4 className="text-sm font-medium text-white mb-1">{t('enableDialogSnap', lang)}</h4>
-                                                <p className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors leading-relaxed">{t('enableDialogSnapHint', lang)}</p>
-                                            </div>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer">
-                                            <input 
-                                                type="checkbox" 
-                                                className="sr-only peer"
-                                                checked={localConfig.enableDialogSnap !== false}
-                                                onChange={(e) => setLocalConfig({...localConfig, enableDialogSnap: e.target.checked})}
-                                            />
-                                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-yellow-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-yellow-600"></div>
-                                        </label>
-                                    </div>
-
-                                    {/* Sub-Switch: Force Size */}
-                                    {localConfig.enableDialogSnap !== false && (
-                                        <div className="pl-11 pt-2 border-t border-gray-700/50 animate-fade-in-down">
-                                             <div className="flex justify-between items-center">
-                                                <div>
-                                                    <h5 className="text-xs font-medium text-gray-300">{t('forceSnapSize', lang)}</h5>
-                                                    <p className="text-[10px] text-gray-500 mt-0.5">{t('forceSnapSizeHint', lang)}</p>
-                                                </div>
-                                                <label className="relative inline-flex items-center cursor-pointer">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        className="sr-only peer"
-                                                        checked={localConfig.forceSnapSize || false}
-                                                        onChange={(e) => setLocalConfig({...localConfig, forceSnapSize: e.target.checked})}
-                                                    />
-                                                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-yellow-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-yellow-600"></div>
-                                                </label>
-                                             </div>
-                                        </div>
-                                    )}
-                                </div>
-
                                 {/* AI Rotation */}
                                 <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-purple-500/30 rounded-xl transition-colors group">
                                     <div className="flex justify-between items-start">
@@ -599,65 +693,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                                             <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-purple-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
                                         </label>
                                     </div>
-                                </div>
-
-                                {/* Mask Hints */}
-                                <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-red-500/30 rounded-xl transition-colors group">
-                                    <div className="flex justify-between items-start">
-                                        <div className="flex gap-3">
-                                            <div className="mt-1 p-1.5 bg-red-500/10 rounded text-red-400"><Scan size={18}/></div>
-                                            <div>
-                                                <h4 className="text-sm font-medium text-white mb-1">{t('useMasksAsHints', lang)}</h4>
-                                                <p className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">{t('useMasksAsHintsHint', lang)}</p>
-                                            </div>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer">
-                                            <input 
-                                                type="checkbox" 
-                                                className="sr-only peer"
-                                                checked={localConfig.useMasksAsHints || false}
-                                                onChange={(e) => setLocalConfig({...localConfig, useMasksAsHints: e.target.checked})}
-                                            />
-                                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-red-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
-                                        </label>
-                                    </div>
-                                </div>
-
-                                {/* Local OCR (Experimental) */}
-                                <div className={`p-4 rounded-xl border transition-colors ${localConfig.useTextDetectionApi ? 'bg-orange-900/10 border-orange-500/30' : 'bg-gray-800/30 border-gray-800 hover:border-orange-500/30'}`}>
-                                     <div className="flex justify-between items-start mb-3">
-                                        <div className="flex gap-3">
-                                            <div className="mt-1 p-1.5 bg-orange-500/10 rounded text-orange-400"><ScanText size={18}/></div>
-                                            <div>
-                                                <h4 className="text-sm font-medium text-white mb-1 flex items-center gap-2">{t('textDetection', lang)} <span className="text-[10px] bg-orange-500 text-white px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">Beta</span></h4>
-                                                <p className="text-xs text-gray-500">Requires local Python service.</p>
-                                            </div>
-                                        </div>
-                                        <label className="relative inline-flex items-center cursor-pointer">
-                                            <input 
-                                                type="checkbox" 
-                                                className="sr-only peer"
-                                                checked={localConfig.useTextDetectionApi}
-                                                onChange={(e) => setLocalConfig({...localConfig, useTextDetectionApi: e.target.checked})}
-                                            />
-                                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-500"></div>
-                                        </label>
-                                    </div>
-                                    
-                                    {localConfig.useTextDetectionApi && (
-                                        <div className="animate-fade-in-down pl-11">
-                                            <input 
-                                                type="text" 
-                                                value={localConfig.textDetectionApiUrl}
-                                                onChange={(e) => setLocalConfig({ ...localConfig, textDetectionApiUrl: e.target.value })}
-                                                placeholder="http://localhost:5000"
-                                                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-xs text-white focus:border-orange-500 outline-none placeholder-gray-600 font-mono"
-                                            />
-                                            <p className="text-[10px] text-gray-500 mt-1">
-                                                Target endpoint. The app will POST to <code>/detect</code>.
-                                            </p>
-                                        </div>
-                                    )}
                                 </div>
                             </div>
                         </div>

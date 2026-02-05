@@ -43,7 +43,7 @@ export const translations = {
     toolMask: "选区工具 (Mode 2)",
     toolNone: "浏览模式",
     translateRegions: "翻译选区",
-    translateRegionsDesc: "仅发送选框内的图像给 AI，其余部分留白。",
+    translateRegionsDesc: "绘制红框来辅助 AI。在设置中开启“遮罩模式”可仅发送红框内容。",
     importJson: "导入 JSON",
     merge: "合并图层",
     globalStyles: "全局样式",
@@ -58,14 +58,18 @@ export const translations = {
     textDetection: "本地文本检测",
     allowAiRotation: "允许 AI 旋转",
     allowAiRotationHint: "尝试让 AI 识别文字倾斜角度（实验性）。",
+    detectionTab: "检测与辅助",
+    detectionTabDesc: "配置红框、本地检测与辅助对齐功能。",
+    enableMaskedImageMode: "遮罩发送模式",
+    enableMaskedImageModeHint: "若图片存在红框，仅将红框内的部分发送给 AI（其余部分留白）。",
     useMasksAsHints: "使用红框作为提示",
-    useMasksAsHintsHint: "即使不开启本地检测，也将手动绘制的红框坐标发送给 AI 作为强提示。",
+    useMasksAsHintsHint: "将红框的坐标作为文本提示发送给 AI，告诉它“这里有文字”。",
     autoDetectBackground: "自动检测背景色",
     autoDetectBackgroundHint: "在移动、缩放或绘制气泡时，自动吸取周围颜色作为遮罩背景（关闭则默认为白色）。",
     enableDialogSnap: "对话框吸附",
-    enableDialogSnapHint: "当检测到手动绘制的红框时，自动将 AI 生成的气泡中心吸附到红框中心，修正 AI 漂移。",
+    enableDialogSnapHint: "当检测到手动绘制的红框时，自动将 AI 生成的气泡中心吸附到红框中心。",
     forceSnapSize: "强制匹配尺寸",
-    forceSnapSizeHint: "吸附时，强制气泡遮罩完全继承红框的宽和高，忽略 AI 的尺寸判断（文字仍由 AI 决定）。",
+    forceSnapSizeHint: "吸附时，强制气泡完全继承红框的宽和高，忽略 AI 的尺寸判断。",
     defaultFontSize: "默认字号",
     systemPrompt: "系统提示词",
     cancel: "取消",
@@ -123,11 +127,11 @@ export const translations = {
       advancedFeatures: [
         {
           title: "选区工具 (Mode 2)",
-          desc: "使用工具栏的“选区工具”框选图片中的特定区域。点击“翻译选区”后，系统会生成一张仅包含选框内容的图片（其余留白）发送给 AI。这对于 AI 难以识别的复杂页面非常有用。"
+          desc: "使用工具栏的“选区工具”框选图片中的特定区域。这些红框可以用来：1. 在“遮罩发送模式”下只翻译框内内容；2. 作为 AI 的位置提示；3. 作为气泡吸附的锚点。"
         },
         {
-          title: "文本检测 (comic-text-detector)",
-          desc: "这是一个辅助 AI 的功能。需要在本地运行comic-text-detector服务。开启后，App 会先通过 comic-text-detector 精确提取文本坐标，将这些“空间提示”发送给 AI。这能显著解决 AI “找不到气泡”或“框选范围不准”的问题，极大提高复杂页面的识别率。"
+          title: "本地文本检测 (Local Detection)",
+          desc: "这是一个辅助功能，需在本地运行 Python 服务。开启后，可一键扫描图片中的文本区域并自动生成红框。"
         },
         {
           title: "手动 JSON 导入 (Manual Import)",
@@ -191,7 +195,7 @@ export const translations = {
     toolMask: "Mask Tool (Mode 2)",
     toolNone: "View Mode",
     translateRegions: "Translate Regions",
-    translateRegionsDesc: "Send only the boxed areas to AI. The rest will be white.",
+    translateRegionsDesc: "Draw red boxes to assist AI. Enable 'Mask Mode' in settings to send only boxed content.",
     importJson: "JSON",
     merge: "Merge",
     globalStyles: "Global Styles",
@@ -206,14 +210,18 @@ export const translations = {
     textDetection: "Local Text Detection",
     allowAiRotation: "Allow AI Rotation",
     allowAiRotationHint: "Attempt to detect text rotation angle (Experimental).",
-    useMasksAsHints: "Use Red Boxes as Hints",
-    useMasksAsHintsHint: "Send manual red box coordinates to AI as strong spatial hints, even without local OCR.",
+    detectionTab: "Detection & Masks",
+    detectionTabDesc: "Configure masks, local detection, and snapping.",
+    enableMaskedImageMode: "Masked Image Mode",
+    enableMaskedImageModeHint: "If red boxes exist, send ONLY the boxed content to AI (rest is whitened out).",
+    useMasksAsHints: "Use Masks as Hints",
+    useMasksAsHintsHint: "Send coordinates of red boxes as text hints to AI.",
     autoDetectBackground: "Auto Detect Background Color",
     autoDetectBackgroundHint: "Automatically sample the bubble edge color when moving or resizing (Defaults to white if off).",
     enableDialogSnap: "Dialog Snapping",
-    enableDialogSnapHint: "Automatically snap AI-generated bubble centers to the nearest manual red box center (fixes AI drift).",
+    enableDialogSnapHint: "Automatically snap AI-generated bubble centers to the nearest manual red box center.",
     forceSnapSize: "Force Match Size",
-    forceSnapSizeHint: "When snapping, force the bubble mask to use the red box's dimensions, overriding AI estimation.",
+    forceSnapSizeHint: "When snapping, force the bubble to use the red box's dimensions completely.",
     defaultFontSize: "Default Font Size",
     systemPrompt: "System Prompt",
     cancel: "Cancel",
@@ -271,11 +279,11 @@ export const translations = {
       advancedFeatures: [
         {
           title: "Mask Tool (Mode 2)",
-          desc: "Use the Mask Tool from the toolbar to draw boxes around specific areas. Click 'Translate Regions' to send ONLY the boxed content to the AI (the rest of the image will be whitened out). Great for complex pages."
+          desc: "Use the Mask Tool from the toolbar to draw boxes around specific areas. These boxes can be used for: 1. Sending only masked content (Masked Mode); 2. Providing AI hints; 3. Snapping AI bubbles."
         },
         {
-          title: "Local Text Detection (Local OCR)",
-          desc: "A helper for the AI. Requires running our Python OCR service locally. When enabled, it extracts precise text coordinates and sends them as 'spatial hints' to the LLM. This significantly fixes issues where the AI 'misses bubbles' or 'draws inaccurate boxes' on complex pages."
+          title: "Local Text Detection (Local Detection)",
+          desc: "A helper for the AI. Requires running our Python detection service locally. When enabled, it extracts precise text coordinates and sends them as 'spatial hints' to the LLM."
         },
         {
           title: "Manual JSON Import",

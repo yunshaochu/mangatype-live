@@ -1,5 +1,3 @@
-
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { BubbleEditor } from './components/BubbleEditor';
 import { SettingsModal } from './components/SettingsModal';
@@ -7,7 +5,7 @@ import { ManualJsonModal } from './components/ManualJsonModal';
 import { HelpModal } from './components/HelpModal';
 import { Gallery } from './components/Gallery';
 import { Bubble, ImageState, AIConfig, MaskRegion, DetectedBubble } from './types';
-import { Upload, Download, Plus, Maximize, Loader2, Settings, FileJson, Archive, Play, Layers, Image as ImageIcon, Undo2, Redo2, FileStack, Minus, Type, MessageSquareDashed, CircleHelp, Square, Crop, X, MousePointer2, Scan, ScanFace, FilePlus, ChevronUp, ChevronDown, Palette, Sparkles, ScanText } from 'lucide-react';
+import { Upload, Download, Plus, Maximize, Loader2, Settings, FileJson, Archive, Play, Layers, Image as ImageIcon, Undo2, Redo2, FileStack, Minus, Type, MessageSquareDashed, CircleHelp, Square, Crop, X, MousePointer2, Scan, ScanFace, FilePlus, ChevronUp, ChevronDown, Palette, Sparkles, ScanText, Zap } from 'lucide-react';
 import { detectAndTypesetComic, DEFAULT_SYSTEM_PROMPT, fetchRawDetectedRegions } from './services/geminiService';
 import { downloadSingleImage, downloadAllAsZip, compositeImage, generateMaskedImage, detectBubbleColor } from './services/exportService';
 import { t } from './services/i18n';
@@ -32,6 +30,8 @@ const DEFAULT_CONFIG: AIConfig = {
   autoDetectBackground: false, // Default to false
   enableDialogSnap: true, // Default to true
   forceSnapSize: false, // Default to false
+  enableMaskedImageMode: false, // Default false
+  useMasksAsHints: false, // Default false
   // Defaults for masks
   defaultMaskShape: 'ellipse',
   defaultMaskCornerRadius: 20, // Only for rounded
@@ -109,16 +109,9 @@ const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isSelected
   else if (shape === 'rounded') borderRadius = `${radiusVal}%`;
   
   // Calculate dynamic blur relative to size, but scaled by feather factor
-  // We use `cqw` logic for font, but here we can calculate a CSS variable or direct style
-  // Since we are inside a % based container, we can't easily get pixel width in styles.
-  // Instead, we use a shadow that scales.
-  // Actually, spread radius is relative to pixels.
-  // Let's rely on container query units for consistent visual scaling if supported, or calc.
-  // `blur` roughly proportional to bubble size. 
-  // Let's use `calc` with percentage of width.
   const blur = `calc(${featherVal * 0.15}cqw)`;
   const spread = `calc(${featherVal * 0.08}cqw)`;
-  const boxShadow = bubble.backgroundColor !== 'transparent' 
+  const boxShadow = (bubble.backgroundColor !== 'transparent' && featherVal > 0)
     ? `0 0 ${blur} ${spread} ${bubble.backgroundColor}` 
     : 'none';
 
@@ -235,8 +228,6 @@ const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isSelected
     </div>
   );
 }, (prev, next) => {
-    // Custom memo comparison to avoid useless re-renders
-    // Need to re-render if config defaults change too
     return (
         prev.isSelected === next.isSelected && 
         prev.bubble === next.bubble &&
@@ -257,30 +248,27 @@ interface RegionLayerProps {
 }
 
 const RegionLayer: React.FC<RegionLayerProps> = React.memo(({ region, isSelected, onMouseDown, onResizeStart, onDelete }) => {
-    // Red styling for Mode 2 selection boxes
     const regionHandleStyle = (cursor: string): React.CSSProperties => ({
         ...handleStyle(cursor),
-        borderColor: '#ef4444', // red-500
+        borderColor: '#ef4444', 
     });
 
     return (
         <div
             onMouseDown={onMouseDown}
-            className={`absolute cursor-move select-none z-30 group`} // z-30 higher than bubbles (z-10) to edit easily
+            className={`absolute cursor-move select-none z-30 group`} 
             style={{
                 top: `${region.y}%`,
                 left: `${region.x}%`,
                 width: `${region.width}%`,
                 height: `${region.height}%`,
-                transform: `translate(-50%, -50%)`, // No rotation for masks currently
+                transform: `translate(-50%, -50%)`, 
             }}
         >
-            {/* The Box Itself */}
             <div className={`absolute inset-0 border-2 border-dashed border-red-500 bg-red-500/10 pointer-events-none transition-opacity ${isSelected ? 'opacity-100' : 'opacity-60 hover:opacity-80'}`}></div>
 
             {isSelected && (
                 <>
-                    {/* Delete X */}
                     <div 
                         className="absolute -top-8 left-1/2 -translate-x-1/2 cursor-pointer z-40 transform hover:scale-110 transition-transform"
                         onMouseDown={(e) => { e.stopPropagation(); onDelete(); }}
@@ -289,7 +277,6 @@ const RegionLayer: React.FC<RegionLayerProps> = React.memo(({ region, isSelected
                             <X size={14} strokeWidth={3} />
                         </div>
                     </div>
-                    {/* Handles */}
                     <div style={{ ...regionHandleStyle('nw-resize'), top: HANDLE_OFFSET, left: HANDLE_OFFSET }} onMouseDown={(e) => onResizeStart(e, 'nw')} />
                     <div style={{ ...regionHandleStyle('ne-resize'), top: HANDLE_OFFSET, right: HANDLE_OFFSET }} onMouseDown={(e) => onResizeStart(e, 'ne')} />
                     <div style={{ ...regionHandleStyle('se-resize'), bottom: HANDLE_OFFSET, right: HANDLE_OFFSET }} onMouseDown={(e) => onResizeStart(e, 'se')} />
@@ -308,7 +295,6 @@ const RegionLayer: React.FC<RegionLayerProps> = React.memo(({ region, isSelected
 
 
 const App: React.FC = () => {
-  // State
   const [history, setHistory] = useState<{
     past: ImageState[][];
     present: ImageState[];
@@ -319,34 +305,28 @@ const App: React.FC = () => {
     future: []
   });
 
-  // Use a ref to access latest history inside event handlers without dependencies
   const historyRef = useRef(history);
   historyRef.current = history;
 
   const [currentId, setCurrentId] = useState<string | null>(null);
   const [selectedBubbleId, setSelectedBubbleId] = useState<string | null>(null);
-  const [selectedMaskId, setSelectedMaskId] = useState<string | null>(null); // New Selection for Masks
+  const [selectedMaskId, setSelectedMaskId] = useState<string | null>(null); 
   
-  // UI State
   const [showSettings, setShowSettings] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showManualJson, setShowManualJson] = useState(false);
   const [isProcessingBatch, setIsProcessingBatch] = useState(false);
   const [concurrency, setConcurrency] = useState(1);
   const [isMerging, setIsMerging] = useState(false);
-  const [showGlobalStyles, setShowGlobalStyles] = useState(false); // Collapsible styles
-  
-  // Tool State
+  const [showGlobalStyles, setShowGlobalStyles] = useState(false); 
   const [drawTool, setDrawTool] = useState<'none' | 'bubble' | 'mask'>('none'); 
   
-  // AI Config
   const [aiConfig, setAiConfig] = useState<AIConfig>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (!parsed.customMessages) parsed.customMessages = DEFAULT_CONFIG.customMessages;
-        // Merge defaults
         return { ...DEFAULT_CONFIG, ...parsed };
       }
     } catch (e) { console.warn("Failed to load settings", e); }
@@ -357,23 +337,18 @@ const App: React.FC = () => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(aiConfig)); } catch (e) { console.warn("Failed to save settings", e); }
   }, [aiConfig]);
 
-  // Use a ref for config too
   const aiConfigRef = useRef(aiConfig);
   aiConfigRef.current = aiConfig;
 
-  // Refs
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
-  
-  // Timer Ref for debounced color detection
   const detectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Drag Logic Ref
   const dragRef = useRef<{ 
     mode: 'move' | 'resize' | 'drawing';
-    targetType: 'bubble' | 'mask'; // Track what we are dragging
+    targetType: 'bubble' | 'mask';
     id: string;
     handle?: HandleType; 
     startX: number; 
@@ -387,27 +362,21 @@ const App: React.FC = () => {
     hasMoved: boolean;
   } | null>(null);
 
-  // Derived State
   const images = history.present;
   const currentImage = images.find(img => img.id === currentId);
   const bubbles = currentImage?.bubbles || [];
-  const maskRegions = currentImage?.maskRegions || []; // Mode 2 regions
+  const maskRegions = currentImage?.maskRegions || []; 
   const selectedBubble = selectedBubbleId ? bubbles.find(b => b.id === selectedBubbleId) : undefined;
   
   const lang = aiConfig.language; 
 
-  // --- History Logic ---
   const setImages = (
     newImagesOrUpdater: ImageState[] | ((prev: ImageState[]) => ImageState[]), 
     skipHistory: boolean = false
   ) => {
     setHistory(curr => {
       const newPresent = typeof newImagesOrUpdater === 'function' ? newImagesOrUpdater(curr.present) : newImagesOrUpdater;
-      
-      // CRITICAL FIX: Removed JSON.stringify deep comparison. 
-      // Deep comparing large ImageState arrays with Base64 data was causing severe lag.
       if (newPresent === curr.present) return curr;
-
       if (skipHistory) return { ...curr, present: newPresent };
       return {
         past: [...curr.past, curr.present].slice(-20),
@@ -443,13 +412,11 @@ const App: React.FC = () => {
     });
   }, []);
 
-  // Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
       
-      // Undo/Redo
       if (!isInput && (e.ctrlKey || e.metaKey) && e.key === 'z') {
         e.preventDefault();
         e.shiftKey ? handleRedo() : handleUndo();
@@ -458,7 +425,6 @@ const App: React.FC = () => {
         handleRedo();
       }
 
-      // Arrow Keys for Image Navigation
       if (!isInput && currentId) {
           const currentIndex = images.findIndex(img => img.id === currentId);
           if (e.key === 'ArrowLeft' && currentIndex > 0) {
@@ -474,7 +440,6 @@ const App: React.FC = () => {
           }
       }
 
-      // Delete Selection
       if (!isInput && (e.key === 'Delete' || e.key === 'Backspace')) {
         if (selectedBubbleId && currentId) {
              e.preventDefault();
@@ -491,8 +456,6 @@ const App: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo, selectedBubbleId, selectedMaskId, currentId, images]);
 
-
-  // --- Image Handling Logic ---
   const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -569,36 +532,23 @@ const App: React.FC = () => {
     setImages(prev => prev.map(img => img.id === imgId ? { ...img, bubbles: newBubbles } : img));
   };
 
-  // --- AUTO DETECT COLOR LOGIC ---
-
   const triggerAutoColorDetection = useCallback((bubbleId: string) => {
       if (!currentId) return;
-
       if (detectionTimerRef.current) clearTimeout(detectionTimerRef.current);
-
       detectionTimerRef.current = setTimeout(async () => {
-          // Use refs to get latest state without closure staleness
           const imagesSnapshot = historyRef.current.present;
           const imgState = imagesSnapshot.find(i => i.id === currentId);
-          
           if (imgState) {
               const bubble = imgState.bubbles.find(b => b.id === bubbleId);
-              
               if (bubble && bubble.width >= 1 && bubble.height >= 1) {
-                  // PRIORITY LOGIC: Bubble setting > Global Setting
                   const globalSetting = aiConfigRef.current.autoDetectBackground;
                   const bubbleSetting = bubble.autoDetectBackground;
-                  // If bubble setting exists (true/false), use it. If undefined, use global.
                   const shouldDetect = bubbleSetting !== undefined ? bubbleSetting : globalSetting;
-
-                  if (shouldDetect === false) return; // Exit if detection is disabled
-
+                  if (shouldDetect === false) return; 
                   const detectedColor = await detectBubbleColor(
                       imgState.url || `data:image/png;base64,${imgState.base64}`,
                       bubble.x, bubble.y, bubble.width, bubble.height
                   );
-                  
-                  // Apply color using functional update to ensure no race conditions
                   setImages(prev => prev.map(img => 
                       img.id === currentId ? {
                           ...img,
@@ -612,24 +562,16 @@ const App: React.FC = () => {
 
   const handleBubbleUpdate = useCallback((bubbleId: string, updates: Partial<Bubble>) => {
     if (!currentId) return;
-    
-    // Handle side-effects of autoDetectBackground toggle
     const finalUpdates = { ...updates };
-    
-    // When Auto-Detect is explicitly turned OFF, reset background to White (#ffffff)
-    // UNLESS the user is also manually setting the background color in the same update (e.g. setting transparent)
     if (finalUpdates.autoDetectBackground === false && !finalUpdates.backgroundColor) {
         finalUpdates.backgroundColor = '#ffffff';
     }
-
     setImages(prev => prev.map(img => 
         img.id === currentId ? {
             ...img,
             bubbles: img.bubbles.map(b => b.id === bubbleId ? { ...b, ...finalUpdates } : b)
         } : img
     ));
-
-    // If user explicitly enabled auto-detect for this bubble, trigger detection immediately
     if (finalUpdates.autoDetectBackground === true) {
         triggerAutoColorDetection(bubbleId);
     }
@@ -638,8 +580,6 @@ const App: React.FC = () => {
   const handleToggleSkip = useCallback((imgId: string) => {
     setImages(prev => prev.map(img => img.id === imgId ? { ...img, skipped: !img.skipped } : img));
   }, []);
-
-  // --- GLOBAL COLOR ACTIONS ---
 
   const handleGlobalColorReset = () => {
     setImages(prev => prev.map(img => ({
@@ -650,23 +590,15 @@ const App: React.FC = () => {
 
   const handleGlobalColorDetection = async () => {
     if (isProcessingBatch) return;
-
     setIsProcessingBatch(true);
     const controller = new AbortController();
     abortControllerRef.current = controller;
-
     try {
-        // Iterate over a snapshot of current images to avoid index issues if state updates
         const imagesSnapshot = history.present;
-
         for (const img of imagesSnapshot) {
             if (controller.signal.aborted) break;
             if (img.bubbles.length === 0) continue;
-
-            // Set specific image status to processing (shows spinner in gallery)
             setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing' } : p));
-
-            // Parallel process bubbles within the image
             const updatedBubbles = await Promise.all(img.bubbles.map(async (b) => {
                 const color = await detectBubbleColor(
                     img.url || `data:image/png;base64,${img.base64}`,
@@ -674,8 +606,6 @@ const App: React.FC = () => {
                 );
                 return { ...b, backgroundColor: color };
             }));
-
-            // Commit updates and reset status to done
             setImages(prev => prev.map(p => p.id === img.id ? { ...p, bubbles: updatedBubbles, status: 'done' } : p));
         }
     } catch (e) {
@@ -685,8 +615,6 @@ const App: React.FC = () => {
         abortControllerRef.current = null;
     }
   };
-
-  // --- CANVAS INTERACTION (DRAW & SELECT) ---
 
   const handleCanvasMouseDown = (e: React.MouseEvent) => {
     if (!currentId || !containerRef.current) return;
@@ -699,13 +627,9 @@ const App: React.FC = () => {
         updateImageBubbles(currentId, [...bubbles, newBubble]);
         setSelectedBubbleId(newBubble.id);
         setSelectedMaskId(null);
-
         dragRef.current = {
-            mode: 'drawing',
-            targetType: 'bubble',
-            id: newBubble.id,
-            startX: e.clientX, startY: e.clientY,
-            startBx: startXPct, startBy: startYPct, startBw: 0, startBh: 0, rotation: 0,
+            mode: 'drawing', targetType: 'bubble', id: newBubble.id,
+            startX: e.clientX, startY: e.clientY, startBx: startXPct, startBy: startYPct, startBw: 0, startBh: 0, rotation: 0,
             initialSnapshot: history.present, hasMoved: false
         };
     } else if (drawTool === 'mask') {
@@ -713,17 +637,12 @@ const App: React.FC = () => {
         setImages(prev => prev.map(img => img.id === currentId ? { ...img, maskRegions: [...(img.maskRegions || []), newMask] } : img));
         setSelectedMaskId(newMask.id);
         setSelectedBubbleId(null);
-
         dragRef.current = {
-            mode: 'drawing',
-            targetType: 'mask',
-            id: newMask.id,
-            startX: e.clientX, startY: e.clientY,
-            startBx: startXPct, startBy: startYPct, startBw: 0, startBh: 0, rotation: 0,
+            mode: 'drawing', targetType: 'mask', id: newMask.id,
+            startX: e.clientX, startY: e.clientY, startBx: startXPct, startBy: startYPct, startBw: 0, startBh: 0, rotation: 0,
             initialSnapshot: history.present, hasMoved: false
         };
     } else {
-        // Normal Mode: Deselect All
         if (selectedBubbleId) setSelectedBubbleId(null);
         if (selectedMaskId) setSelectedMaskId(null);
     }
@@ -746,7 +665,6 @@ const App: React.FC = () => {
     updateImageBubbles(currentImage.id, newBubbles);
   };
 
-  // Added global mask scaling functionality
   const handleGlobalMaskScale = (scaleFactor: number) => {
     if (!currentImage) return;
     const newBubbles = currentImage.bubbles.map(b => ({
@@ -781,15 +699,11 @@ const App: React.FC = () => {
     } catch (e) { console.error("Merge failed", e); alert("Failed to merge layers."); } finally { setIsMerging(false); }
   };
 
-  // --- MOUSE HANDLERS (Move & Resize & Draw) ---
-
   const handleMouseDown = (e: React.MouseEvent, id: string, type: 'bubble' | 'mask') => {
     e.stopPropagation();
     e.preventDefault(); 
-    
     if (type === 'bubble') {
-        setSelectedBubbleId(id);
-        setSelectedMaskId(null);
+        setSelectedBubbleId(id); setSelectedMaskId(null);
         const bubble = bubbles.find(b => b.id === id);
         if (!bubble) return;
         dragRef.current = { 
@@ -798,8 +712,7 @@ const App: React.FC = () => {
           initialSnapshot: history.present, hasMoved: false
         };
     } else {
-        setSelectedMaskId(id);
-        setSelectedBubbleId(null);
+        setSelectedMaskId(id); setSelectedBubbleId(null);
         const mask = maskRegions.find(m => m.id === id);
         if (!mask) return;
         dragRef.current = { 
@@ -811,9 +724,7 @@ const App: React.FC = () => {
   };
 
   const handleResizeStart = (e: React.MouseEvent, id: string, type: 'bubble' | 'mask', handle: HandleType) => {
-    e.stopPropagation();
-    e.preventDefault();
-    
+    e.stopPropagation(); e.preventDefault();
     if (type === 'bubble') {
         const bubble = bubbles.find(b => b.id === id);
         if(!bubble) return;
@@ -837,15 +748,12 @@ const App: React.FC = () => {
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (!dragRef.current || !containerRef.current || !currentId) return;
-    
     const { mode, handle, startX, startY, startBx, startBy, startBw, startBh, targetType, id } = dragRef.current;
     const rect = containerRef.current.getBoundingClientRect();
     const dxPx = e.clientX - startX;
     const dyPx = e.clientY - startY;
-
     if (Math.abs(dxPx) > 1 || Math.abs(dyPx) > 1) dragRef.current.hasMoved = true;
 
-    // --- DRAWING MODE ---
     if (mode === 'drawing') {
         const currentXPct = clamp((e.clientX - rect.left) / rect.width * 100, 0, 100);
         const currentYPct = clamp((e.clientY - rect.top) / rect.height * 100, 0, 100);
@@ -855,11 +763,9 @@ const App: React.FC = () => {
         const h = Math.abs(currentYPct - startBy);
         const centerX = left + w / 2;
         const centerY = top + h / 2;
-
         setImages(prev => {
             const img = prev.find(i => i.id === currentId);
             if(!img) return prev;
-            
             if (targetType === 'bubble') {
                 const newBubbles = img.bubbles.map(b => b.id === id ? { ...b, x: centerX, y: centerY, width: Math.max(1, w), height: Math.max(1, h) } : b);
                 return prev.map(p => p.id === currentId ? { ...p, bubbles: newBubbles } : p);
@@ -871,13 +777,11 @@ const App: React.FC = () => {
         return;
     }
 
-    // --- MOVE LOGIC ---
     if (mode === 'move') {
         const dxPct = (dxPx / rect.width) * 100;
         const dyPct = (dyPx / rect.height) * 100;
         let newX = clamp(startBx + dxPct, startBw/2, 100 - startBw/2);
         let newY = clamp(startBy + dyPct, startBh/2, 100 - startBh/2);
-
         setImages(prev => {
             const img = prev.find(i => i.id === currentId);
             if(!img) return prev;
@@ -889,8 +793,6 @@ const App: React.FC = () => {
                 return prev.map(p => p.id === currentId ? { ...p, maskRegions: newMasks } : p);
             }
         }, true);
-
-    // --- RESIZE LOGIC ---
     } else if (mode === 'resize' && handle) {
         const startLeft = startBx - startBw / 2;
         const startTop = startBy - startBh / 2;
@@ -898,18 +800,15 @@ const App: React.FC = () => {
         const startBottom = startBy + startBh / 2;
         const deltaXPct = (dxPx / rect.width) * 100;
         const deltaYPct = (dyPx / rect.height) * 100;
-
         let newLeft = startLeft, newRight = startRight, newTop = startTop, newBottom = startBottom;
         if (handle.includes('e')) newRight = clamp(startRight + deltaXPct, newLeft + 2, 100);
         if (handle.includes('w')) newLeft = clamp(startLeft + deltaXPct, 0, newRight - 2);
         if (handle.includes('s')) newBottom = clamp(startBottom + deltaYPct, newTop + 2, 100);
         if (handle.includes('n')) newTop = clamp(startTop + deltaYPct, 0, newBottom - 2);
-        
         const newW = newRight - newLeft;
         const newH = newBottom - newTop;
         const newX = newLeft + newW / 2;
         const newY = newTop + newH / 2;
-
         setImages(prev => {
             const img = prev.find(i => i.id === currentId);
             if(!img) return prev;
@@ -927,16 +826,9 @@ const App: React.FC = () => {
   const handleMouseUp = useCallback(() => { 
     const dragData = dragRef.current;
     if (!dragData) return;
-
-    // IMMEDIATE RESET to avoid sticky drag behavior
     dragRef.current = null; 
-    
     const { id, mode, targetType, initialSnapshot, hasMoved } = dragData;
-
-    // 1. Cleanup tiny drawings (Synchronous)
     if (mode === 'drawing') {
-        // Use imagesRef to get current state synchronously inside callback to avoid closure staleness if possible, 
-        // but setImages updater function handles this correctly.
         setImages(prev => {
             const img = prev.find(i => i.id === currentId);
             if (!img) return prev;
@@ -954,8 +846,6 @@ const App: React.FC = () => {
             return prev;
         });
     }
-
-    // 2. History update (Synchronous)
     if (hasMoved || mode === 'drawing') {
         setHistory(curr => ({
             past: [...curr.past, initialSnapshot].slice(-20),
@@ -963,8 +853,6 @@ const App: React.FC = () => {
             future: []
         }));
     }
-
-    // 3. Auto-detect color using refined trigger (Debounced & Safe)
     if (targetType === 'bubble' && currentId && (mode === 'drawing' || mode === 'move' || mode === 'resize')) {
         triggerAutoColorDetection(id);
     }
@@ -979,32 +867,21 @@ const App: React.FC = () => {
     };
   }, [handleMouseMove, handleMouseUp]);
 
-  // --- Processing Logic ---
-
-  const runDetectionForImage = async (img: ImageState, signal?: AbortSignal, useMaskedImage: boolean = false) => {
+  const runDetectionForImage = async (img: ImageState, signal?: AbortSignal) => {
      setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing', errorMessage: undefined } : p));
      try {
-       // Decide source image: Raw Base64 OR Masked Base64
        let sourceBase64 = img.base64;
-       if (useMaskedImage && img.maskRegions && img.maskRegions.length > 0) {
+       const useMaskedImage = aiConfig.enableMaskedImageMode && img.maskRegions && img.maskRegions.length > 0;
+       if (useMaskedImage) {
            sourceBase64 = await generateMaskedImage(img);
        }
-
-       // Pass current mask regions as potential hints, even if useMaskedImage is false.
-       // The service layer will decide whether to use them based on config.useMasksAsHints.
        const detected = await detectAndTypesetComic(sourceBase64, aiConfig, signal, img.maskRegions);
-
-       // --- SNAP TO MASK LOGIC ---
        let finalDetected = detected;
        if (aiConfig.enableDialogSnap) {
-           // Use manual masks as anchors to correct AI positioning drift
            finalDetected = detected.map(b => {
                 if (!img.maskRegions || img.maskRegions.length === 0) return b;
-                
                 let nearestMask: MaskRegion | null = null;
                 let minDistance = Infinity;
-                
-                // Find nearest mask center
                 img.maskRegions.forEach(mask => {
                     const dist = Math.sqrt(Math.pow(b.x - mask.x, 2) + Math.pow(b.y - mask.y, 2));
                     if (dist < minDistance) {
@@ -1012,27 +889,18 @@ const App: React.FC = () => {
                         nearestMask = mask;
                     }
                 });
-
-                // Snap if within 15% distance (fairly generous for "drift", but prevents cross-page jumps)
                 if (nearestMask && minDistance < 15) {
                     const updates: any = { x: (nearestMask as MaskRegion).x, y: (nearestMask as MaskRegion).y };
-                    
-                    // Force size if enabled
                     if (aiConfig.forceSnapSize) {
                         updates.width = (nearestMask as MaskRegion).width;
                         updates.height = (nearestMask as MaskRegion).height;
                     }
-                    
-                    // Force AI bubble to snap to manual mask
                     return { ...b, ...updates };
                 }
                 return b;
            });
        }
-       
-       // Process detected bubbles to calculate colors
        const processedBubbles = await Promise.all(finalDetected.map(async (d) => {
-           // Respect the autoDetectBackground config for initial detection too
            let color = '#ffffff';
            if (aiConfig.autoDetectBackground !== false) {
                color = await detectBubbleColor(
@@ -1040,7 +908,6 @@ const App: React.FC = () => {
                    d.x, d.y, d.width, d.height
                );
            }
-
            return {
                 id: crypto.randomUUID(),
                 x: d.x, y: d.y, width: d.width, height: d.height,
@@ -1048,9 +915,8 @@ const App: React.FC = () => {
                 fontFamily: (d.text.includes('JSON') ? 'zhimang' : 'noto') as 'noto' | 'zhimang' | 'mashan',
                 fontSize: aiConfig.defaultFontSize,
                 color: '#0f172a', 
-                backgroundColor: color, // Apply detected color or default white
+                backgroundColor: color, 
                 rotation: d.rotation || 0,
-                // Apply global defaults to new bubbles
                 maskShape: aiConfig.defaultMaskShape,
                 maskCornerRadius: aiConfig.defaultMaskCornerRadius,
                 maskFeather: aiConfig.defaultMaskFeather
@@ -1059,11 +925,7 @@ const App: React.FC = () => {
       
       setImages(prev => prev.map(p => p.id === img.id ? { 
           ...p, 
-          // Append new bubbles if using mask mode, otherwise replace? 
-          // Usually replace is safer for "Process All", but for Mask Mode we might want to APPEND.
-          // Let's Append if useMaskedImage is true (additive workflow), Replace if not (fresh start).
           bubbles: useMaskedImage ? [...p.bubbles, ...processedBubbles] : processedBubbles,
-          // Removed clearing of maskRegions to allow persistence as per user request
           status: 'done' 
       } : p));
      } catch (e: any) {
@@ -1084,6 +946,7 @@ const App: React.FC = () => {
     }
   };
 
+  // Smart Batch Logic: Tries to resume unprocessed items; if none, processes all (re-run)
   const handleBatchProcess = async (onlyCurrent: boolean) => {
     if (isProcessingBatch) return;
     const controller = new AbortController();
@@ -1095,62 +958,35 @@ const App: React.FC = () => {
         if (onlyCurrent && currentImage) {
           await runDetectionForImage(currentImage, signal);
         } else {
-          const queue = images.filter(img => !img.skipped && (img.status === 'idle' || img.status === 'error'));
-          for (let i = 0; i < queue.length; i += concurrency) {
+          // 1. Try to find 'idle' or 'error' images (Resume mode)
+          let queue = images.filter(img => !img.skipped && (img.status === 'idle' || img.status === 'error'));
+          
+          // 2. If no pending items, fallback to all non-skipped (Reprocess mode)
+          if (queue.length === 0) {
+             queue = images.filter(img => !img.skipped);
+          }
+
+          if (queue.length === 0) {
+              alert("No images to process.");
+              return;
+          }
+
+          // Use concurrency strictly (ensure it's a number)
+          const batchSize = Math.max(1, concurrency);
+
+          for (let i = 0; i < queue.length; i += batchSize) {
             if (signal.aborted) break;
-            const chunk = queue.slice(i, i + concurrency);
+            const chunk = queue.slice(i, i + batchSize);
             await Promise.all(chunk.map(img => runDetectionForImage(img, signal)));
           }
         }
-    } catch (e) { /* catch */ } finally {
+    } catch (e) { console.error(e); } finally {
         setIsProcessingBatch(false);
         abortControllerRef.current = null;
     }
   };
 
-  // Dedicated function for Mode 2 button (Current Image)
-  const handleTranslateMasks = async () => {
-      if (!currentImage || !currentImage.maskRegions || currentImage.maskRegions.length === 0) return;
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      setIsProcessingBatch(true);
-      try {
-          await runDetectionForImage(currentImage, controller.signal, true);
-          setDrawTool('none'); // Exit tool mode after success
-          setSelectedMaskId(null); // Ensure selection is cleared
-      } finally {
-          setIsProcessingBatch(false);
-          abortControllerRef.current = null;
-      }
-  };
-
-  // Dedicated function for Mode 2 button (Batch - All Images with Masks)
-  const handleBatchTranslateMasks = async () => {
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
-      setIsProcessingBatch(true);
-      try {
-          // Filter images that have masks and are not skipped
-          const queue = images.filter(img => !img.skipped && img.maskRegions && img.maskRegions.length > 0);
-          
-          if (queue.length === 0) {
-              alert("No images with masks found to process.");
-              return;
-          }
-
-          for (let i = 0; i < queue.length; i += concurrency) {
-            if (controller.signal.aborted) break;
-            const chunk = queue.slice(i, i + concurrency);
-            // Pass true for useMaskedImage
-            await Promise.all(chunk.map(img => runDetectionForImage(img, controller.signal, true)));
-          }
-      } finally {
-          setIsProcessingBatch(false);
-          abortControllerRef.current = null;
-      }
-  };
-
-  const handleLocalOcrScan = async (batch: boolean) => {
+  const handleLocalDetectionScan = async (batch: boolean) => {
     if (!aiConfig.useTextDetectionApi || !aiConfig.textDetectionApiUrl) {
         alert("Please enable 'Local Text Detection' in Settings first.");
         return;
@@ -1167,10 +1003,12 @@ const App: React.FC = () => {
 
         if (targets.length === 0) return;
 
-        // Process sequentially or with concurrency
-        for (let i = 0; i < targets.length; i += concurrency) {
+        // Use concurrency for Local Scan too
+        const batchSize = Math.max(1, concurrency);
+
+        for (let i = 0; i < targets.length; i += batchSize) {
              if (controller.signal.aborted) break;
-             const chunk = targets.slice(i, i + concurrency);
+             const chunk = targets.slice(i, i + batchSize);
              
              await Promise.all(chunk.map(async (img) => {
                  setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing' } : p));
@@ -1213,7 +1051,6 @@ const App: React.FC = () => {
           </div>
         </div>
         
-        {/* Hidden Inputs */}
         <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" multiple />
         <input type="file" ref={folderInputRef} onChange={handleFolderChange} className="hidden" {...({ webkitdirectory: "", directory: "" } as any)} />
 
@@ -1233,16 +1070,12 @@ const App: React.FC = () => {
 
         {images.length > 0 && (
             <div className="bg-gray-900 border-t border-gray-800 shrink-0 flex flex-col relative z-20">
-                
-                {/* Collapsible Global Styles Panel - Renders ABOVE the bar */}
                 {showGlobalStyles && (
                      <div className="bg-gray-800/95 border-t border-gray-700 p-3 space-y-2 animate-slide-up-fade shadow-xl absolute bottom-full w-full z-10">
                         <div className="flex justify-between items-center mb-1">
                             <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider flex items-center gap-1"><Type size={10} /> {t('globalStyles', lang)}</div>
                             <button onClick={() => setShowGlobalStyles(false)} className="text-gray-500 hover:text-white"><ChevronDown size={14}/></button>
                         </div>
-                        
-                        {/* Font Scale */}
                         <div className="flex items-center gap-2">
                              <div className="w-6 shrink-0 flex justify-center text-gray-400" title="Font Size"><Type size={14}/></div>
                              <div className="flex flex-1 gap-1">
@@ -1250,8 +1083,6 @@ const App: React.FC = () => {
                                 <button onClick={() => handleGlobalFontScale(1.1)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Plus size={12}/></button>
                              </div>
                         </div>
-
-                        {/* Mask Scale */}
                         <div className="flex items-center gap-2">
                              <div className="w-6 shrink-0 flex justify-center text-gray-400" title="Mask Size"><Maximize size={14}/></div>
                              <div className="flex flex-1 gap-1">
@@ -1259,7 +1090,6 @@ const App: React.FC = () => {
                                 <button onClick={() => handleGlobalMaskScale(1.1)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Plus size={12}/></button>
                              </div>
                         </div>
-
                         <div className="grid grid-cols-3 gap-1 mt-1">
                             <button onClick={() => handleGlobalFontFamily('noto')} className="text-[10px] py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded text-gray-300">Noto</button>
                             <button onClick={() => handleGlobalFontFamily('zhimang')} className="text-[10px] py-1.5 bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded text-gray-300 font-zhimang">Zhi</button>
@@ -1268,10 +1098,7 @@ const App: React.FC = () => {
                     </div>
                 )}
 
-                {/* Main Compact Control Bar */}
                 <div className="p-3 space-y-3">
-                    
-                    {/* Row 1: Tool Selector (Segmented Control) */}
                     <div className="flex p-1 bg-gray-800 rounded-lg">
                         <button 
                             onClick={() => { setDrawTool('none'); setSelectedBubbleId(null); setSelectedMaskId(null); }}
@@ -1293,7 +1120,6 @@ const App: React.FC = () => {
                         </button>
                     </div>
 
-                    {/* Row 2: Contextual Action Area - Redesigned to be mode-specific */}
                     <div className="h-10 relative"> 
                         {isProcessingBatch ? (
                             <button 
@@ -1304,13 +1130,12 @@ const App: React.FC = () => {
                             </button>
                         ) : (
                             <>
-                                {/* VIEW MODE: Auto Detect Buttons */}
                                 {drawTool === 'none' && (
                                     <div className="grid grid-cols-5 gap-1 h-full">
                                         <button 
                                             onClick={() => handleBatchProcess(true)} 
                                             disabled={!currentImage}
-                                            className="col-span-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded text-xs font-bold flex items-center justify-center gap-1 disabled:opacity-50"
+                                            className="col-span-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded text-xs font-bold flex items-center justify-center gap-1 disabled:opacity-50 shadow-sm"
                                             title={t('current', lang)}
                                         >
                                             <Sparkles size={14}/> {t('current', lang)}
@@ -1333,44 +1158,40 @@ const App: React.FC = () => {
                                     </div>
                                 )}
 
-                                {/* MASK MODE: Mask Translate Buttons */}
                                 {drawTool === 'mask' && (
                                     <div className="grid grid-cols-4 gap-1 h-full">
-                                        {/* Local OCR Group */}
                                         <button 
-                                            onClick={() => handleLocalOcrScan(false)}
-                                            className="bg-orange-700 hover:bg-orange-600 text-white rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                                            title="Scan Current (Local OCR)"
+                                            onClick={() => handleBatchProcess(true)} 
+                                            disabled={!currentImage}
+                                            className="bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold flex items-center justify-center gap-1 disabled:opacity-50 shadow-sm"
+                                            title={t('current', lang)}
                                         >
-                                            <ScanText size={14}/> Current
+                                            <Sparkles size={14}/> Trans.
                                         </button>
                                         <button 
-                                            onClick={() => handleLocalOcrScan(true)}
-                                            className="bg-orange-900 hover:bg-orange-800 text-orange-100 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                                            title="Scan All (Local OCR)"
-                                        >
-                                            <ScanText size={14}/> All
-                                        </button>
-
-                                        {/* AI Translate Group */}
-                                        <button 
-                                            onClick={handleTranslateMasks}
-                                            className="bg-red-600 hover:bg-red-500 text-white rounded text-xs font-bold flex items-center justify-center gap-1 disabled:opacity-50 shadow-sm"
-                                            title="Translate Masked Areas"
-                                        >
-                                            <ScanFace size={14}/> Trans.
-                                        </button>
-                                        <button 
-                                            onClick={handleBatchTranslateMasks}
-                                            className="bg-gray-700 hover:bg-gray-600 text-gray-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                                             title="Batch Translate Masked"
+                                            onClick={() => handleBatchProcess(false)}
+                                            className="bg-gray-700 hover:bg-gray-600 text-gray-200 rounded text-xs flex items-center justify-center gap-1"
+                                            title={t('processAll', lang)}
                                         >
                                             <Layers size={14}/> Batch
+                                        </button>
+                                        <button 
+                                            onClick={() => handleLocalDetectionScan(false)}
+                                            className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
+                                            title="Scan Current (Local Detect)"
+                                        >
+                                            <ScanText size={14}/> Scan
+                                        </button>
+                                        <button 
+                                            onClick={() => handleLocalDetectionScan(true)}
+                                            className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
+                                            title="Scan All (Local Detect)"
+                                        >
+                                            <Layers size={14}/> All
                                         </button>
                                     </div>
                                 )}
 
-                                {/* BUBBLE MODE: Manual Add */}
                                 {drawTool === 'bubble' && (
                                     <button 
                                         onClick={handleAddManualBubble} 
@@ -1386,15 +1207,27 @@ const App: React.FC = () => {
 
                     <div className="h-px bg-gray-800"></div>
 
-                    {/* Row 3: Utility & Export Icons */}
                     <div className="flex justify-between items-center px-1">
-                        <button 
-                            onClick={() => setShowGlobalStyles(!showGlobalStyles)} 
-                            className={`p-2 rounded hover:bg-gray-700 transition-colors ${showGlobalStyles ? 'text-blue-400 bg-gray-800' : 'text-gray-400'}`}
-                            title={t('globalStyles', lang)}
-                        >
-                            <Palette size={16}/>
-                        </button>
+                        <div className="flex items-center gap-2">
+                            <button 
+                                onClick={() => setShowGlobalStyles(!showGlobalStyles)} 
+                                className={`p-2 rounded hover:bg-gray-700 transition-colors ${showGlobalStyles ? 'text-blue-400 bg-gray-800' : 'text-gray-400'}`}
+                                title={t('globalStyles', lang)}
+                            >
+                                <Palette size={16}/>
+                            </button>
+                            <div className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 border border-gray-700" title={t('concurrency', lang)}>
+                                <Zap size={10} className="text-yellow-500" />
+                                <input 
+                                    type="number" 
+                                    min="1" 
+                                    max="10" 
+                                    value={concurrency} 
+                                    onChange={(e) => setConcurrency(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
+                                    className="w-6 bg-transparent text-[10px] text-center text-gray-300 outline-none appearance-none"
+                                />
+                            </div>
+                        </div>
                         
                         <div className="flex gap-1">
                              <button onClick={handleMergeLayers} disabled={!currentImage || isMerging || currentImage.bubbles.length === 0} className="p-2 text-orange-400 hover:bg-gray-800 rounded disabled:opacity-30 transition-colors" title={t('merge', lang)}>
@@ -1414,7 +1247,6 @@ const App: React.FC = () => {
         )}
       </aside>
 
-      {/* Main Canvas */}
       <main className="flex-1 relative bg-[#1a1a1a] overflow-hidden flex flex-col">
         {!currentImage ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center opacity-30 select-none"><Maximize size={64} className="mx-auto mb-4"/><h2 className="text-2xl font-bold">{t('noImageSelected', lang)}</h2><p className="mt-2 text-sm">{t('dragDrop', lang)}</p></div>
@@ -1428,7 +1260,6 @@ const App: React.FC = () => {
                     onMouseDown={handleCanvasMouseDown}
                   />
                   
-                  {/* Mode 2: Mask Regions - Only visible in mask mode */}
                   {drawTool === 'mask' && maskRegions.map(region => (
                       <RegionLayer
                           key={region.id}
@@ -1443,7 +1274,6 @@ const App: React.FC = () => {
                       />
                   ))}
 
-                  {/* Mode 1: Bubbles */}
                   {bubbles.map(bubble => (
                     <BubbleLayer
                       key={bubble.id}
@@ -1466,7 +1296,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* Right Sidebar */}
       <aside className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col z-20 shadow-2xl shrink-0">
          {selectedBubble && currentId ? (
              <BubbleEditor 
@@ -1479,7 +1308,6 @@ const App: React.FC = () => {
                 }}
               />
          ) : selectedMaskId ? (
-              // Simple info panel for Mask Mode
               <div className="flex-1 flex flex-col items-center justify-center text-gray-600 select-none p-6 text-center">
                    <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center mb-4 border border-red-500/30">
                         <Scan size={32} className="text-red-500"/>
@@ -1489,7 +1317,7 @@ const App: React.FC = () => {
                        {t('translateRegionsDesc', lang)}
                        <br/>
                        <br/>
-                       Draw more boxes to include multiple areas in one request.
+                       {t('clickBubbleHint', lang)}
                    </p>
               </div>
          ) : (
@@ -1497,7 +1325,6 @@ const App: React.FC = () => {
          )}
       </aside>
 
-      {/* Modals */}
       {showSettings && (
         <SettingsModal 
             config={aiConfig} 
@@ -1505,8 +1332,6 @@ const App: React.FC = () => {
                 const oldAutoDetect = aiConfig.autoDetectBackground;
                 setAiConfig(newConfig); 
                 setShowSettings(false); 
-                
-                // Trigger global actions if setting changed
                 if (newConfig.autoDetectBackground !== oldAutoDetect) {
                     if (newConfig.autoDetectBackground) {
                         handleGlobalColorDetection();

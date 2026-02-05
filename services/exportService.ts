@@ -1,5 +1,3 @@
-
-
 import { ImageState, Bubble, MaskRegion } from '../types';
 import JSZip from 'jszip';
 
@@ -265,7 +263,7 @@ export const compositeImage = async (imageState: ImageState): Promise<Blob | nul
                 top: 0; left: 0; width: 100%; height: 100%;
                 background-color: ${b.backgroundColor};
                 border-radius: ${borderRadius};
-                box-shadow: ${b.backgroundColor === 'transparent' ? 'none' : `0 0 ${blurPx}px ${spreadPx}px ${b.backgroundColor}`};
+                box-shadow: ${(b.backgroundColor === 'transparent' || featherVal <= 0) ? 'none' : `0 0 ${blurPx}px ${spreadPx}px ${b.backgroundColor}`};
                 z-index: 1;
             "></div>
             

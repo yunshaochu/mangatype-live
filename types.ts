@@ -80,16 +80,19 @@ export interface AIConfig {
   model: string;
   systemPrompt?: string;
   defaultFontSize: number;
-  // New features
-  useTextDetectionApi?: boolean;
+  
+  // Detection & Masks Tab
+  enableMaskedImageMode?: boolean; // New: Only send masked parts if regions exist
+  useMasksAsHints?: boolean; // Send manual red boxes as hints to AI
+  useTextDetectionApi?: boolean; // Toggle Local OCR
   textDetectionApiUrl?: string;
+  enableDialogSnap?: boolean; // Snap AI bubbles to manual masks
+  forceSnapSize?: boolean; // Force snapped bubbles to use mask size
+  
   language: 'zh' | 'en'; 
   allowAiRotation?: boolean; 
   customMessages?: CustomMessage[]; // Pre-request messages
-  useMasksAsHints?: boolean; // Send manual red boxes as hints to AI
   autoDetectBackground?: boolean; // New: Toggle for auto background color detection
-  enableDialogSnap?: boolean; // New: Snap AI bubbles to manual masks
-  forceSnapSize?: boolean; // New: Force snapped bubbles to use mask size
   
   // Global Defaults for Mask Style
   defaultMaskShape: 'rectangle' | 'rounded' | 'ellipse';

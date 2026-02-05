@@ -2,7 +2,8 @@
 
 import { GoogleGenAI, FunctionDeclaration, Type, FunctionCallingConfigMode } from "@google/genai";
 import { AIConfig, DetectedBubble, MaskRegion } from "../types";
-export const DEFAULT_SYSTEM_PROMPT = `You are an expert Manga Typesetter and Translator.
+
+export const DEFAULT_SYSTEM_PROMPT = `You are an expert Manga Typesetter and Translator. 
 Your task is to identify speech bubbles, translate them, and provide layout coordinates.
 
 ### Steps:
