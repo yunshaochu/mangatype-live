@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AIConfig, AIProvider, CustomMessage } from '../types';
-import { Settings, X, RefreshCw, CheckCircle, AlertCircle, Server, RotateCcw, Type, ScanText, Globe, RotateCw, ChevronDown, Check, MessageSquarePlus, Trash2, Plus, Scan, Pipette, Zap, Bot, Layout, Cpu, FileText, Magnet, Paintbrush, Square, Circle, Box, Eye } from 'lucide-react';
+import { Settings, X, RefreshCw, CheckCircle, AlertCircle, Server, RotateCcw, Type, ScanText, Globe, RotateCw, ChevronDown, Check, MessageSquarePlus, Trash2, Plus, Scan, Pipette, Zap, Bot, Layout, Cpu, FileText, Magnet, Paintbrush, Square, Circle, Box, Eye, PenTool } from 'lucide-react';
 import { fetchAvailableModels, DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
 import { t } from '../services/i18n';
 
@@ -691,6 +691,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                                                 onChange={(e) => setLocalConfig({...localConfig, allowAiRotation: e.target.checked})}
                                             />
                                             <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-purple-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-purple-600"></div>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                {/* Allow AI Font Selection */}
+                                <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-teal-500/30 rounded-xl transition-colors group">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex gap-3">
+                                            <div className="mt-1 p-1.5 bg-teal-500/10 rounded text-teal-400"><PenTool size={18}/></div>
+                                            <div>
+                                                <h4 className="text-sm font-medium text-white mb-1">{t('allowAiFontSelection', lang)}</h4>
+                                                <p className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors">{t('allowAiFontSelectionHint', lang)}</p>
+                                            </div>
+                                        </div>
+                                        <label className="relative inline-flex items-center cursor-pointer">
+                                            <input 
+                                                type="checkbox" 
+                                                className="sr-only peer"
+                                                checked={localConfig.allowAiFontSelection !== false}
+                                                onChange={(e) => setLocalConfig({...localConfig, allowAiFontSelection: e.target.checked})}
+                                            />
+                                            <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-teal-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
                                         </label>
                                     </div>
                                 </div>

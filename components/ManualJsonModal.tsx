@@ -157,14 +157,14 @@ export const ManualJsonModal: React.FC<ManualJsonModalProps> = ({ onApply, onClo
               <button 
                 onClick={copyPrompt}
                 className="text-[10px] bg-purple-900/40 hover:bg-purple-800/60 border border-purple-700/50 px-2 py-1 rounded text-purple-300 flex items-center gap-1 transition-colors"
-                title="Copy the prompt to send to ChatGPT/Claude"
+                title={t('copyPromptHint', lang)}
               >
                 <ClipboardCopy size={10} /> {t('copyPrompt', lang)}
               </button>
               <button 
                 onClick={loadTemplate}
                 className="text-[10px] bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded text-blue-300 flex items-center gap-1 transition-colors"
-                title="Load a sample JSON structure"
+                title={t('loadTemplateHint', lang)}
               >
                 <Terminal size={10} /> {t('loadTemplate', lang)}
               </button>

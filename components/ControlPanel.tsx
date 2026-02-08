@@ -100,14 +100,14 @@ export const ControlPanel: React.FC = () => {
             </button>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-6 shrink-0 flex justify-center text-gray-400" title="Font Size"><Type size={14} /></div>
+            <div className="w-6 shrink-0 flex justify-center text-gray-400" title={t('fontSizeTooltip', lang)}><Type size={14} /></div>
             <div className="flex flex-1 gap-1">
               <button onClick={() => onGlobalFontScale(0.9)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Minus size={12} /></button>
               <button onClick={() => onGlobalFontScale(1.1)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Plus size={12} /></button>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="w-6 shrink-0 flex justify-center text-gray-400" title="Mask Size"><Scan size={14} /></div>
+            <div className="w-6 shrink-0 flex justify-center text-gray-400" title={t('maskSizeTooltip', lang)}><Scan size={14} /></div>
             <div className="flex flex-1 gap-1">
               <button onClick={() => onGlobalMaskScale(0.9)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Minus size={12} /></button>
               <button onClick={() => onGlobalMaskScale(1.1)} disabled={!currentImage || currentImage.bubbles.length === 0} className="flex-1 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-200 flex items-center justify-center gap-1"><Plus size={12} /></button>
@@ -128,18 +128,21 @@ export const ControlPanel: React.FC = () => {
           <button
             onClick={() => handleToolChange('none')}
             className={`flex-1 py-1 text-xs rounded-md transition-all flex items-center justify-center gap-1 ${drawTool === 'none' ? 'bg-gray-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+            title={t('toolNone', lang)}
           >
             <MousePointer2 size={12} /> View
           </button>
           <button
             onClick={() => handleToolChange('bubble')}
             className={`flex-1 py-1 text-xs rounded-md transition-all flex items-center justify-center gap-1 ${drawTool === 'bubble' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+            title={t('toolBubble', lang)}
           >
             <MessageSquareDashed size={12} /> Bubble
           </button>
           <button
             onClick={() => handleToolChange('mask')}
             className={`flex-1 py-1 text-xs rounded-md transition-all flex items-center justify-center gap-1 ${drawTool === 'mask' ? 'bg-red-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+            title={t('toolMask', lang)}
           >
             <Scan size={12} /> Mask
           </button>
@@ -169,7 +172,7 @@ export const ControlPanel: React.FC = () => {
                   <button
                     onClick={() => handleBatchProcess(currentImage, false, concurrency)}
                     className="flex-[1.5] bg-gray-700 hover:bg-gray-600 text-gray-200 rounded text-xs flex items-center justify-center gap-1 px-2"
-                    title="Process Pending (Auto)"
+                    title={t('processPending', lang)}
                   >
                     <Layers size={14} /> {t('processAll', lang)}
                   </button>
@@ -211,14 +214,14 @@ export const ControlPanel: React.FC = () => {
                   <button
                     onClick={() => handleLocalDetectionScan(currentImage, false, concurrency)}
                     className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                    title="Scan Current (Local Detect)"
+                    title={t('scanCurrent', lang)}
                   >
                     <ScanText size={14} /> Scan
                   </button>
                   <button
                     onClick={() => handleLocalDetectionScan(currentImage, true, concurrency)}
                     className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                    title="Scan All (Local Detect)"
+                    title={t('scanAll', lang)}
                   >
                     <Layers size={14} /> All
                   </button>

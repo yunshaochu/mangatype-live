@@ -25,9 +25,10 @@ const DEFAULT_CONFIG: AIConfig = {
   forceSnapSize: false,
   enableMaskedImageMode: false,
   useMasksAsHints: false,
-  defaultMaskShape: 'rectangle', // Changed from 'ellipse'
+  allowAiFontSelection: true, // Default enabled
+  defaultMaskShape: 'rectangle', 
   defaultMaskCornerRadius: 20,
-  defaultMaskFeather: 0, // Changed from 12
+  defaultMaskFeather: 0,
 };
 
 interface ProjectContextType {
@@ -83,6 +84,7 @@ interface ProjectContextType {
   updateBubble: (bubbleId: string, updates: Partial<Bubble>) => void;
   updateImageBubbles: (imgId: string, newBubbles: Bubble[]) => void;
   triggerAutoColorDetection: (bubbleId: string) => void;
+  reorderBubble: (bubbleId: string, direction: 'front' | 'back' | 'forward' | 'backward') => void;
   
   // Refs (for direct access if needed, though mostly internal)
   historyRef: React.MutableRefObject<{ past: ImageState[][]; present: ImageState[]; future: ImageState[][]; }>;
@@ -180,6 +182,34 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setImages(prev => prev.map(img => img.id === imgId ? { ...img, bubbles: newBubbles } : img));
   }, [setImages]);
 
+  const reorderBubble = useCallback((bubbleId: string, direction: 'front' | 'back' | 'forward' | 'backward') => {
+    if (!currentId) return;
+    
+    setImages(prev => prev.map(img => {
+        if (img.id !== currentId) return img;
+        
+        const idx = img.bubbles.findIndex(b => b.id === bubbleId);
+        if (idx === -1) return img;
+        
+        const newBubbles = [...img.bubbles];
+        const [item] = newBubbles.splice(idx, 1);
+        
+        if (direction === 'front') {
+            newBubbles.push(item);
+        } else if (direction === 'back') {
+            newBubbles.unshift(item);
+        } else if (direction === 'forward') {
+            const newIndex = Math.min(idx + 1, newBubbles.length);
+            newBubbles.splice(newIndex, 0, item);
+        } else if (direction === 'backward') {
+            const newIndex = Math.max(idx - 1, 0);
+            newBubbles.splice(newIndex, 0, item);
+        }
+        
+        return { ...img, bubbles: newBubbles };
+    }));
+  }, [currentId, setImages]);
+
   // Combined Context Value
   const value: ProjectContextType = {
     ...projectState,
@@ -199,6 +229,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     updateBubble,
     updateImageBubbles,
     triggerAutoColorDetection,
+    reorderBubble,
     aiConfigRef,
     // processor actions wrappers
     handleBatchProcess: processor.handleBatchProcess,

@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { FONTS } from '../types';
-import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, Sparkles, RotateCw, Maximize2, Palette, Minus, Plus, Pipette, Hash, Ban, Square, Circle, Box } from 'lucide-react';
+import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, Sparkles, RotateCw, Maximize2, Palette, Minus, Plus, Pipette, Hash, Ban, Square, Circle, Box, BringToFront, SendToBack, ChevronUp, ChevronDown } from 'lucide-react';
 import { polishDialogue } from '../services/geminiService';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
@@ -18,7 +18,7 @@ const PRESET_COLORS = [
 ];
 
 export const BubbleEditor: React.FC = () => {
-  const { currentImage, selectedBubbleId, updateBubble, deleteCurrentSelection, aiConfig } = useProjectContext();
+  const { currentImage, selectedBubbleId, updateBubble, deleteCurrentSelection, aiConfig, reorderBubble } = useProjectContext();
   const [isAiLoading, setIsAiLoading] = useState(false);
   const lang = aiConfig.language || 'zh';
 
@@ -68,18 +68,52 @@ export const BubbleEditor: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full bg-gray-900 text-gray-100">
-      {/* Header */}
-      <div className="p-4 border-b border-gray-800 flex justify-between items-center shrink-0 bg-gray-900">
-        <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-           {t('properties', lang)}
-        </h3>
-        <button 
-          onClick={deleteCurrentSelection}
-          className="text-red-400 hover:text-red-300 p-1.5 rounded hover:bg-red-900/30 transition-colors"
-          title={t('deleteBubble', lang)}
-        >
-          <Trash2 size={16} />
-        </button>
+      {/* Header with Layer Controls */}
+      <div className="p-4 border-b border-gray-800 shrink-0 bg-gray-900 space-y-3">
+        <div className="flex justify-between items-center">
+            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+            {t('properties', lang)}
+            </h3>
+            <button 
+            onClick={deleteCurrentSelection}
+            className="text-red-400 hover:text-red-300 p-1.5 rounded hover:bg-red-900/30 transition-colors"
+            title={t('deleteBubble', lang)}
+            >
+            <Trash2 size={16} />
+            </button>
+        </div>
+        
+        {/* Layer Controls Row */}
+        <div className="flex justify-between gap-1 bg-gray-800 rounded p-1">
+            <button 
+                onClick={() => reorderBubble(bubble.id, 'front')}
+                className="flex-1 p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white flex justify-center" 
+                title={t('bringToFront', lang)}
+            >
+                <BringToFront size={14}/>
+            </button>
+            <button 
+                onClick={() => reorderBubble(bubble.id, 'forward')}
+                className="flex-1 p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white flex justify-center" 
+                title={t('moveUp', lang)}
+            >
+                <ChevronUp size={14}/>
+            </button>
+            <button 
+                onClick={() => reorderBubble(bubble.id, 'backward')}
+                className="flex-1 p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white flex justify-center" 
+                title={t('moveDown', lang)}
+            >
+                <ChevronDown size={14}/>
+            </button>
+            <button 
+                onClick={() => reorderBubble(bubble.id, 'back')}
+                className="flex-1 p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white flex justify-center" 
+                title={t('sendToBack', lang)}
+            >
+                <SendToBack size={14}/>
+            </button>
+        </div>
       </div>
 
       {/* Scrollable Content */}
@@ -293,7 +327,7 @@ export const BubbleEditor: React.FC = () => {
                     <button
                         onClick={handleEyedropper}
                         className="w-8 h-8 flex items-center justify-center bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 hover:text-white text-gray-400 transition-colors"
-                        title="Pick color from screen"
+                        title={t('pickColor', lang)}
                     >
                         <Pipette size={14} />
                     </button>
@@ -304,7 +338,7 @@ export const BubbleEditor: React.FC = () => {
                     <button
                         onClick={() => handleManualColorChange('transparent')}
                         className={`w-6 h-6 rounded border flex items-center justify-center transition-all ${bubble.backgroundColor === 'transparent' ? 'border-red-500 ring-1 ring-red-500/50' : 'border-gray-700 hover:border-gray-500'}`}
-                        title="Transparent (No Fill)"
+                        title={t('transparentColor', lang)}
                     >
                         <Ban size={12} className="text-red-400"/>
                     </button>

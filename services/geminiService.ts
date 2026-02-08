@@ -406,8 +406,7 @@ export const detectAndTypesetComic = async (
       systemPrompt += `\n- DETECT ROTATION: Examine the visual orientation of the text. If the text line is tilted, estimate the 'rotation' angle in degrees (e.g., -15 for counter-clockwise, 10 for clockwise). Default is 0.`;
   }
 
-  if (signal?.aborted) throw new Error("Aborted by user");
-
+  // Clone schemas so we can modify them non-destructively
   const geminiToolSchema = JSON.parse(JSON.stringify(baseGeminiToolSchema));
   const openAIToolSchema = JSON.parse(JSON.stringify(baseOpenAIToolSchema));
 
@@ -419,6 +418,18 @@ export const detectAndTypesetComic = async (
         type: 'number', description: 'Rotation angle in degrees (e.g. -15, 15)' 
     };
   }
+
+  // Handle Font Selection Logic
+  if (config.allowAiFontSelection === false) {
+      // 1. Remove fontFamily from schemas to prevent AI from outputting it
+      delete geminiToolSchema.parameters.properties.bubbles.items.properties.fontFamily;
+      delete openAIToolSchema.parameters.properties.bubbles.items.properties.fontFamily;
+      
+      // 2. Inject prompt instruction to suppress font thinking
+      systemPrompt += "\n[IMPORTANT] Do NOT output 'fontFamily'. Use default font for all bubbles.";
+  }
+
+  if (signal?.aborted) throw new Error("Aborted by user");
 
   if (config.provider === 'gemini') {
     const ai = getGeminiClient();

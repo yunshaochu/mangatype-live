@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Trash2, CheckCircle, Loader2, XCircle, Ban, FilePlus, FolderPlus, ScanText, AlertTriangle } from 'lucide-react';
 import { t } from '../services/i18n';
@@ -81,7 +82,7 @@ export const Gallery: React.FC<GalleryProps> = ({ onAddFile, onAddFolder }) => {
                 ? 'bg-red-900/50 text-red-200 animate-pulse' 
                 : 'text-gray-500 hover:text-red-400 hover:bg-gray-800'
             }`}
-            title="Clear All"
+            title={t('clearAll', lang)}
             >
             {clearStage === 1 ? t('sure', lang) : <Trash2 size={14} />}
             </button>
@@ -122,7 +123,7 @@ export const Gallery: React.FC<GalleryProps> = ({ onAddFile, onAddFolder }) => {
                         ? 'bg-red-500/80 text-white opacity-100 hover:bg-red-600' 
                         : 'bg-black/50 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-black/70 hover:text-white'
                     }`}
-                    title={img.skipped ? "已跳过 API 处理 (点击恢复)" : "跳过 API 处理"}
+                    title={img.skipped ? t('skippedRestore', lang) : t('skipAPI', lang)}
                 >
                     <Ban size={12} />
                 </button>
