@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect } from 'react';
 import { BubbleEditor } from './components/BubbleEditor';
 import { SettingsModal } from './components/SettingsModal';
@@ -7,7 +8,7 @@ import { Gallery } from './components/Gallery';
 import { ControlPanel } from './components/ControlPanel';
 import { Workspace } from './components/Workspace';
 import { Bubble } from './types';
-import { Settings, Undo2, Redo2, CircleHelp, Scan, MessageSquareDashed, Eraser, Loader2, RotateCcw, PaintBucket, Pipette, Palette, Hash, Square } from 'lucide-react';
+import { Settings, Undo2, Redo2, CircleHelp, Scan, MessageSquareDashed, Eraser, Loader2, RotateCcw, PaintBucket, Pipette, Palette, Hash, Square, Layers, Sparkles, ChevronRight, Check } from 'lucide-react';
 import { t } from './services/i18n';
 import { useCanvasInteraction } from './hooks/useCanvasInteraction';
 import { useProjectContext } from './contexts/ProjectContext';
@@ -40,6 +41,7 @@ const App: React.FC = () => {
     isInpainting,
     handleRestoreRegion,
     handleBoxFill,
+    handleBatchBoxFill,
     brushColor, setBrushColor
   } = useProjectContext();
 
@@ -147,116 +149,148 @@ const App: React.FC = () => {
           />
       </main>
 
-      <aside className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col z-20 shadow-2xl shrink-0">
+      <aside className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col z-20 shadow-2xl shrink-0 overflow-y-auto custom-scrollbar">
          {selectedBubble && currentId ? (
              <BubbleEditor />
          ) : selectedMaskId && currentId ? (
              drawTool === 'brush' && paintMode === 'box' ? (
-                 // --- NEW PAINT BOX PANEL ---
-                 <div className="flex-1 flex flex-col text-gray-600 select-none p-4 animate-fade-in-right">
-                     <div className="flex flex-col items-center justify-center p-6 text-center border-b border-gray-800">
-                          <div className="w-16 h-16 bg-purple-900/20 rounded-full flex items-center justify-center mb-4 border border-purple-500/30">
-                              <Square size={32} className="text-purple-500"/>
-                          </div>
-                          <h3 className="text-sm font-semibold text-gray-300">Clean Box Tool</h3>
-                          <p className="text-xs mt-2 text-gray-500 leading-relaxed">Select a box to erase content, fill with color, or restore original pixels.</p>
+                 // --- NEW PAINT BOX PANEL (Redesigned & Localized) ---
+                 <div className="flex-1 flex flex-col text-gray-300 select-none p-4 space-y-6 animate-fade-in-right">
+                     
+                     {/* Header */}
+                     <div className="text-center pb-4 border-b border-gray-800">
+                          <h3 className="text-sm font-bold text-white flex items-center justify-center gap-2">
+                              <Square size={16} className="text-purple-500"/> {t('cleanBoxTitle', lang)}
+                          </h3>
+                          <p className="text-xs mt-1 text-gray-500">{t('cleanBoxDesc', lang)}</p>
                      </div>
                      
-                     <div className="p-6 space-y-6">
-                         {/* Option 1: AI Erase */}
-                         <div className="space-y-3">
-                             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                                 <Eraser size={12} /> Smart Erase
+                     {/* SECTION 1: AI ERASE */}
+                     <div className="space-y-3">
+                         <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                             <Eraser size={10} /> {t('smartErase', lang)}
+                         </label>
+                         {aiConfig.enableInpainting ? (
+                             <button 
+                                 onClick={() => handleInpaint(currentId, selectedMaskId)}
+                                 disabled={isInpainting}
+                                 className="w-full py-3 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-500 hover:to-pink-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-red-900/20 flex items-center justify-center gap-2 transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                             >
+                                 {isInpainting ? <Loader2 size={16} className="animate-spin" /> : <Eraser size={16} />}
+                                 {t('inpaintArea', lang)}
+                             </button>
+                         ) : (
+                             <div className="p-3 bg-gray-800/50 rounded-lg text-[10px] text-gray-500 text-center border border-dashed border-gray-700">
+                                 {t('enableInpaintHint', lang)}
                              </div>
-                             {aiConfig.enableInpainting ? (
-                                 <button 
-                                     onClick={() => handleInpaint(currentId, selectedMaskId)}
-                                     disabled={isInpainting}
-                                     className="w-full py-3 bg-red-600 hover:bg-red-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-red-900/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                 >
-                                     {isInpainting ? <Loader2 size={16} className="animate-spin" /> : <Eraser size={16} />}
-                                     {t('inpaintArea', lang)}
-                                 </button>
-                             ) : (
-                                 <div className="p-3 bg-gray-800/50 rounded-lg text-[10px] text-gray-500 text-center border border-dashed border-gray-700">
-                                     Enable Inpainting in Settings to use Smart Erase.
-                                 </div>
-                             )}
-                         </div>
+                         )}
+                     </div>
 
-                         {/* Option 2: Manual Fill */}
-                         <div className="space-y-3">
-                             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
-                                 <PaintBucket size={12} /> Manual Fill
+                     {/* SECTION 2: MANUAL FILL */}
+                     <div className="space-y-3">
+                         <div className="flex justify-between items-center">
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                                <PaintBucket size={10} /> {t('manualFill', lang)}
+                            </label>
+                         </div>
+                         
+                         <div className="bg-gray-800/30 p-3 rounded-xl border border-gray-800 space-y-3">
+                             {/* Color Tools */}
+                             <div className="flex gap-2 items-center">
+                                 <div className="flex-1 relative group">
+                                     <div className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"><Hash size={12}/></div>
+                                     <input 
+                                         type="text" 
+                                         value={brushColor.replace('#', '')}
+                                         onChange={(e) => setBrushColor(`#${e.target.value}`)}
+                                         className="w-full bg-gray-900 border border-gray-700 rounded-md h-8 pl-7 text-xs text-white uppercase font-mono focus:border-purple-500 outline-none transition-colors"
+                                     />
+                                 </div>
+                                 <div className="relative w-8 h-8 rounded-md border border-gray-600 overflow-hidden shrink-0 cursor-pointer hover:border-white transition-colors">
+                                     <input 
+                                         type="color"
+                                         value={brushColor}
+                                         onChange={(e) => setBrushColor(e.target.value)}
+                                         className="absolute -top-2 -left-2 w-16 h-16 p-0 border-0 cursor-pointer"
+                                     />
+                                 </div>
+                                 <button 
+                                    onClick={handleEyedropper} 
+                                    className="w-8 h-8 flex items-center justify-center bg-gray-700 hover:bg-gray-600 border border-gray-600 rounded-md text-gray-300 transition-colors"
+                                    title={t('pickColor', lang)}
+                                 >
+                                     <Pipette size={14}/>
+                                 </button>
                              </div>
                              
-                             {/* Color Picker Section */}
-                             <div className="space-y-2">
-                                 <div className="flex gap-2">
-                                     <div className="flex-1 relative">
-                                         <div className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"><Hash size={12}/></div>
-                                         <input 
-                                             type="text" 
-                                             value={brushColor.replace('#', '')}
-                                             onChange={(e) => setBrushColor(`#${e.target.value}`)}
-                                             className="w-full bg-gray-800 border border-gray-700 rounded h-8 pl-6 text-xs text-white uppercase font-mono focus:border-purple-500 outline-none"
-                                         />
-                                     </div>
-                                     <div className="relative w-8 h-8 rounded border border-gray-600 overflow-hidden shrink-0 cursor-pointer group">
-                                         <input 
-                                             type="color"
-                                             value={brushColor}
-                                             onChange={(e) => setBrushColor(e.target.value)}
-                                             className="absolute -top-2 -left-2 w-16 h-16 p-0 border-0 cursor-pointer"
-                                         />
-                                          <div className="absolute inset-0 pointer-events-none flex items-center justify-center bg-black/10 group-hover:bg-transparent">
-                                             <Palette size={14} className="text-white drop-shadow-md"/>
-                                         </div>
-                                     </div>
-                                     <button onClick={handleEyedropper} className="w-8 h-8 flex items-center justify-center bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 text-gray-400">
-                                         <Pipette size={14}/>
-                                     </button>
-                                 </div>
-                                 
-                                 {/* Presets */}
-                                 <div className="flex flex-wrap gap-1.5">
-                                      {PRESET_FILL_COLORS.map(c => (
-                                          <button
-                                              key={c}
-                                              onClick={() => setBrushColor(c)}
-                                              className={`w-6 h-6 rounded border transition-all ${brushColor.toLowerCase() === c ? 'border-purple-500 ring-1 ring-purple-500/50 scale-110' : 'border-gray-600 hover:scale-105'}`}
-                                              style={{ backgroundColor: c }}
-                                              title={c}
-                                          />
-                                      ))}
-                                 </div>
-
-                                 <button 
-                                     onClick={() => handleBoxFill(currentId, selectedMaskId, brushColor)}
-                                     className="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg shadow-sm flex items-center justify-center gap-2 mt-2"
-                                 >
-                                     <PaintBucket size={14} /> Fill Selected Box
-                                 </button>
+                             {/* Presets Grid */}
+                             <div className="grid grid-cols-6 gap-1.5">
+                                  {PRESET_FILL_COLORS.map(c => (
+                                      <button
+                                          key={c}
+                                          onClick={() => setBrushColor(c)}
+                                          className={`aspect-square rounded border transition-all hover:scale-110 ${brushColor.toLowerCase() === c ? 'border-purple-500 ring-1 ring-purple-500/50 z-10' : 'border-gray-600 hover:border-gray-400'}`}
+                                          style={{ backgroundColor: c }}
+                                          title={c}
+                                      />
+                                  ))}
                              </div>
-                         </div>
 
-                         {/* Option 3: Restore */}
-                         <div className="space-y-3 pt-2 border-t border-gray-800">
-                             <button
-                                 onClick={() => handleRestoreRegion(currentId, selectedMaskId)}
-                                 className="w-full py-2 bg-gray-700 hover:bg-gray-600 text-white text-xs font-bold rounded-lg shadow-sm flex items-center justify-center gap-2"
+                             <button 
+                                 onClick={() => handleBoxFill(currentId, selectedMaskId, brushColor)}
+                                 className="w-full py-2 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg shadow-sm flex items-center justify-center gap-2 transition-all"
                              >
-                                 <RotateCcw size={14} />
-                                 {t('restoreArea', lang)}
+                                 <PaintBucket size={14} /> {t('fillSelected', lang)}
                              </button>
-                             <p className="text-[10px] text-gray-500 text-center italic">
-                                 Bubbles over cleaned boxes become transparent automatically.
-                             </p>
                          </div>
+                     </div>
+
+                     {/* SECTION 3: BATCH ACTIONS */}
+                     <div className="space-y-2">
+                         <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                             <Layers size={10} /> {t('batchOperations', lang)}
+                         </label>
+                         <div className="grid grid-cols-2 gap-2">
+                             <button 
+                                 onClick={() => handleBatchBoxFill('current', brushColor)}
+                                 disabled={isInpainting}
+                                 className="py-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-600 text-gray-300 text-xs font-medium rounded-xl transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-50"
+                             >
+                                 <Scan size={14} className="text-blue-400 mb-0.5"/> 
+                                 {t('fillCurrentPage', lang)}
+                             </button>
+                             <button 
+                                 onClick={() => handleBatchBoxFill('all', brushColor)}
+                                 disabled={isInpainting}
+                                 className="py-3 bg-gray-800 hover:bg-gray-700 border border-gray-700 hover:border-gray-600 text-gray-300 text-xs font-medium rounded-xl transition-all flex flex-col items-center justify-center gap-1 disabled:opacity-50"
+                             >
+                                 <Layers size={14} className="text-orange-400 mb-0.5"/> 
+                                 {t('fillAllPages', lang)}
+                             </button>
+                         </div>
+                     </div>
+
+                     <div className="h-px bg-gray-800"></div>
+
+                     {/* SECTION 4: RESTORE */}
+                     <div className="space-y-2">
+                         <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1">
+                             <RotateCcw size={10} /> {t('restore', lang)}
+                         </label>
+                         <button
+                             onClick={() => handleRestoreRegion(currentId, selectedMaskId)}
+                             className="w-full py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs font-medium rounded-lg border border-gray-700 transition-all flex items-center justify-center gap-2"
+                         >
+                             <RotateCcw size={14} />
+                             {t('restoreArea', lang)}
+                         </button>
+                         <p className="text-[10px] text-gray-600 text-center">
+                             {t('restoreHint', lang)}
+                         </p>
                      </div>
                  </div>
              ) : (
-                // --- OLD MASK PANEL (For Mask Tool) ---
+                // --- OLD MASK PANEL (For standard Mask Tool) ---
                 <div className="flex-1 flex flex-col text-gray-600 select-none p-4">
                      <div className="flex flex-col items-center justify-center p-6 text-center border-b border-gray-800">
                           <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center mb-4 border border-red-500/30">
@@ -265,16 +299,16 @@ const App: React.FC = () => {
                           <h3 className="text-sm font-semibold text-gray-300">{t('toolMask', lang)}</h3>
                           <p className="text-xs mt-2 text-gray-500 leading-relaxed">{t('translateRegionsDesc', lang)}</p>
                      </div>
-                     <div className="p-6 text-center">
-                         <p className="text-xs text-gray-500 mb-4">Switch to <b>Paint &gt; Box Tool</b> to clean text in this area.</p>
+                     <div className="p-6 text-center space-y-4">
+                         <p className="text-xs text-gray-500 leading-relaxed">{t('boxCleanerDesc', lang)}</p>
                          <button 
                              onClick={() => {
                                  setDrawTool('brush');
                                  setPaintMode('box');
                              }}
-                             className="px-4 py-2 bg-purple-900/40 border border-purple-800 text-purple-200 rounded text-xs hover:bg-purple-900/60 transition-colors"
+                             className="w-full px-4 py-3 bg-purple-600 hover:bg-purple-500 text-white font-medium rounded-xl text-xs flex items-center justify-center gap-2 transition-all shadow-lg shadow-purple-900/20"
                          >
-                             Go to Box Cleaner
+                             {t('goBoxCleaner', lang)} <ChevronRight size={14}/>
                          </button>
                      </div>
                 </div>

@@ -70,6 +70,7 @@ interface ProjectContextType {
   handleRestoreRegion: (imageId: string, regionId: string) => Promise<void>;
   handlePaintSave: (imageId: string, newBase64: string) => void;
   handleBoxFill: (imageId: string, maskId: string, color: string) => Promise<void>;
+  handleBatchBoxFill: (scope: 'current' | 'all', color: string) => Promise<void>;
 
   // UI State
   drawTool: 'none' | 'bubble' | 'mask' | 'brush';
@@ -151,6 +152,23 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(aiConfig)); } catch (e) { console.warn("Failed to save settings", e); }
   }, [aiConfig]);
 
+  // MOVED UP: UI State (so setActiveLayer is available for handlers below)
+  const [drawTool, setDrawTool] = useState<'none' | 'bubble' | 'mask' | 'brush'>('none');
+  const [showSettings, setShowSettings] = useState(false);
+  const [showManualJson, setShowManualJson] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [concurrency, setConcurrency] = useState(1);
+  const [isMerging, setIsMerging] = useState(false);
+  const [isZipping, setIsZipping] = useState(false);
+  const [zipProgress, setZipProgress] = useState({ current: 0, total: 0 });
+  const [showGlobalStyles, setShowGlobalStyles] = useState(false);
+  const [activeLayer, setActiveLayer] = useState<ViewLayer>('final');
+  
+  // Brush State
+  const [brushColor, setBrushColor] = useState('#ffffff');
+  const [brushSize, setBrushSize] = useState(20);
+  const [paintMode, setPaintMode] = useState<'brush' | 'box'>('brush');
+
   // 3. Processor Logic
   const processor = useProcessor({ images, setImages, aiConfig });
 
@@ -194,12 +212,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             // Mark mask as cleaned
             const newMasks = (p.maskRegions || []).map(m => m.id === specificMaskId ? { ...m, isCleaned: true } : m);
             
-            // Check bubbles intersection with the newly cleaned mask(s)
-            // If specificMaskId is present, we only check that one. If not, we check all?
-            // The generateInpaintMask logic handles specificMaskId. 
-            // So here we should identify which mask was cleaned.
+            // Check bubbles intersection
             const targetMask = (p.maskRegions || []).find(m => m.id === specificMaskId);
-            
             let newBubbles = p.bubbles;
             if (targetMask) {
                 newBubbles = p.bubbles.map(b => {
@@ -235,9 +249,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } finally {
         setIsInpainting(false);
     }
-  }, [aiConfig, setImages, historyRef]);
+  }, [aiConfig, setImages, historyRef, setActiveLayer]);
 
-  // Handle Box Fill (Whitening or Coloring a specific box)
+  // Handle Box Fill (Whitening or Coloring)
   const handleBoxFill = useCallback(async (imageId: string, maskId: string, color: string) => {
     const img = historyRef.current.present.find(i => i.id === imageId);
     if (!img) return;
@@ -308,7 +322,108 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     } catch (e) {
         console.error("Box fill failed", e);
     }
-  }, [setImages, historyRef]);
+  }, [setImages, historyRef, setActiveLayer]);
+
+  // Handle Batch Box Fill
+  const handleBatchBoxFill = useCallback(async (scope: 'current' | 'all', color: string) => {
+    const targets = scope === 'current'
+        ? (currentId ? historyRef.current.present.filter(i => i.id === currentId) : [])
+        : historyRef.current.present.filter(i => !i.skipped);
+
+    if (targets.length === 0) return;
+
+    setIsInpainting(true); // Reuse loading state
+
+    try {
+        const updates = await Promise.all(targets.map(async (img) => {
+            if (!img.maskRegions || img.maskRegions.length === 0) return null;
+
+            const sourceUrl = img.inpaintedUrl || img.originalUrl || img.url;
+            const image = new Image();
+            image.crossOrigin = 'Anonymous';
+            image.src = sourceUrl;
+            await new Promise((resolve, reject) => {
+                image.onload = resolve;
+                image.onerror = resolve; // Continue even if one fails
+            });
+
+            if (!image.width) return null;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = image.width;
+            canvas.height = image.height;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) return null;
+
+            ctx.drawImage(image, 0, 0);
+            ctx.fillStyle = color;
+
+            // Draw all masks
+            img.maskRegions.forEach(mask => {
+                const x = (mask.x / 100) * canvas.width;
+                const y = (mask.y / 100) * canvas.height;
+                const w = (mask.width / 100) * canvas.width;
+                const h = (mask.height / 100) * canvas.height;
+                ctx.fillRect(x - w/2, y - h/2, w, h);
+            });
+
+            const newBase64 = canvas.toDataURL('image/png');
+            const dataUrlContent = newBase64.replace(/^data:image\/\w+;base64,/, "");
+
+            // Update masks status
+            const newMasks = img.maskRegions.map(m => ({ ...m, isCleaned: true }));
+
+            // Update bubbles overlapping
+            const newBubbles = img.bubbles.map(b => {
+                // Check overlap with ANY mask
+                const overlaps = newMasks.some(mask => {
+                    const xDiff = Math.abs(b.x - mask.x);
+                    const yDiff = Math.abs(b.y - mask.y);
+                    const halfW = mask.width / 2;
+                    const halfH = mask.height / 2;
+                    return xDiff <= halfW && yDiff <= halfH;
+                });
+                if (overlaps) {
+                    return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
+                }
+                return b;
+            });
+
+            return {
+                id: img.id,
+                updates: {
+                    base64: dataUrlContent,
+                    url: newBase64,
+                    inpaintedUrl: newBase64,
+                    inpaintedBase64: dataUrlContent,
+                    inpaintingStatus: 'done',
+                    maskRegions: newMasks,
+                    bubbles: newBubbles
+                }
+            };
+        }));
+
+        setImages(prev => prev.map(p => {
+            const update = updates.find(u => u && u.id === p.id);
+            if (update) {
+                // Cast to any to merge properly or define partial
+                return { ...p, ...(update.updates as any) };
+            }
+            return p;
+        }));
+
+        // Switch active layer to 'clean' if we modified the current image
+        if (scope === 'current' || targets.some(t => t.id === currentId)) {
+            setActiveLayer('clean');
+        }
+
+    } catch (e: any) {
+        console.error("Batch box fill failed", e);
+        alert("Batch fill failed: " + e.message);
+    } finally {
+        setIsInpainting(false);
+    }
+  }, [currentId, historyRef, setImages, setActiveLayer, setIsInpainting]);
 
   // Restore Region
   const handleRestoreRegion = useCallback(async (imageId: string, regionId: string) => {
@@ -334,7 +449,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       } catch (e) {
           console.error("Restore failed", e);
       }
-  }, [setImages, historyRef]);
+  }, [setImages, historyRef, setActiveLayer]);
 
   // Save manual paint result
   const handlePaintSave = useCallback((imageId: string, newBase64: string) => {
@@ -347,27 +462,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           inpaintingStatus: 'done'
       } : p));
   }, [setImages]);
-
-
-  // 5. UI State
-  const [drawTool, setDrawTool] = useState<'none' | 'bubble' | 'mask' | 'brush'>('none');
-  const [showSettings, setShowSettings] = useState(false);
-  const [showManualJson, setShowManualJson] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
-  const [concurrency, setConcurrency] = useState(1);
-  const [isMerging, setIsMerging] = useState(false);
-  const [isZipping, setIsZipping] = useState(false);
-  const [zipProgress, setZipProgress] = useState({ current: 0, total: 0 });
-  const [showGlobalStyles, setShowGlobalStyles] = useState(false);
-  const [activeLayer, setActiveLayer] = useState<ViewLayer>('final');
-  
-  // Brush State
-  const [brushColor, setBrushColor] = useState('#ffffff');
-  const [brushSize, setBrushSize] = useState(20);
-  const [paintMode, setPaintMode] = useState<'brush' | 'box'>('brush');
-
-  // Reset active layer when current image changes
-  // Removed automatic reset logic per previous user request.
 
   // 6. Shared Actions
   const detectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -382,8 +476,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               const bubble = imgState.bubbles.find(b => b.id === bubbleId);
               if (bubble && bubble.width >= 1 && bubble.height >= 1) {
                   const shouldDetect = bubble.autoDetectBackground !== undefined ? bubble.autoDetectBackground : aiConfigRef.current.autoDetectBackground;
-                  // If background is transparent due to overlap rule, we skip auto-detect unless strictly needed? 
-                  // For now, let's allow auto-detect to run, but updateBubble logic handles the overlap override
                   if (shouldDetect === false) return; 
                   const detectedColor = await detectBubbleColor(imgState.url || `data:image/png;base64,${imgState.base64}`, bubble.x, bubble.y, bubble.width, bubble.height);
                   setImages(prev => prev.map(img => img.id === currentId ? { ...img, bubbles: img.bubbles.map(b => b.id === bubbleId ? { ...b, backgroundColor: detectedColor } : b) } : img));
@@ -499,12 +591,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     handleLocalDetectionScan: processor.handleLocalDetectionScan,
     handleGlobalColorDetection: processor.handleGlobalColorDetection,
     handleBatchInpaint: processor.handleBatchInpaint,
-    // inpainting
+    // inpainting & fill
     handleInpaint,
     isInpainting,
     handleRestoreRegion,
     handlePaintSave,
     handleBoxFill,
+    handleBatchBoxFill,
     // Brush
     brushColor, setBrushColor,
     brushSize, setBrushSize,
