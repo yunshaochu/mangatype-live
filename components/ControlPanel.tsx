@@ -1,11 +1,10 @@
 
-
 import React from 'react';
 import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon, Eraser, Brush, Pipette, Hash, PaintBucket, MousePointerClick } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { createBubble } from '../utils/editorUtils';
-import { compositeImage, downloadAllAsZip, downloadSingleImage } from '../services/exportService';
+import { compositeImage, downloadAllAsZip, downloadSingleImage, ExportOptions } from '../services/exportService';
 
 const PRESET_BRUSH_COLORS = ['#ffffff', '#000000', '#f3f4f6', '#d1d5db'];
 
@@ -76,6 +75,12 @@ export const ControlPanel: React.FC = () => {
   };
 
   // --- Export Actions ---
+  const getExportOptions = (): ExportOptions => ({
+      defaultMaskShape: aiConfig.defaultMaskShape,
+      defaultMaskCornerRadius: aiConfig.defaultMaskCornerRadius,
+      defaultMaskFeather: aiConfig.defaultMaskFeather
+  });
+
   const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -89,7 +94,7 @@ export const ControlPanel: React.FC = () => {
     if (!currentImage || currentImage.bubbles.length === 0) return;
     setIsMerging(true);
     try {
-        const blob = await compositeImage(currentImage);
+        const blob = await compositeImage(currentImage, getExportOptions());
         if (blob) {
             const newUrl = URL.createObjectURL(blob);
             const newBase64 = await blobToBase64(blob);
@@ -102,7 +107,9 @@ export const ControlPanel: React.FC = () => {
   const onZipDownload = async () => {
     if (images.length === 0 || isZipping) return;
     setIsZipping(true); setZipProgress({ current: 0, total: images.length });
-    try { await downloadAllAsZip(images, (curr, total) => { setZipProgress({ current: curr, total }); }); } catch (e) { console.error(e); alert("Zip creation failed"); } finally { setIsZipping(false); setZipProgress({ current: 0, total: 0 }); }
+    try { 
+        await downloadAllAsZip(images, (curr, total) => { setZipProgress({ current: curr, total }); }, getExportOptions()); 
+    } catch (e) { console.error(e); alert("Zip creation failed"); } finally { setIsZipping(false); setZipProgress({ current: 0, total: 0 }); }
   };
 
   return (
@@ -151,21 +158,9 @@ export const ControlPanel: React.FC = () => {
           >
             <MousePointer2 size={12} /> View
           </button>
-          <button
-            onClick={() => handleToolChange('bubble')}
-            className={`flex-1 py-1 px-2 text-xs rounded-md transition-all flex items-center justify-center gap-1 whitespace-nowrap ${drawTool === 'bubble' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
-            title={t('toolBubble', lang)}
-          >
-            <MessageSquareDashed size={12} /> Bubble
-          </button>
-          <button
-            onClick={() => handleToolChange('mask')}
-            className={`flex-1 py-1 px-2 text-xs rounded-md transition-all flex items-center justify-center gap-1 whitespace-nowrap ${drawTool === 'mask' ? 'bg-red-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
-            title={t('toolMask', lang)}
-          >
-            <Scan size={12} /> Mask
-          </button>
-          {activeLayer === 'clean' && (
+          
+          {/* Conditional Slot: Paint (if clean layer) vs Bubble (if other layers) */}
+          {activeLayer === 'clean' ? (
             <button
                 onClick={() => handleToolChange('brush')}
                 className={`flex-1 py-1 px-2 text-xs rounded-md transition-all flex items-center justify-center gap-1 whitespace-nowrap ${drawTool === 'brush' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
@@ -173,7 +168,23 @@ export const ControlPanel: React.FC = () => {
             >
                 <Brush size={12} /> Paint
             </button>
+          ) : (
+            <button
+                onClick={() => handleToolChange('bubble')}
+                className={`flex-1 py-1 px-2 text-xs rounded-md transition-all flex items-center justify-center gap-1 whitespace-nowrap ${drawTool === 'bubble' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+                title={t('toolBubble', lang)}
+            >
+                <MessageSquareDashed size={12} /> Bubble
+            </button>
           )}
+
+          <button
+            onClick={() => handleToolChange('mask')}
+            className={`flex-1 py-1 px-2 text-xs rounded-md transition-all flex items-center justify-center gap-1 whitespace-nowrap ${drawTool === 'mask' ? 'bg-red-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+            title={t('toolMask', lang)}
+          >
+            <Scan size={12} /> Mask
+          </button>
         </div>
 
         {/* Action Buttons Area */}
@@ -241,26 +252,6 @@ export const ControlPanel: React.FC = () => {
                             <Layers size={14} /> {t('scanAll', lang)}
                         </button>
                     </div>
-                    {/* Row 2: Inpainting Actions (Conditional: Enabled AND Auto-Inpaint ON) */}
-                    {aiConfig.enableInpainting && aiConfig.autoInpaintMasks && (
-                        <div className="grid grid-cols-2 gap-1 h-8 animate-fade-in-down">
-                            <button
-                                onClick={() => handleBatchInpaint(currentImage, true, concurrency)}
-                                disabled={!currentImage}
-                                className="bg-red-900/40 hover:bg-red-800/60 border border-red-800 text-red-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                                title={t('cleanCurrent', lang)}
-                            >
-                                <Eraser size={14} /> {t('cleanCurrent', lang)}
-                            </button>
-                            <button
-                                onClick={() => handleBatchInpaint(currentImage, false, concurrency)}
-                                className="bg-red-900/40 hover:bg-red-800/60 border border-red-800 text-red-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                                title={t('cleanAll', lang)}
-                            >
-                                <Eraser size={14} /> {t('cleanAll', lang)}
-                            </button>
-                        </div>
-                    )}
                 </>
               )}
 
@@ -278,72 +269,79 @@ export const ControlPanel: React.FC = () => {
 
               {drawTool === 'brush' && (
                   <div className="space-y-2 animate-fade-in-down">
-                      {/* Sub-tool Selection (Brush vs Bucket) */}
+                      {/* Sub-tool Selection (Brush vs Box) */}
                       <div className="flex bg-gray-800 p-0.5 rounded-lg border border-gray-700">
                            <button 
                                 onClick={() => setPaintMode('brush')}
                                 className={`flex-1 py-1 rounded-md text-xs flex items-center justify-center gap-1 transition-all ${paintMode === 'brush' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
-                                title="Freehand Brush"
+                                title="Freehand Brush (Alt+Click on canvas to pick color)"
                            >
-                               <Brush size={12}/> Brush
+                               <Brush size={12}/> Freehand
                            </button>
                            <button 
-                                onClick={() => setPaintMode('bucket')}
-                                className={`flex-1 py-1 rounded-md text-xs flex items-center justify-center gap-1 transition-all ${paintMode === 'bucket' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
-                                title="Fill Mask Box (Click red box)"
+                                onClick={() => setPaintMode('box')}
+                                className={`flex-1 py-1 rounded-md text-xs flex items-center justify-center gap-1 transition-all ${paintMode === 'box' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                                title="Box Tool (Drag to Create, Click to Edit)"
                            >
-                               <MousePointerClick size={12}/> Fill Box
+                               <Square size={12}/> Box Tool
                            </button>
                       </div>
 
-                      {/* Brush Size - Only show in Brush Mode */}
+                      {/* Brush Settings - Only show in Freehand Mode */}
                       {paintMode === 'brush' && (
-                        <div className="flex items-center gap-2 animate-fade-in">
-                            <span className="text-[10px] text-gray-400 w-12">{t('brushSize', lang)}</span>
-                            <input 
-                                type="range" min="1" max="100" 
-                                value={brushSize} onChange={(e) => setBrushSize(parseInt(e.target.value))}
-                                className="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
-                            />
-                            <span className="text-[10px] w-6 text-right text-gray-400">{brushSize}</span>
+                        <div className="space-y-2 animate-fade-in">
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-400 w-12">{t('brushSize', lang)}</span>
+                                <input 
+                                    type="range" min="1" max="100" 
+                                    value={brushSize} onChange={(e) => setBrushSize(parseInt(e.target.value))}
+                                    className="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                                />
+                                <span className="text-[10px] w-6 text-right text-gray-400">{brushSize}</span>
+                            </div>
+                            
+                            {/* Brush Color */}
+                            <div className="flex gap-1 items-center">
+                                <div className="relative flex-1">
+                                    <div className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"><Hash size={10}/></div>
+                                    <input 
+                                        type="text" 
+                                        value={brushColor.replace('#', '')}
+                                        onChange={(e) => setBrushColor(`#${e.target.value}`)}
+                                        className="w-full bg-gray-800 border border-gray-700 rounded h-6 pl-5 text-[10px] text-white uppercase font-mono focus:border-purple-500 outline-none"
+                                    />
+                                </div>
+                                
+                                {PRESET_BRUSH_COLORS.map(c => (
+                                    <button
+                                        key={c}
+                                        onClick={() => setBrushColor(c)}
+                                        className={`w-6 h-6 rounded border transition-all ${brushColor.toLowerCase() === c ? 'border-purple-500 ring-1 ring-purple-500/50' : 'border-gray-600 hover:scale-105'}`}
+                                        style={{ backgroundColor: c }}
+                                    />
+                                ))}
+                                
+                                <div className="relative w-6 h-6 rounded border border-gray-600 overflow-hidden shrink-0 cursor-pointer group">
+                                        <input 
+                                            type="color"
+                                            value={brushColor}
+                                            onChange={(e) => setBrushColor(e.target.value)}
+                                            className="absolute -top-2 -left-2 w-10 h-10 p-0 border-0 cursor-pointer"
+                                        />
+                                </div>
+                                <button onClick={handleEyedropper} className="w-6 h-6 flex items-center justify-center bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 text-gray-400" title={t('pickScreenColor', lang)}>
+                                    <Pipette size={12}/>
+                                </button>
+                            </div>
                         </div>
                       )}
-                      
-                      {/* Brush Color */}
-                      <div className="flex gap-1 items-center">
-                          <div className="relative flex-1">
-                             <div className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"><Hash size={10}/></div>
-                             <input 
-                                type="text" 
-                                value={brushColor.replace('#', '')}
-                                onChange={(e) => setBrushColor(`#${e.target.value}`)}
-                                className="w-full bg-gray-800 border border-gray-700 rounded h-6 pl-5 text-[10px] text-white uppercase font-mono focus:border-purple-500 outline-none"
-                             />
+
+                      {/* Box Mode Hint */}
+                      {paintMode === 'box' && (
+                          <div className="text-[10px] text-gray-400 text-center animate-fade-in p-1 bg-gray-800/50 rounded">
+                              Select a red box to see fill/clean options.
                           </div>
-                          
-                          {/* Presets */}
-                          {PRESET_BRUSH_COLORS.map(c => (
-                              <button
-                                key={c}
-                                onClick={() => setBrushColor(c)}
-                                className={`w-6 h-6 rounded border transition-all ${brushColor.toLowerCase() === c ? 'border-purple-500 ring-1 ring-purple-500/50' : 'border-gray-600 hover:scale-105'}`}
-                                style={{ backgroundColor: c }}
-                              />
-                          ))}
-                          
-                          {/* Picker */}
-                          <div className="relative w-6 h-6 rounded border border-gray-600 overflow-hidden shrink-0 cursor-pointer group">
-                                <input 
-                                    type="color"
-                                    value={brushColor}
-                                    onChange={(e) => setBrushColor(e.target.value)}
-                                    className="absolute -top-2 -left-2 w-10 h-10 p-0 border-0 cursor-pointer"
-                                />
-                          </div>
-                          <button onClick={handleEyedropper} className="w-6 h-6 flex items-center justify-center bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 text-gray-400" title={t('pickScreenColor', lang)}>
-                              <Pipette size={12}/>
-                          </button>
-                      </div>
+                      )}
                   </div>
               )}
             </>
@@ -384,7 +382,7 @@ export const ControlPanel: React.FC = () => {
               {isMerging ? <Loader2 className="animate-spin" size={16} /> : <FileStack size={16} />}
             </button>
             <button
-              onClick={() => currentImage && downloadSingleImage(currentImage)}
+              onClick={() => currentImage && downloadSingleImage(currentImage, getExportOptions())}
               disabled={!currentImage}
               className="p-2 text-gray-300 hover:text-white hover:bg-gray-800 rounded disabled:opacity-30 transition-colors"
               title={t('saveImage', lang)}

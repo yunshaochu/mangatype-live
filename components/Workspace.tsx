@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { BubbleLayer } from './BubbleLayer';
 import { RegionLayer } from './RegionLayer';
 import { HandleType } from '../types';
-import { Maximize, Layers, Image as ImageIcon, Eraser, Trash2, Brush, PaintBucket, MousePointerClick } from 'lucide-react';
+import { Maximize, Layers, Image as ImageIcon, Eraser, Trash2, Brush, MousePointerClick, Square } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 
@@ -23,7 +23,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
     setImages, currentId, setSelectedMaskId, setSelectedBubbleId,
     updateBubble, triggerAutoColorDetection,
     // Brush
-    brushColor, brushSize, setBrushColor, handlePaintSave, paintMode,
+    brushColor, brushSize, setBrushColor, handlePaintSave, paintMode, setPaintMode,
     // Layers
     activeLayer, setActiveLayer
   } = useProjectContext();
@@ -40,14 +40,22 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   // Determine display URL based strictly on Active Layer
   let displayUrl = currentImage ? (currentImage.originalUrl || currentImage.url) : '';
   let showBubbles = false;
-  let showMasks = drawTool === 'mask'; 
+  
+  // Show Masks if:
+  // 1. Tool is Mask
+  // 2. Tool is Brush AND Box Mode
+  let showMasks = drawTool === 'mask' || (drawTool === 'brush' && paintMode === 'box');
   
   // Determine if the "Clean" tab should be visible
-  const showCleanTab = !!currentImage?.inpaintedUrl || aiConfig.enableInpainting || drawTool === 'brush';
+  // Ensure it stays visible if it's currently selected (activeLayer === 'clean') to allow switching back.
+  const showCleanTab = !!currentImage?.inpaintedUrl || aiConfig.enableInpainting || drawTool === 'brush' || activeLayer === 'clean';
 
   // Determine if we should show the Paint Canvas
   // ONLY if tool is brush AND we are looking at the 'clean' layer
-  const showPaintCanvas = drawTool === 'brush' && activeLayer === 'clean';
+  // NOTE: If in Box mode, we don't draw on canvas with mouse, we manipulate boxes. 
+  // Actually, Freehand Brush needs canvas overlay. Box mode works with RegionLayers.
+  // So only show paint canvas if paintMode == 'brush'
+  const showPaintCanvas = drawTool === 'brush' && paintMode === 'brush' && activeLayer === 'clean';
 
   if (currentImage) {
       if (activeLayer === 'original') {
@@ -58,14 +66,13 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           displayUrl = currentImage.inpaintedUrl || currentImage.originalUrl || currentImage.url;
           showBubbles = false;
           // When painting, we might want to see masks to know where text was
-          if (drawTool === 'brush') showMasks = true; 
       } else if (activeLayer === 'final') {
           displayUrl = currentImage.inpaintedUrl || currentImage.originalUrl || currentImage.url;
           showBubbles = true;
       }
   }
 
-  // --- PAINTING LOGIC ---
+  // --- PAINTING LOGIC (Freehand Brush Only) ---
   
   // Initialize canvas with current image when entering brush mode
   useEffect(() => {
@@ -96,47 +103,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       };
   };
 
-  const fillRegion = (targetX: number, targetY: number, fillColor: string) => {
-      const canvas = paintCanvasRef.current;
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      // 1. Calculate click percentage coordinates
-      // targetX/Y are already scaled to canvas dimensions (from getCanvasCoords)
-      const clickXPct = (targetX / canvas.width) * 100;
-      const clickYPct = (targetY / canvas.height) * 100;
-
-      // 2. Find intersecting Mask Region
-      // We search in reverse to find the "top-most" one if overlaps exist, though usually masks don't overlap much.
-      // We check if the click point is inside the [center - width/2, center + width/2] box.
-      const targetMask = [...maskRegions].reverse().find(m => {
-          const left = m.x - m.width / 2;
-          const right = m.x + m.width / 2;
-          const top = m.y - m.height / 2;
-          const bottom = m.y + m.height / 2;
-          return clickXPct >= left && clickXPct <= right && clickYPct >= top && clickYPct <= bottom;
-      });
-
-      if (targetMask) {
-          // 3. Fill the rectangle
-          const x = (targetMask.x / 100) * canvas.width;
-          const y = (targetMask.y / 100) * canvas.height;
-          const w = (targetMask.width / 100) * canvas.width;
-          const h = (targetMask.height / 100) * canvas.height;
-
-          ctx.fillStyle = fillColor;
-          // Use Math.ceil/floor to avoid sub-pixel gaps? 
-          // Standard fillRect is usually fine, maybe slight expansion to cover anti-aliasing
-          ctx.fillRect(x - w/2, y - h/2, w, h);
-          
-          handlePaintSave(currentImage!.id, canvas.toDataURL('image/png'));
-      } else {
-          // Optional: Feedback that no box was clicked?
-          // For now, do nothing as requested "select a range (box) ... and turn it color"
-      }
-  };
-
   const handlePaintStart = (e: React.MouseEvent) => {
       if (!showPaintCanvas) return;
       
@@ -149,12 +115,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           const pixel = ctx.getImageData(x, y, 1, 1).data;
           const hex = "#" + ((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1);
           setBrushColor(hex);
-          return;
-      }
-
-      // FILL BOX TOOL
-      if (paintMode === 'bucket') {
-          fillRegion(x, y, brushColor);
           return;
       }
 
@@ -237,46 +197,39 @@ export const Workspace: React.FC<WorkspaceProps> = ({
                   inpaintedBase64: undefined,
                   inpaintingStatus: 'idle',
                   // Revert bubbles to white if they were transparent
-                  bubbles: img.bubbles.map(b => b.backgroundColor === 'transparent' ? { ...b, backgroundColor: '#ffffff' } : b)
+                  bubbles: img.bubbles.map(b => b.backgroundColor === 'transparent' ? { ...b, backgroundColor: '#ffffff' } : b),
+                  // Reset all masks cleaned status
+                  maskRegions: (img.maskRegions || []).map(m => ({ ...m, isCleaned: false }))
               };
           }));
       }
   };
 
   const handleSwitchLayer = (layer: 'original' | 'clean' | 'final') => {
-      setActiveLayer(layer);
-      if (layer !== 'clean' && drawTool === 'brush') {
-          setDrawTool('none');
+      if (layer === 'clean') {
+          // If switching TO clean layer from another layer, auto-select Paint -> Box tool
+          if (activeLayer !== 'clean') {
+              setDrawTool('brush');
+              setPaintMode('box');
+          } else {
+              // Already on clean layer: ensure 'bubble' tool is disabled if it was somehow active
+              if (drawTool === 'bubble') setDrawTool('none');
+          }
+      } else {
+          // If switching AWAY from clean layer (to original or final), and we were painting, reset tool
+          if (drawTool === 'brush') {
+              setDrawTool('none');
+          }
       }
+      setActiveLayer(layer);
   };
-
-  const maskImageSrc = currentImage.maskRefinedBase64 
-    ? (currentImage.maskRefinedBase64.startsWith('data:') ? currentImage.maskRefinedBase64 : `data:image/png;base64,${currentImage.maskRefinedBase64}`)
-    : '';
-
-  // Only show the overlay if: 
-  // 1. Inpainting enabled
-  // 2. Auto Inpaint Masks sub-switch is ON (New requirement)
-  // 3. Mask Tool active
-  // 4. Mask data exists
-  const showTextMask = aiConfig.enableInpainting && aiConfig.autoInpaintMasks && drawTool === 'mask' && !!maskImageSrc;
-
-  // Generate unique ID for SVG clip path
-  const clipPathId = `mask-clip-${currentImage.id}`;
 
   return (
     <div className="flex-1 overflow-auto flex items-center justify-center p-8 relative bg-[#1a1a1a]">
       
       {/* Layer Tabs - Top Left */}
       <div className="absolute top-4 left-4 z-50 flex flex-col gap-2">
-          {drawTool === 'brush' ? (
-              <div className="flex bg-purple-900/90 backdrop-blur border border-purple-500/50 p-2 rounded-lg shadow-xl text-xs text-purple-200 font-bold animate-pulse">
-                  {paintMode === 'bucket' ? <MousePointerClick size={14} className="mr-2"/> : <Brush size={14} className="mr-2"/>} 
-                  {paintMode === 'bucket' ? 'Click Box to Fill' : 'Painting Mode'}
-                  <span className="ml-2 font-normal opacity-70 hidden sm:inline">(Alt+Click to pick color)</span>
-              </div>
-          ) : null}
-
+          
           <div className="flex bg-gray-900/90 backdrop-blur border border-gray-700 p-1 rounded-lg shadow-xl">
                 <button
                     onClick={() => handleSwitchLayer('original')}
@@ -302,7 +255,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
                 </button>
           </div>
 
-          {/* Delete Inpaint Button - Only show if layer exists and NOT currently painting (to avoid confusion) or allow user to clear while painting? Let's allow. */}
           {currentImage.inpaintedUrl && drawTool !== 'brush' && (
               <button
                 onClick={handleDeleteInpaintLayer}
@@ -320,7 +272,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
         {showPaintCanvas ? (
             <canvas 
                 ref={paintCanvasRef}
-                className={`max-h-[90vh] max-w-full block select-none relative z-20 ${paintMode === 'bucket' ? 'cursor-pointer' : 'cursor-crosshair'}`} // Canvas needs z-index to be clickable
+                className={`max-h-[90vh] max-w-full block select-none relative z-20 cursor-crosshair`} 
                 onMouseDown={handlePaintStart}
                 onMouseMove={handlePaintMove}
                 onMouseUp={handlePaintEnd}
@@ -336,67 +288,17 @@ export const Workspace: React.FC<WorkspaceProps> = ({
 
         {/* 
             Overlay Container 
-            KEY FIX: pointer-events-none ensures clicks pass through to the canvas when not interacting with bubbles/masks.
         */}
         <div className="absolute inset-0 pointer-events-none" style={{ containerType: 'inline-size' } as React.CSSProperties}>
           
-          {/* Text Mask Overlay (Visible when Inpainting Enabled, AutoInpaint ON, and in Mask Mode) */}
-          {showTextMask && (
-              <>
-                {/* 
-                    Define a clipPath dynamically based on the mask regions (Red Boxes).
-                    This ensures the orange text mask is ONLY visible inside the red boxes.
-                */}
-                <svg width="0" height="0" className="absolute">
-                    <defs>
-                        <clipPath id={clipPathId} clipPathUnits="objectBoundingBox">
-                            {maskRegions.length > 0 ? (
-                                maskRegions.map(m => {
-                                    // Convert center x/y + width/height % to top-left normalized coordinates (0-1)
-                                    // m.x is center percentage (0-100) -> (m.x/100) - (m.width/100)/2
-                                    const x = (m.x - m.width/2) / 100;
-                                    const y = (m.y - m.height/2) / 100;
-                                    const w = m.width / 100;
-                                    const h = m.height / 100;
-                                    return (
-                                        <rect key={m.id} x={x} y={y} width={w} height={h} />
-                                    );
-                                })
-                            ) : (
-                                // If no regions, show nothing
-                                <rect x="0" y="0" width="0" height="0" />
-                            )}
-                        </clipPath>
-                    </defs>
-                </svg>
-
-                <img 
-                    src={maskImageSrc}
-                    alt="mask overlay"
-                    className="absolute inset-0 w-full h-full object-fill pointer-events-none z-20 opacity-80"
-                    style={{
-                        mixBlendMode: 'screen',
-                        filter: 'sepia(1) saturate(500%) hue-rotate(-45deg)',
-                        clipPath: `url(#${clipPathId})`, // Apply the dynamic clip
-                        WebkitClipPath: `url(#${clipPathId})`
-                    }}
-                />
-              </>
-          )}
-
           {/* Main Interaction Layer (Bubble/Mask creation/resize) - Only active if NOT painting */}
           {!showPaintCanvas && (
               <div
-                // KEY FIX: pointer-events-auto re-enables interaction for this specific layer
                 className={`absolute inset-0 z-0 pointer-events-auto ${drawTool !== 'none' ? 'cursor-crosshair' : 'cursor-default'}`}
                 onMouseDown={onCanvasMouseDown}
               />
           )}
 
-          {/* 
-             Pass isInteractive prop to disable bubble selection while painting 
-             so you don't accidentally drag a bubble when trying to paint over it.
-          */}
           {showMasks && maskRegions.map(region => (
             <RegionLayer
               key={region.id}

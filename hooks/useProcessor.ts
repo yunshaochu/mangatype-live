@@ -107,12 +107,10 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
     const runInpaintingForImage = async (img: ImageState, signal?: AbortSignal) => {
         if (!aiConfig.enableInpainting || !aiConfig.inpaintingUrl) return;
         
-        // Check availability of masks or refined pixel mask
+        // Check availability of masks
         const hasMasks = img.maskRegions && img.maskRegions.length > 0;
-        // Check if we are allowed to use refined masks AND if they exist
-        const canUseRefinedMask = aiConfig.autoInpaintMasks && !!img.maskRefinedBase64;
         
-        if (!hasMasks && !canUseRefinedMask) return;
+        if (!hasMasks) return;
 
         setImages(prev => prev.map(p => p.id === img.id ? { ...p, inpaintingStatus: 'processing' } : p));
 
@@ -120,8 +118,8 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             // Iterative Inpaint: Use existing inpainted image as source if available, otherwise original
             const sourceBase64 = img.inpaintedBase64 || img.originalBase64 || img.base64;
             
-            // Generate mask: uses refined pixel mask if available (for auto mode), falls back to rects
-            const maskBase64 = await generateInpaintMask(img, { useRefinedMask: aiConfig.autoInpaintMasks });
+            // Generate mask: always use red boxes (masks), refined mask option is deprecated/removed
+            const maskBase64 = await generateInpaintMask(img, { useRefinedMask: false });
             
             const cleanedBase64Raw = await inpaintImage(
                 aiConfig.inpaintingUrl,
@@ -232,11 +230,10 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
         if (!aiConfig.enableInpainting) return;
 
         if (onlyCurrent && currentImage) {
-            const canUseRefined = aiConfig.autoInpaintMasks && !!currentImage.maskRefinedBase64;
             const canUseRects = currentImage.maskRegions && currentImage.maskRegions.length > 0;
 
-            if (!canUseRefined && !canUseRects) {
-                alert("No contours or mask regions found on current image.");
+            if (!canUseRects) {
+                alert("No mask regions found on current image.");
                 return;
             }
             const controller = new AbortController();
@@ -252,7 +249,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             const queue = images.filter(img => 
                 !img.skipped && 
                 // Only process images that have a valid mask source based on config
-                ( (aiConfig.autoInpaintMasks && img.maskRefinedBase64) || (img.maskRegions && img.maskRegions.length > 0) ) &&
+                (img.maskRegions && img.maskRegions.length > 0) &&
                 (img.inpaintingStatus === 'idle' || img.inpaintingStatus === 'error')
             );
             
@@ -329,7 +326,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                             x: r.x, y: r.y, width: r.width, height: r.height
                         }));
 
-                        // Process Mask (Refined Pixel Mask)
+                        // Process Mask (Refined Pixel Mask) - We store it but don't use it for auto-inpaint anymore
                         const maskRefinedBase64 = data.maskBase64;
 
                         setImages(prev => prev.map(p => p.id === img.id ? { 

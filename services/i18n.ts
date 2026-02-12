@@ -128,8 +128,6 @@ export const translations = {
     inpaintingUrl: "API 地址",
     inpaintingModel: "模型名称",
     inpaintingModelHint: "默认为 `lama`。其他可用模型: `manga`, `mat`, `migan`。",
-    autoInpaint: "自动擦除橙色文字轮廓",
-    autoInpaintHint: "开启后，使用精确的文字轮廓进行擦除（如果可用），否则回退到红框。",
     // New Sidebar Localization
     textRemoval: "文字去除 (Inpaint)",
     inpaintArea: "擦除选中区域",
@@ -333,8 +331,6 @@ export const translations = {
     inpaintingUrl: "API URL",
     inpaintingModel: "Model Name",
     inpaintingModelHint: "Default is `lama`. Others: `manga`, `mat`, `migan`.",
-    autoInpaint: "Auto Inpaint Text Contours (Orange)",
-    autoInpaintHint: "If enabled, batch inpaint uses precise orange text contours (if available) instead of red boxes.",
     // New Sidebar Localization
     textRemoval: "Text Removal (Inpaint)",
     inpaintArea: "Inpaint Selected Area",

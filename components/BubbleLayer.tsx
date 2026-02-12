@@ -1,5 +1,4 @@
 
-
 import React, { useRef, useEffect } from 'react';
 import { Bubble, AIConfig, HandleType } from '../types';
 import { X } from 'lucide-react';
@@ -136,7 +135,7 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
           fontWeight: 'bold',
           color: bubble.color,
           writingMode: bubble.isVertical ? 'vertical-rl' : 'horizontal-tb',
-          whiteSpace: 'pre-wrap',
+          whiteSpace: 'pre',
           lineHeight: '1.5',
           textAlign: bubble.isVertical ? 'left' : 'center',
           WebkitTextStroke: '3px #ffffff',

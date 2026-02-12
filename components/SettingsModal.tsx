@@ -1,5 +1,4 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import { AIConfig, AIProvider, CustomMessage } from '../types';
 import { Settings, X, RefreshCw, CheckCircle, AlertCircle, Server, RotateCcw, Type, ScanText, Globe, RotateCw, ChevronDown, Check, MessageSquarePlus, Trash2, Plus, Scan, Pipette, Zap, Bot, Layout, Cpu, FileText, Magnet, Paintbrush, Square, Circle, Box, Eye, PenTool, Eraser, MoveHorizontal } from 'lucide-react';
@@ -648,25 +647,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                                                 className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-xs text-white focus:border-cyan-500 outline-none placeholder-gray-600 font-mono"
                                             />
                                             <p className="text-[10px] text-gray-500">{t('inpaintingModelHint', lang)}</p>
-                                        </div>
-
-                                        {/* Sub Switch: Auto Inpaint */}
-                                        <div className="pt-2 border-t border-gray-700/50">
-                                             <div className="flex justify-between items-center">
-                                                <div>
-                                                    <h5 className="text-xs font-medium text-gray-300">{t('autoInpaint', lang)}</h5>
-                                                    <p className="text-[10px] text-gray-500 mt-0.5">{t('autoInpaintHint', lang)}</p>
-                                                </div>
-                                                <label className="relative inline-flex items-center cursor-pointer">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        className="sr-only peer"
-                                                        checked={localConfig.autoInpaintMasks || false}
-                                                        onChange={(e) => setLocalConfig({...localConfig, autoInpaintMasks: e.target.checked})}
-                                                    />
-                                                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-cyan-600"></div>
-                                                </label>
-                                             </div>
                                         </div>
                                     </div>
                                 )}

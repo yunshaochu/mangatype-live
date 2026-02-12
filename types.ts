@@ -27,6 +27,7 @@ export interface MaskRegion {
   y: number;
   width: number;
   height: number;
+  isCleaned?: boolean; // New: True if this region has been Inpainted or Filled
 }
 
 export interface DetectedBubble {
@@ -115,7 +116,7 @@ export interface AIConfig {
   enableInpainting?: boolean;
   inpaintingUrl?: string;
   inpaintingModel?: string;
-  autoInpaintMasks?: boolean; // Renamed logic: Auto inpaint uses polygons if available
+  // autoInpaintMasks Removed per user request
 
   language: 'zh' | 'en'; 
   allowAiRotation?: boolean; 
