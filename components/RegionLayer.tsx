@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { MaskRegion, HandleType } from '../types';
 import { X } from 'lucide-react';
@@ -9,9 +10,12 @@ interface RegionLayerProps {
   onMouseDown: (e: React.MouseEvent) => void;
   onResizeStart: (e: React.MouseEvent, handle: HandleType) => void;
   onDelete: () => void;
+  isInteractive?: boolean;
 }
 
-export const RegionLayer: React.FC<RegionLayerProps> = React.memo(({ region, isSelected, onMouseDown, onResizeStart, onDelete }) => {
+export const RegionLayer: React.FC<RegionLayerProps> = React.memo(({ 
+    region, isSelected, onMouseDown, onResizeStart, onDelete, isInteractive = true 
+}) => {
     const regionHandleStyle = (cursor: string): React.CSSProperties => ({
         ...handleStyle(cursor),
         borderColor: '#ef4444', 
@@ -19,8 +23,8 @@ export const RegionLayer: React.FC<RegionLayerProps> = React.memo(({ region, isS
 
     return (
         <div
-            onMouseDown={onMouseDown}
-            className={`absolute cursor-move select-none z-30 group`} 
+            onMouseDown={isInteractive ? onMouseDown : undefined}
+            className={`absolute select-none z-30 group ${isInteractive ? 'cursor-move pointer-events-auto' : 'pointer-events-none'}`} 
             style={{
                 top: `${region.y}%`,
                 left: `${region.x}%`,
@@ -31,10 +35,10 @@ export const RegionLayer: React.FC<RegionLayerProps> = React.memo(({ region, isS
         >
             <div className={`absolute inset-0 border-2 border-dashed border-red-500 bg-red-500/10 pointer-events-none transition-opacity ${isSelected ? 'opacity-100' : 'opacity-60 hover:opacity-80'}`}></div>
 
-            {isSelected && (
+            {isSelected && isInteractive && (
                 <>
                     <div 
-                        className="absolute -top-12 left-1/2 -translate-x-1/2 cursor-pointer z-40 transform hover:scale-110 transition-transform"
+                        className="absolute -top-12 left-1/2 -translate-x-1/2 cursor-pointer z-40 transform hover:scale-110 transition-transform pointer-events-auto"
                         onMouseDown={(e) => { e.stopPropagation(); onDelete(); }}
                     >
                         <div className="bg-red-500 text-white rounded-full p-1.5 shadow-md border-2 border-white hover:bg-red-600">
@@ -54,5 +58,5 @@ export const RegionLayer: React.FC<RegionLayerProps> = React.memo(({ region, isS
         </div>
     );
 }, (prev, next) => {
-    return prev.isSelected === next.isSelected && prev.region === next.region;
+    return prev.isSelected === next.isSelected && prev.region === next.region && prev.isInteractive === next.isInteractive;
 });

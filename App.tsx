@@ -1,4 +1,5 @@
 
+
 import React, { useRef, useEffect } from 'react';
 import { BubbleEditor } from './components/BubbleEditor';
 import { SettingsModal } from './components/SettingsModal';
@@ -8,7 +9,7 @@ import { Gallery } from './components/Gallery';
 import { ControlPanel } from './components/ControlPanel';
 import { Workspace } from './components/Workspace';
 import { Bubble } from './types';
-import { Settings, Undo2, Redo2, CircleHelp, Scan, MessageSquareDashed } from 'lucide-react';
+import { Settings, Undo2, Redo2, CircleHelp, Scan, MessageSquareDashed, Eraser, Loader2, RotateCcw } from 'lucide-react';
 import { t } from './services/i18n';
 import { useCanvasInteraction } from './hooks/useCanvasInteraction';
 import { useProjectContext } from './contexts/ProjectContext';
@@ -32,7 +33,12 @@ const App: React.FC = () => {
     showHelp, setShowHelp,
     showManualJson, setShowManualJson,
     setAiConfig,
-    drawTool // Added drawTool
+    drawTool, 
+
+    // Inpainting
+    handleInpaint,
+    isInpainting,
+    handleRestoreRegion
   } = useProjectContext();
 
   const bubbles = currentImage?.bubbles || [];
@@ -129,11 +135,46 @@ const App: React.FC = () => {
       <aside className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col z-20 shadow-2xl shrink-0">
          {selectedBubble && currentId ? (
              <BubbleEditor />
-         ) : selectedMaskId ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-gray-600 select-none p-6 text-center">
-                   <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center mb-4 border border-red-500/30"><Scan size={32} className="text-red-500"/></div>
-                   <h3 className="text-sm font-semibold text-gray-300">{t('toolMask', lang)}</h3>
-                   <p className="text-xs mt-2 text-gray-500 leading-relaxed">{t('translateRegionsDesc', lang)}<br/><br/>{t('clickBubbleHint', lang)}</p>
+         ) : selectedMaskId && currentId ? (
+              <div className="flex-1 flex flex-col text-gray-600 select-none p-4">
+                   <div className="flex flex-col items-center justify-center p-6 text-center border-b border-gray-800">
+                        <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center mb-4 border border-red-500/30">
+                            <Scan size={32} className="text-red-500"/>
+                        </div>
+                        <h3 className="text-sm font-semibold text-gray-300">{t('toolMask', lang)}</h3>
+                        <p className="text-xs mt-2 text-gray-500 leading-relaxed">{t('translateRegionsDesc', lang)}</p>
+                   </div>
+                   
+                   <div className="p-6 space-y-4">
+                       <div className="text-xs font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+                           <Eraser size={12} /> {t('textRemoval', lang)}
+                       </div>
+                       
+                       {/* Inpaint Button */}
+                       {aiConfig.enableInpainting && (
+                           <button 
+                               onClick={() => handleInpaint(currentId, selectedMaskId)}
+                               disabled={isInpainting}
+                               className="w-full py-3 bg-red-600 hover:bg-red-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-red-900/20 flex items-center justify-center gap-2 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                           >
+                               {isInpainting ? <Loader2 size={16} className="animate-spin" /> : <Eraser size={16} />}
+                               {t('inpaintArea', lang)}
+                           </button>
+                       )}
+
+                       {/* Restore Button */}
+                       <button
+                           onClick={() => handleRestoreRegion(currentId, selectedMaskId)}
+                           className="w-full py-3 bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold rounded-xl shadow-lg shadow-gray-900/20 flex items-center justify-center gap-2 transition-all"
+                       >
+                           <RotateCcw size={16} />
+                           {t('restoreArea', lang)}
+                       </button>
+
+                       <p className="text-[10px] text-gray-500 text-center">
+                           {t('inpaintDesc', lang)}
+                       </p>
+                   </div>
               </div>
          ) : (
              <div className="flex-1 flex flex-col items-center justify-center text-gray-600 select-none p-6 text-center"><div className="w-16 h-16 bg-gray-800/50 rounded-full flex items-center justify-center mb-4"><MessageSquareDashed size={32} className="opacity-50"/></div><h3 className="text-sm font-semibold text-gray-500">{t('noBubbleSelected', lang)}</h3><p className="text-xs mt-2 max-w-[200px]">{t('clickBubbleHint', lang)}</p></div>

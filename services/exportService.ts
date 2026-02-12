@@ -1,5 +1,4 @@
 
-
 import { ImageState, Bubble, MaskRegion } from '../types';
 import JSZip from 'jszip';
 
@@ -13,394 +12,402 @@ const escapeHtml = (unsafe: string) => {
          .replace(/'/g, "&#039;");
 };
 
-// Helper to load an image from a source (URL or Base64) with error handling
-const loadImage = (src: string): Promise<HTMLImageElement> => {
+// Helper to load image object from URL
+const loadImage = (url: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
         const img = new Image();
-        img.crossOrigin = "anonymous";
+        img.crossOrigin = "Anonymous";
         img.onload = () => resolve(img);
-        img.onerror = (e) => reject(new Error("Failed to load image"));
-        img.src = src;
+        img.onerror = reject;
+        img.src = url;
     });
 };
 
-// Helper to convert RGB to Hex
-const rgbToHex = (r: number, g: number, b: number) => {
-    return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
-};
-
 /**
- * Detects the dominant color (Mode/Voting) in the SURROUNDING EDGE of the region.
- * Instead of sampling the inside (which contains text), we sample a "doughnut" shape
- * around the bubble to find the background color it sits on.
+ * Detects the background color of a bubble region.
+ * Uses canvas to sample pixels from the original image.
  */
 export const detectBubbleColor = async (
-    imageSrc: string, 
-    xPct: number, 
-    yPct: number, 
-    wPct: number, 
-    hPct: number
+    imageUrl: string, 
+    x: number, y: number, width: number, height: number
 ): Promise<string> => {
     try {
-        const img = await loadImage(imageSrc);
+        const img = await loadImage(imageUrl);
         const canvas = document.createElement('canvas');
-        // We don't need full resolution for color sampling, keep it manageable
-        const maxDim = 1024; 
-        let scale = 1;
-        if (img.width > maxDim || img.height > maxDim) {
-            scale = Math.min(maxDim / img.width, maxDim / img.height);
-        }
-        
-        canvas.width = img.width * scale;
-        canvas.height = img.height * scale;
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
         if (!ctx) return '#ffffff';
 
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
 
-        // 1. Calculate the Inner Box (The Bubble itself) in pixels
-        const innerCX = (xPct / 100) * canvas.width;
-        const innerCY = (yPct / 100) * canvas.height;
-        const innerW = Math.max(1, (wPct / 100) * canvas.width);
-        const innerH = Math.max(1, (hPct / 100) * canvas.height);
-        
-        const innerLeft = Math.floor(innerCX - innerW / 2);
-        const innerTop = Math.floor(innerCY - innerH / 2);
-        const innerRight = innerLeft + innerW;
-        const innerBottom = innerTop + innerH;
+        // Convert percentages to pixels
+        const bx = (x / 100) * img.width;
+        const by = (y / 100) * img.height;
+        const bw = (width / 100) * img.width;
+        const bh = (height / 100) * img.height;
 
-        // 2. Calculate the Outer Box (Expanded area to sample)
-        // Expand by 20% of the dimensions, but at least a few pixels
-        const expandX = Math.max(5, innerW * 0.2);
-        const expandY = Math.max(5, innerH * 0.2);
+        // Sample a few points around the edges of the defined box to guess the background
+        // We use inner edges to avoid picking up the border or outside content
+        const samplePoints = [
+            { x: bx - bw/2 + bw*0.1, y: by - bh/2 + bh*0.1 }, // Top Left
+            { x: bx + bw/2 - bw*0.1, y: by - bh/2 + bh*0.1 }, // Top Right
+            { x: bx - bw/2 + bw*0.1, y: by + bh/2 - bh*0.1 }, // Bottom Left
+            { x: bx + bw/2 - bw*0.1, y: by + bh/2 - bh*0.1 }, // Bottom Right
+        ];
 
-        const outerLeft = Math.max(0, Math.floor(innerLeft - expandX));
-        const outerTop = Math.max(0, Math.floor(innerTop - expandY));
-        const outerRight = Math.min(canvas.width, Math.ceil(innerRight + expandX));
-        const outerBottom = Math.min(canvas.height, Math.ceil(innerBottom + expandY));
-        
-        const outerW = outerRight - outerLeft;
-        const outerH = outerBottom - outerTop;
+        let r = 0, g = 0, b = 0, count = 0;
 
-        if (outerW <= 0 || outerH <= 0) return '#ffffff';
-
-        // 3. Get pixel data for the Outer Box
-        const imageData = ctx.getImageData(outerLeft, outerTop, outerW, outerH);
-        const data = imageData.data;
-        
-        const colorCounts: Record<string, number> = {};
-        let maxCount = 0;
-        let dominantColor = '#ffffff';
-
-        // 4. Iterate pixels
-        // Sample step can be larger for performance
-        const step = 4; 
-        
-        for (let y = 0; y < outerH; y += step) {
-            for (let x = 0; x < outerW; x += step) {
-                // Calculate absolute position of this pixel
-                const absX = outerLeft + x;
-                const absY = outerTop + y;
-
-                // 5. CRITICAL: EDGE SAMPLING LOGIC
-                // If the pixel is INSIDE the Inner Box, SKIP IT.
-                // We only want pixels that are in the expanded margin.
-                if (absX > innerLeft && absX < innerRight && absY > innerTop && absY < innerBottom) {
-                    continue;
-                }
-
-                const i = (y * outerW + x) * 4;
-                
-                const rRaw = data[i];
-                const gRaw = data[i + 1];
-                const bRaw = data[i + 2];
-                const alpha = data[i + 3];
-
-                if (alpha < 128) continue; // Skip transparent
-
-                // Quantize colors to group similar shades (e.g., slightly different whites)
-                // Round to nearest 16
-                const r = Math.round(rRaw / 16) * 16;
-                const g = Math.round(gRaw / 16) * 16;
-                const b = Math.round(bRaw / 16) * 16;
-
-                const key = `${r},${g},${b}`;
-                colorCounts[key] = (colorCounts[key] || 0) + 1;
-
-                if (colorCounts[key] > maxCount) {
-                    maxCount = colorCounts[key];
-                    // Clamp RGB values to valid range 0-255 after rounding
-                    dominantColor = rgbToHex(
-                        Math.min(255, r), 
-                        Math.min(255, g), 
-                        Math.min(255, b)
-                    );
-                }
+        samplePoints.forEach(p => {
+            if (p.x >= 0 && p.x < img.width && p.y >= 0 && p.y < img.height) {
+                const data = ctx.getImageData(p.x, p.y, 1, 1).data;
+                r += data[0];
+                g += data[1];
+                b += data[2];
+                count++;
             }
-        }
+        });
 
-        return dominantColor;
+        if (count === 0) return '#ffffff';
 
+        r = Math.round(r / count);
+        g = Math.round(g / count);
+        b = Math.round(b / count);
+
+        // Convert RGB to Hex
+        return "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
     } catch (e) {
-        console.warn("Color detection failed, defaulting to white", e);
+        console.warn("Color detection failed, defaulting to white.", e);
         return '#ffffff';
     }
 };
 
 /**
- * Generates a base64 image where only the content inside maskRegions is visible.
- * Everything else is painted white.
+ * Generates an image where only the content inside mask regions is visible.
+ * Everything else is white. Used for "Masked Image Mode" in detection.
  */
-export const generateMaskedImage = async (imageState: ImageState): Promise<string> => {
-    if (!imageState.maskRegions || imageState.maskRegions.length === 0) {
-        return imageState.base64;
-    }
-
-    const { width, height, maskRegions } = imageState;
+export const generateMaskedImage = async (image: ImageState): Promise<string> => {
+    const img = await loadImage(image.originalUrl || image.url);
     const canvas = document.createElement('canvas');
-    canvas.width = Math.floor(width);
-    canvas.height = Math.floor(height);
+    canvas.width = img.width;
+    canvas.height = img.height;
     const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error("No Context");
+    if (!ctx) throw new Error("Canvas context failed");
 
-    // 1. Fill entire canvas with white
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, width, height);
+    // 1. Fill background with white
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // 2. Load original image
-    const bgSrc = imageState.url || `data:image/png;base64,${imageState.base64}`;
-    const imgBg = await loadImage(bgSrc);
-
-    // 3. Draw ONLY the regions specified by masks
-    // Iterate through masks, and for each mask, copy that specific rectangle 
-    // from the source image to the destination canvas.
-    for (const region of maskRegions) {
-        const rx = width * (region.x / 100);
-        const ry = height * (region.y / 100);
-        const rw = width * (region.width / 100);
-        const rh = height * (region.height / 100);
-        
-        // Calculate Top-Left from Center-based coordinates
-        const tlX = rx - rw / 2;
-        const tlY = ry - rh / 2;
-
-        ctx.drawImage(
-            imgBg, 
-            tlX, tlY, rw, rh, // Source rect
-            tlX, tlY, rw, rh  // Dest rect (same position)
-        );
-    }
-
-    // 4. Return as base64
-    return new Promise((resolve, reject) => {
-        // Use JPEG for smaller size sent to API
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-        // Strip prefix if needed by the consumer, but usually it's stripped later
-        resolve(dataUrl); 
-    });
-};
-
-export const compositeImage = async (imageState: ImageState): Promise<Blob | null> => {
-    const { width, height, bubbles } = imageState;
-    
-    // 1. Prepare HTML for bubbles
-    const bubblesHtml = bubbles.map(b => {
-       const left = width * (b.x / 100);
-       const top = height * (b.y / 100);
-       const w = width * (b.width / 100);
-       const h = height * (b.height / 100);
-       const fontSize = width * (b.fontSize * 0.02); 
-       
-       const fontStack = b.fontFamily === 'zhimang' ? "'Zhi Mang Xing', cursive" 
-                   : b.fontFamily === 'mashan' ? "'Ma Shan Zheng', cursive" 
-                   : "'Noto Sans SC', sans-serif";
-       
-       // Calculate dynamic shape styles
-       // Fallback logic handled in App.tsx mainly, but here we need defaults if not present
-       const shape = b.maskShape || 'ellipse';
-       const radiusVal = b.maskCornerRadius !== undefined ? b.maskCornerRadius : 15;
-       const featherVal = b.maskFeather !== undefined ? b.maskFeather : 10;
-
-       let borderRadius = '0%';
-       if (shape === 'ellipse') borderRadius = '50%';
-       else if (shape === 'rounded') borderRadius = `${radiusVal}%`;
-
-       // Calculate feathering
-       // Since we are exporting to canvas via SVG, we can use absolute pixel values for consistency with screen logic
-       // In App.tsx we used calc(cqw), here we have actual 'w' in pixels.
-       // App logic: calc(${featherVal * 0.15}cqw) ~ 0.15% of width per feather point
-       const blurPx = w * (featherVal * 0.0015) * 10; // Approx logic to match screen appearance
-       const spreadPx = w * (featherVal * 0.0008) * 10;
-
-       const safeText = escapeHtml(b.text);
-
-       // --- THE FIX (VERSION 3) ---
-       // 1. Sacrificial Line: Prepend a newline '\n' if vertical. 
-       //    The canvas/foreignObject bug mangles the first column (rightmost).
-       //    We feed it an empty line to eat the bug.
-       const renderText = b.isVertical ? `\n${safeText}` : safeText;
-
-       // 2. Geometric Correction:
-       const verticalFixStyle = b.isVertical ? 'transform: translateX(0.75em);' : '';
-
-       // Stroke logic: White stroke by default for better visibility
-       const strokeStyle = `
-         -webkit-text-stroke: 4px #ffffff; 
-         paint-order: stroke fill;
-       `;
-
-       return `
-        <div style="
-            position: absolute;
-            top: ${top}px;
-            left: ${left}px;
-            width: ${w}px;
-            height: ${h}px;
-            transform: translate(-50%, -50%) rotate(${b.rotation}deg);
-            z-index: 10;
-        ">
-            <!-- Mask (Background) -->
-            <div style="
-                position: absolute;
-                top: 0; left: 0; width: 100%; height: 100%;
-                background-color: ${b.backgroundColor};
-                border-radius: ${borderRadius};
-                box-shadow: ${(b.backgroundColor === 'transparent' || featherVal <= 0) ? 'none' : `0 0 ${blurPx}px ${spreadPx}px ${b.backgroundColor}`};
-                z-index: 1;
-            "></div>
-            
-            <!-- Text Content (Foreground) -->
-            <!-- Flattened structure + TranslateX Fix -->
-            <div style="
-                position: absolute;
-                top: 0; left: 0; width: 100%; height: 100%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                writing-mode: ${b.isVertical ? 'vertical-rl' : 'horizontal-tb'};
-                font-family: ${fontStack};
-                font-size: ${fontSize}px;
-                font-weight: bold;
-                color: ${b.color};
-                line-height: 1.5;
-                text-align: ${b.isVertical ? 'left' : 'center'};
-                white-space: pre-wrap;
-                z-index: 2;
-                ${verticalFixStyle}
-                ${strokeStyle}
-            ">
-                ${renderText}
-            </div>
-        </div>
-       `;
-    }).join('');
-
-    // 2. Construct SVG Overlay (Transparent background, only bubbles)
-    // NOTE: We do NOT embed the background image here to avoid "Tainted Canvas" security errors.
-    const svgXml = `
-    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
-        <foreignObject width="100%" height="100%">
-            <div xmlns="http://www.w3.org/1999/xhtml" style="position: relative; width: 100%; height: 100%;">
-                ${bubblesHtml}
-            </div>
-        </foreignObject>
-    </svg>
-    `;
-
-    try {
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.floor(width);
-        canvas.height = Math.floor(height);
-        const ctx = canvas.getContext('2d');
-        if(!ctx) throw new Error("No Context");
-
-        // 3. Draw Background Image
-        // We use the blob URL (imageState.url) directly. It is faster and safer than embedding base64 in SVG.
-        // We fallback to base64 if url is missing (though in this app structure it shouldn't be).
-        const bgSrc = imageState.url || `data:image/png;base64,${imageState.base64}`;
-        const imgBg = await loadImage(bgSrc);
-        ctx.drawImage(imgBg, 0, 0, width, height);
-
-        // 4. Draw SVG Overlay
-        // Encode SVG as Data URI.
-        const svgSrc = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgXml);
-        const imgSvg = await loadImage(svgSrc);
-        ctx.drawImage(imgSvg, 0, 0);
-
-        // 5. Export
-        return new Promise((resolve, reject) => {
-            try {
-                canvas.toBlob(blob => {
-                    if (blob) resolve(blob);
-                    else reject(new Error("Canvas toBlob failed (likely tainted)"));
-                }, 'image/png');
-            } catch (e) {
-                reject(e);
-            }
+    // 2. Draw ONLY the regions inside masks
+    if (image.maskRegions && image.maskRegions.length > 0) {
+        ctx.save();
+        ctx.beginPath();
+        image.maskRegions.forEach(m => {
+             const x = (m.x / 100) * canvas.width;
+             const y = (m.y / 100) * canvas.height;
+             const w = (m.width / 100) * canvas.width;
+             const h = (m.height / 100) * canvas.height;
+             // Draw rect centered at x,y
+             ctx.rect(x - w/2, y - h/2, w, h);
         });
-
-    } catch (e) {
-        console.error("Composite Error:", e);
-        throw e;
+        ctx.clip();
+        ctx.drawImage(img, 0, 0);
+        ctx.restore();
+    } else {
+        // Fallback: return original if no masks found (safer default)
+        ctx.drawImage(img, 0, 0);
     }
+
+    return canvas.toDataURL('image/jpeg', 0.9);
 };
 
-export const downloadSingleImage = async (imageState: ImageState) => {
-  try {
-      const blob = await compositeImage(imageState);
-      if (!blob) return;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `typeset_${imageState.name.replace(/\.[^/.]+$/, "")}.png`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-  } catch (e) {
-      console.error("Download failed", e);
-      alert("Failed to generate image. See console for details.");
-  }
-};
+/**
+ * Generates a black/white mask for inpainting.
+ * White pixels = area to inpaint (erase).
+ * Black pixels = area to keep.
+ */
+export const generateInpaintMask = async (image: ImageState, options?: { specificMaskId?: string, useRefinedMask?: boolean }): Promise<string> => {
+    const w = image.width;
+    const h = image.height;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error("Canvas context failed");
 
-export const downloadAllAsZip = async (
-    images: ImageState[], 
-    onProgress?: (current: number, total: number) => void
-) => {
-  const zip = new JSZip();
-  const folder = zip.folder("typeset_manga");
-  let successCount = 0;
-  const total = images.length;
+    const specificMaskId = options?.specificMaskId;
+    const useRefinedMask = options?.useRefinedMask ?? false;
 
-  for (let i = 0; i < total; i++) {
-    const img = images[i];
-    // Notify progress: "Processing i+1 out of total"
-    if (onProgress) onProgress(i + 1, total);
+    // 1. Fill Black background (keep everything by default)
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(0, 0, w, h);
 
-    try {
-        const blob = await compositeImage(img);
-        if (blob && folder) {
-            folder.file(`${img.name.replace(/\.[^/.]+$/, "")}.png`, blob);
-            successCount++;
+    // 2. Prepare Refined Mask Image (if requested and available)
+    let refinedMaskImg: HTMLImageElement | null = null;
+    if (useRefinedMask && image.maskRefinedBase64) {
+        try {
+            const src = image.maskRefinedBase64.startsWith('data:') 
+                ? image.maskRefinedBase64 
+                : `data:image/png;base64,${image.maskRefinedBase64}`;
+            refinedMaskImg = await loadImage(src);
+        } catch(e) {
+            console.warn("Failed to load refined mask for generation", e);
         }
-    } catch (e) {
-        console.warn(`Failed to process ${img.name}`, e);
     }
-  }
 
-  if (successCount === 0) {
-      alert("No images processed successfully.");
-      return;
-  }
+    // Determine which regions to process
+    // If specificMaskId is provided, only process that one. Otherwise, all regions.
+    const targetRegions = specificMaskId 
+        ? (image.maskRegions || []).filter(m => m.id === specificMaskId)
+        : (image.maskRegions || []);
 
-  // Final phase: Generating the actual zip file
-  const content = await zip.generateAsync({ type: "blob" });
-  const url = URL.createObjectURL(content);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = "manga_typeset_result.zip";
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+    if (targetRegions.length === 0) {
+        return canvas.toDataURL('image/png');
+    }
+
+    // 3. Draw Mask
+    if (refinedMaskImg) {
+        // NEW LOGIC: Only draw the refined mask INSIDE the red boxes.
+        // If a pixel is white in the refined mask BUT outside any red box, it remains black (ignored).
+        
+        ctx.save();
+        ctx.beginPath();
+        targetRegions.forEach(m => {
+            const mx = (m.x / 100) * w;
+            const my = (m.y / 100) * h;
+            const mw = (m.width / 100) * w;
+            const mh = (m.height / 100) * h;
+            ctx.rect(mx - mw/2, my - mh/2, mw, mh);
+        });
+        ctx.clip(); // Restrict drawing to the union of all target regions
+
+        // Now draw the refined mask. It will only appear where we clipped.
+        ctx.drawImage(refinedMaskImg, 0, 0, w, h);
+        ctx.restore();
+
+    } else {
+        // Fallback: Erase the entire rectangles (Pure white boxes)
+        ctx.fillStyle = '#ffffff';
+        targetRegions.forEach(m => {
+            const mx = (m.x / 100) * w;
+            const my = (m.y / 100) * h;
+            const mw = (m.width / 100) * w;
+            const mh = (m.height / 100) * h;
+            ctx.fillRect(mx - mw/2, my - mh/2, mw, mh);
+        });
+    }
+
+    return canvas.toDataURL('image/png');
+};
+
+/**
+ * Restores a specific region of the image from the original source.
+ * Copies pixels from Original -> Inpainted Layer at the mask's coordinates.
+ */
+export const restoreImageRegion = async (image: ImageState, regionId: string): Promise<string | null> => {
+    // Need both original and current inpainted version (or url if inpainted isn't made yet)
+    // If inpainted doesn't exist, we just return original, but logic calls this when we want to revert part of inpainted
+    const targetUrl = image.inpaintedUrl || image.originalUrl || image.url;
+    const sourceUrl = image.originalUrl || image.url;
+    const region = image.maskRegions?.find(m => m.id === regionId);
+
+    if (!region) return null;
+
+    const [imgTarget, imgSource] = await Promise.all([
+        loadImage(targetUrl),
+        loadImage(sourceUrl)
+    ]);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = imgTarget.width;
+    canvas.height = imgTarget.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // 1. Draw the current state (inpainted) as base
+    ctx.drawImage(imgTarget, 0, 0);
+
+    // 2. Calculate pixel coordinates of region
+    const x = (region.x / 100) * canvas.width;
+    const y = (region.y / 100) * canvas.height;
+    const w = (region.width / 100) * canvas.width;
+    const h = (region.height / 100) * canvas.height;
+    const rx = x - w/2;
+    const ry = y - h/2;
+
+    // 3. Clip to the region
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(rx, ry, w, h);
+    ctx.clip();
+
+    // 4. Draw the original source image over the clipped area
+    //    Since drawImage coords are absolute, drawing at 0,0 with clip works perfectly to overlay exact pixels
+    ctx.drawImage(imgSource, 0, 0);
+    ctx.restore();
+
+    return canvas.toDataURL('image/png');
+};
+
+/**
+ * Composites the image and bubbles into a single Blob.
+ * Used for "Merge" and "Export".
+ */
+export const compositeImage = async (imageState: ImageState): Promise<Blob | null> => {
+    const canvas = document.createElement('canvas');
+    // Prefer clean (inpainted) image if available, else original
+    const sourceUrl = imageState.inpaintedUrl || imageState.originalUrl || imageState.url;
+    const img = await loadImage(sourceUrl);
+    
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Draw base image
+    ctx.drawImage(img, 0, 0);
+
+    // Draw bubbles
+    // Note: This is a canvas approximation of the CSS rendering. 
+    // It may not be pixel-perfect identical to the HTML overlay but serves as a solid export.
+    for (const bubble of imageState.bubbles) {
+        const x = (bubble.x / 100) * canvas.width;
+        const y = (bubble.y / 100) * canvas.height;
+        const w = (bubble.width / 100) * canvas.width;
+        const h = (bubble.height / 100) * canvas.height;
+
+        ctx.save();
+        
+        // Translate to center for rotation
+        ctx.translate(x, y);
+        ctx.rotate((bubble.rotation * Math.PI) / 180);
+        ctx.translate(-x, -y);
+
+        // Draw Background
+        if (bubble.backgroundColor && bubble.backgroundColor !== 'transparent') {
+            ctx.fillStyle = bubble.backgroundColor;
+            
+            if (bubble.maskShape === 'rectangle') {
+                ctx.fillRect(x - w/2, y - h/2, w, h);
+            } else if (bubble.maskShape === 'rounded') {
+                 // Simplified rounded rect
+                 const r = Math.min(w, h) * ((bubble.maskCornerRadius || 20) / 100);
+                 if (ctx.roundRect) {
+                    ctx.beginPath();
+                    ctx.roundRect(x - w/2, y - h/2, w, h, r);
+                    ctx.fill();
+                 } else {
+                    // Fallback for older browsers
+                    ctx.fillRect(x - w/2, y - h/2, w, h);
+                 }
+            } else {
+                // Ellipse (Default)
+                ctx.beginPath();
+                ctx.ellipse(x, y, w/2, h/2, 0, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+        
+        // Draw Text
+        ctx.fillStyle = bubble.color || '#000000';
+        
+        // Calculate font size in pixels based on "cqw" logic logic in BubbleLayer
+        // 1cqw = 1% of container width. Container is bubble width 'w'.
+        // fontSize = bubble.fontSize * 2 * (w / 100)
+        const fs = (bubble.fontSize * 2) * (w / 100);
+        
+        // Select Font
+        let fontName = "sans-serif";
+        if (bubble.fontFamily === 'happy') fontName = '"ZCOOL KuaiLe", cursive';
+        else if (bubble.fontFamily === 'zhimang') fontName = '"Zhi Mang Xing", cursive';
+        else if (bubble.fontFamily === 'mashan') fontName = '"Ma Shan Zheng", cursive';
+        else fontName = '"Noto Sans SC", sans-serif';
+
+        ctx.font = `bold ${fs}px ${fontName}`;
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'center';
+        
+        // Apply Stroke
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineJoin = 'round';
+
+        const text = bubble.text || '';
+        
+        if (bubble.isVertical) {
+            // Vertical text simulation
+            const chars = text.split('');
+            const lineHeight = fs * 1.2;
+            const totalHeight = chars.length * lineHeight;
+            let startY = y - totalHeight / 2 + lineHeight / 2;
+            
+            chars.forEach((char, i) => {
+                const charY = startY + i * lineHeight;
+                ctx.strokeText(char, x, charY);
+                ctx.fillText(char, x, charY);
+            });
+        } else {
+            // Horizontal text: split by newlines
+            const lines = text.split('\n');
+            const lineHeight = fs * 1.3;
+            const totalH = lines.length * lineHeight;
+            let startY = y - totalH / 2 + lineHeight / 2;
+             lines.forEach((line, i) => {
+                const lineY = startY + i * lineHeight;
+                ctx.strokeText(line, x, lineY);
+                ctx.fillText(line, x, lineY);
+            });
+        }
+
+        ctx.restore();
+    }
+
+    return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+};
+
+/**
+ * Downloads a single image with baked-in text.
+ */
+export const downloadSingleImage = async (image: ImageState) => {
+    const blob = await compositeImage(image);
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `translated_${image.name.replace(/\.[^/.]+$/, "")}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+};
+
+/**
+ * Downloads all images as a ZIP file.
+ */
+export const downloadAllAsZip = async (images: ImageState[], onProgress?: (current: number, total: number) => void) => {
+    const zip = new JSZip();
+    let count = 0;
+    
+    // Filter out skipped images? Or include them? Typically people want the results.
+    // Let's include everything currently in the list.
+    
+    for (const img of images) {
+        const blob = await compositeImage(img);
+        if (blob) {
+            const fileName = `translated_${img.name.replace(/\.[^/.]+$/, "")}.png`;
+            zip.file(fileName, blob);
+        }
+        count++;
+        if (onProgress) onProgress(count, images.length);
+    }
+    
+    const content = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'batch_translated.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 };

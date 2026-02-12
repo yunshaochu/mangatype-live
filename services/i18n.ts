@@ -1,5 +1,4 @@
 
-
 export const translations = {
   zh: {
     appName: "MangaType Live",
@@ -12,6 +11,9 @@ export const translations = {
     gallery: "图库",
     current: "当前图片",
     processAll: "所有图片",
+    // New specific translation buttons
+    translateCurrent: "翻译当前",
+    translateAll: "翻译所有",
     stop: "停止处理",
     saveImage: "保存图片",
     zipAll: "打包下载",
@@ -40,7 +42,8 @@ export const translations = {
     manualAdd: "点击添加",
     toolMode: "工具模式",
     toolBubble: "气泡工具 (Mode 1)",
-    toolMask: "选区工具 (Mode 2)",
+    toolMask: "气泡工具 (Mode 2)",
+    toolBrush: "修补画笔 (Brush)",
     toolNone: "浏览模式",
     translateRegions: "翻译选区",
     translateRegionsDesc: "绘制红框来辅助 AI。在设置中开启“遮罩模式”可仅发送红框内容。",
@@ -56,6 +59,8 @@ export const translations = {
     apiKey: "API Key",
     modelSelection: "模型选择",
     textDetection: "本地文本检测",
+    detectionExpansion: "探测框膨胀率",
+    detectionExpansionHint: "接收到坐标后，向外扩大的比例。正数扩大，负数缩小。",
     allowAiRotation: "允许 AI 旋转",
     allowAiRotationHint: "尝试让 AI 识别文字倾斜角度（实验性）。",
     allowAiFontSelection: "允许 AI 选择字体",
@@ -115,12 +120,39 @@ export const translations = {
     cornerRadius: "圆角半径",
     feathering: "羽化程度",
     resetStatus: "重置状态",
+    // Inpainting Tab
+    inpaintingTab: "文字去除 (Inpainting)",
+    inpaintingTabDesc: "配置 IOPaint 集成以进行文字擦除。",
+    enableInpainting: "启用文字去除",
+    enableInpaintingHint: "需要本地运行 IOPaint 服务。",
+    inpaintingUrl: "API 地址",
+    inpaintingModel: "模型名称",
+    inpaintingModelHint: "默认为 `lama`。其他可用模型: `manga`, `mat`, `migan`。",
+    autoInpaint: "自动擦除橙色文字轮廓",
+    autoInpaintHint: "开启后，使用精确的文字轮廓进行擦除（如果可用），否则回退到红框。",
+    // New Sidebar Localization
+    textRemoval: "文字去除 (Inpaint)",
+    inpaintArea: "擦除选中区域",
+    restoreArea: "还原选中区域",
+    inpaintDesc: "智能去除/还原红框内的文字。",
+    // Workspace Layers
+    layerOriginal: "原图",
+    layerClean: "擦除后",
+    layerFinal: "翻译后",
+    deleteInpaint: "删除擦除层",
+    // Paint Tool
+    brushSize: "画笔大小",
+    brushColor: "画笔颜色",
+    brushSettings: "画笔设置",
+    pickScreenColor: "吸取屏幕颜色",
     // Tooltips
     fontSizeTooltip: "字体大小",
     maskSizeTooltip: "遮罩大小",
     processPending: "处理待办项 (自动)",
-    scanCurrent: "扫描当前 (本地检测)",
-    scanAll: "扫描全部 (本地检测)",
+    scanCurrent: "扫描当前文字",
+    scanAll: "扫描全部文字",
+    cleanCurrent: "擦除当前 (去除文字)",
+    cleanAll: "擦除全部 (去除文字)",
     pickColor: "屏幕吸管",
     transparentColor: "透明 (无填充)",
     bringToFront: "置于顶层",
@@ -154,8 +186,8 @@ export const translations = {
           desc: "这是一个辅助功能，需在本地运行 Python 服务。开启后，可一键扫描图片中的文本区域并自动生成红框。"
         },
         {
-          title: "手动 JSON 导入 (Manual Import)",
-          desc: "如果你没有配置 API Key，或者想使用更强的模型（如 Claude 3.5 / DeepSeek），使用此功能。点击工具栏的 JSON 按钮 -> Copy Prompt -> Send prompt & image to any AI Chatbot -> Paste the returned JSON back here.这样可以“白嫖”外部 AI 的能力来生成气泡。"
+          title: "修补画笔 (Brush)",
+          desc: "如果自动擦除效果不完美，使用画笔工具手动涂抹修复。你可以直接在“擦除后”的图层上绘制，或者使用吸管吸取周围颜色进行覆盖。"
         },
         {
           title: "合并图层 (Merge Layers)",
@@ -184,6 +216,9 @@ export const translations = {
     gallery: "Gallery",
     current: "Current Image",
     processAll: "All Images",
+    // New specific translation buttons
+    translateCurrent: "Translate Current Image",
+    translateAll: "Translate All Images",
     stop: "Stop",
     saveImage: "Save Image",
     zipAll: "ZIP All",
@@ -213,6 +248,7 @@ export const translations = {
     toolMode: "Tool Mode",
     toolBubble: "Bubble Tool (Mode 1)",
     toolMask: "Mask Tool (Mode 2)",
+    toolBrush: "Paint Tool (Brush)",
     toolNone: "View Mode",
     translateRegions: "Translate Regions",
     translateRegionsDesc: "Draw red boxes to assist AI. Enable 'Mask Mode' in settings to send only boxed content.",
@@ -228,6 +264,8 @@ export const translations = {
     apiKey: "API Key",
     modelSelection: "Model Selection",
     textDetection: "Local Text Detection",
+    detectionExpansion: "Detection Expansion",
+    detectionExpansionHint: "Inflate detected boxes by this ratio. Positive to expand, negative to shrink.",
     allowAiRotation: "Allow AI Rotation",
     allowAiRotationHint: "Attempt to detect text rotation angle (Experimental).",
     allowAiFontSelection: "Allow AI Font Selection",
@@ -287,12 +325,39 @@ export const translations = {
     cornerRadius: "Corner Radius",
     feathering: "Feathering",
     resetStatus: "Reset Status",
+    // Inpainting Tab
+    inpaintingTab: "Text Removal (Inpainting)",
+    inpaintingTabDesc: "Configure IOPaint integration for text cleaning.",
+    enableInpainting: "Enable Inpainting",
+    enableInpaintingHint: "Requires local IOPaint service.",
+    inpaintingUrl: "API URL",
+    inpaintingModel: "Model Name",
+    inpaintingModelHint: "Default is `lama`. Others: `manga`, `mat`, `migan`.",
+    autoInpaint: "Auto Inpaint Text Contours (Orange)",
+    autoInpaintHint: "If enabled, batch inpaint uses precise orange text contours (if available) instead of red boxes.",
+    // New Sidebar Localization
+    textRemoval: "Text Removal (Inpaint)",
+    inpaintArea: "Inpaint Selected Area",
+    restoreArea: "Restore Selected Area",
+    inpaintDesc: "Uses local IOPaint API to remove text, or restore original pixels.",
+    // Workspace Layers
+    layerOriginal: "Original",
+    layerClean: "Clean",
+    layerFinal: "Translated",
+    deleteInpaint: "Delete Inpaint Layer",
+    // Paint Tool
+    brushSize: "Brush Size",
+    brushColor: "Brush Color",
+    brushSettings: "Brush Settings",
+    pickScreenColor: "Pick Screen Color",
     // Tooltips
     fontSizeTooltip: "Font Size",
     maskSizeTooltip: "Mask Size",
     processPending: "Process Pending (Auto)",
     scanCurrent: "Scan Current (Local Detect)",
     scanAll: "Scan All (Local Detect)",
+    cleanCurrent: "Clean Current (Inpaint)",
+    cleanAll: "Clean All (Inpaint)",
     pickColor: "Pick color from screen",
     transparentColor: "Transparent (No Fill)",
     bringToFront: "Bring to Front",
@@ -326,8 +391,8 @@ export const translations = {
           desc: "A helper for the AI. Requires running our Python detection service locally. When enabled, it extracts precise text coordinates and sends them as 'spatial hints' to the LLM."
         },
         {
-          title: "Manual JSON Import",
-          desc: "The 'Manual Mode'. If you don't have an API Key or prefer a smarter model (like Claude 3.5 / DeepSeek), use this. Click the JSON button -> Copy Prompt -> Send prompt & image to any AI Chatbot -> Paste the returned JSON back here. This lets you generate bubbles using external tools without using app quota."
+          title: "Manual Brush (Paint)",
+          desc: "Manually fix artifacts on the Clean layer using the brush tool. You can pick colors from the image to cover up leftover text."
         },
         {
           title: "Merge Layers",

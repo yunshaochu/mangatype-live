@@ -1,11 +1,11 @@
 
-
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
-import { ImageState, Bubble, AIConfig } from '../types';
+import { ImageState, Bubble, AIConfig, ViewLayer } from '../types';
 import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
-import { detectBubbleColor } from '../services/exportService';
+import { detectBubbleColor, generateInpaintMask, restoreImageRegion } from '../services/exportService';
+import { inpaintImage } from '../services/inpaintingService';
 
 const STORAGE_KEY = 'mangatype_live_settings_v1';
 
@@ -25,10 +25,15 @@ const DEFAULT_CONFIG: AIConfig = {
   forceSnapSize: false,
   enableMaskedImageMode: false,
   useMasksAsHints: false,
-  allowAiFontSelection: true, // Default enabled
+  allowAiFontSelection: true,
   defaultMaskShape: 'rectangle', 
   defaultMaskCornerRadius: 20,
   defaultMaskFeather: 0,
+  // Inpainting defaults
+  enableInpainting: false,
+  inpaintingUrl: 'http://localhost:8080',
+  inpaintingModel: 'lama',
+  autoInpaintMasks: false
 };
 
 interface ProjectContextType {
@@ -57,12 +62,19 @@ interface ProjectContextType {
   handleBatchProcess: (currentImage: ImageState | undefined, onlyCurrent: boolean, concurrency: number) => void;
   handleResetStatus: () => void;
   handleLocalDetectionScan: (currentImage: ImageState | undefined, batch: boolean, concurrency: number) => void;
+  handleBatchInpaint: (currentImage: ImageState | undefined, onlyCurrent: boolean, concurrency: number) => void;
   stopProcessing: () => void;
   handleGlobalColorDetection: (concurrency: number) => void;
 
+  // Inpainting Actions (Single specific mask)
+  handleInpaint: (imageId: string, specificMaskId?: string) => Promise<void>;
+  isInpainting: boolean;
+  handleRestoreRegion: (imageId: string, regionId: string) => Promise<void>;
+  handlePaintSave: (imageId: string, newBase64: string) => void;
+
   // UI State
-  drawTool: 'none' | 'bubble' | 'mask';
-  setDrawTool: (tool: 'none' | 'bubble' | 'mask') => void;
+  drawTool: 'none' | 'bubble' | 'mask' | 'brush';
+  setDrawTool: (tool: 'none' | 'bubble' | 'mask' | 'brush') => void;
   showSettings: boolean;
   setShowSettings: (show: boolean) => void;
   showManualJson: boolean;
@@ -79,6 +91,16 @@ interface ProjectContextType {
   setZipProgress: (p: { current: number; total: number }) => void;
   showGlobalStyles: boolean;
   setShowGlobalStyles: (v: boolean) => void;
+  activeLayer: ViewLayer;
+  setActiveLayer: (layer: ViewLayer) => void;
+  
+  // Brush Settings
+  brushColor: string;
+  setBrushColor: (c: string) => void;
+  brushSize: number;
+  setBrushSize: (s: number) => void;
+  paintMode: 'brush' | 'bucket';
+  setPaintMode: (mode: 'brush' | 'bucket') => void;
 
   // Actions
   updateBubble: (bubbleId: string, updates: Partial<Bubble>) => void;
@@ -133,8 +155,104 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // 3. Processor Logic
   const processor = useProcessor({ images, setImages, aiConfig });
 
-  // 4. UI State
-  const [drawTool, setDrawTool] = useState<'none' | 'bubble' | 'mask'>('none');
+  // 4. Inpainting Logic
+  const [isInpainting, setIsInpainting] = useState(false);
+
+  // Single Mask Inpaint (triggered from Sidebar)
+  const handleInpaint = useCallback(async (imageId: string, specificMaskId?: string) => {
+    const img = historyRef.current.present.find(i => i.id === imageId);
+    if (!img) return;
+
+    if (!aiConfig.enableInpainting || !aiConfig.inpaintingUrl) {
+        alert(aiConfig.language === 'zh' ? '请先在设置中启用“文字去除”并配置 API URL。' : 'Please enable "Inpainting" in settings and configure API URL.');
+        return;
+    }
+
+    if (!img.maskRegions || img.maskRegions.length === 0) {
+        alert(aiConfig.language === 'zh' ? '没有红框可用于消除。' : 'No mask regions to inpaint.');
+        return;
+    }
+
+    setIsInpainting(true);
+    try {
+        // Enforce useRefinedMask: false for manual triggers per user requirement
+        // Manual triggers from the red box panel should always use the red box as the mask
+        const maskBase64 = await generateInpaintMask(img, { specificMaskId, useRefinedMask: false });
+        
+        // Iterative Inpaint: Use existing inpainted image as source if available, otherwise original
+        // This allows user to remove one bubble, then another, accumulating changes.
+        const sourceBase64 = img.inpaintedBase64 || img.originalBase64 || img.base64;
+
+        const cleanedBase64Raw = await inpaintImage(
+            aiConfig.inpaintingUrl,
+            sourceBase64,
+            maskBase64,
+            aiConfig.inpaintingModel
+        );
+
+        const cleanedBase64 = cleanedBase64Raw.startsWith('data:') 
+            ? cleanedBase64Raw 
+            : `data:image/png;base64,${cleanedBase64Raw}`;
+
+        setImages(prev => prev.map(p => p.id === imageId ? {
+            ...p,
+            base64: cleanedBase64.replace(/^data:image\/\w+;base64,/, ""),
+            url: cleanedBase64, 
+            inpaintedUrl: cleanedBase64,
+            inpaintedBase64: cleanedBase64.replace(/^data:image\/\w+;base64,/, ""),
+            inpaintingStatus: 'done',
+            // Also update bubbles to transparent if needed, logic similar to processor
+            bubbles: p.bubbles.map(b => b.backgroundColor === '#ffffff' ? { ...b, backgroundColor: 'transparent' } : b)
+        } : p));
+        
+        // Auto-switch to 'clean' layer to show result
+        setActiveLayer('clean');
+
+    } catch (e: any) {
+        console.error("Inpainting failed", e);
+        alert(aiConfig.language === 'zh' ? `去除文字失败: ${e.message}` : `Inpainting failed: ${e.message}`);
+    } finally {
+        setIsInpainting(false);
+    }
+  }, [aiConfig, setImages, historyRef]);
+
+  // Restore Region (Copy original pixels back)
+  const handleRestoreRegion = useCallback(async (imageId: string, regionId: string) => {
+      const img = historyRef.current.present.find(i => i.id === imageId);
+      if (!img) return;
+
+      try {
+          const restoredBase64 = await restoreImageRegion(img, regionId);
+          if (restoredBase64) {
+              setImages(prev => prev.map(p => p.id === imageId ? {
+                  ...p,
+                  base64: restoredBase64.replace(/^data:image\/\w+;base64,/, ""),
+                  url: restoredBase64,
+                  inpaintedUrl: restoredBase64,
+                  inpaintedBase64: restoredBase64.replace(/^data:image\/\w+;base64,/, "")
+              } : p));
+              setActiveLayer('clean');
+          }
+      } catch (e) {
+          console.error("Restore failed", e);
+      }
+  }, [setImages, historyRef]);
+
+  // Save manual paint result
+  const handlePaintSave = useCallback((imageId: string, newBase64: string) => {
+      setImages(prev => prev.map(p => p.id === imageId ? {
+          ...p,
+          base64: newBase64.replace(/^data:image\/\w+;base64,/, ""),
+          url: newBase64,
+          inpaintedUrl: newBase64,
+          inpaintedBase64: newBase64.replace(/^data:image\/\w+;base64,/, ""),
+          inpaintingStatus: 'done' // Mark as done since we manually edited it
+      } : p));
+  }, [setImages]);
+
+
+  // 5. UI State
+  const [drawTool, setDrawTool] = useState<'none' | 'bubble' | 'mask' | 'brush'>('none');
   const [showSettings, setShowSettings] = useState(false);
   const [showManualJson, setShowManualJson] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -143,8 +261,22 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isZipping, setIsZipping] = useState(false);
   const [zipProgress, setZipProgress] = useState({ current: 0, total: 0 });
   const [showGlobalStyles, setShowGlobalStyles] = useState(false);
+  const [activeLayer, setActiveLayer] = useState<ViewLayer>('final');
+  
+  // Brush State
+  const [brushColor, setBrushColor] = useState('#ffffff');
+  const [brushSize, setBrushSize] = useState(20);
+  const [paintMode, setPaintMode] = useState<'brush' | 'bucket'>('brush');
 
-  // 5. Shared Actions
+  // Reset active layer when current image changes
+  useEffect(() => {
+      setActiveLayer('final');
+      // Reset tool to 'none' if it was 'brush' because brush is only for clean layer
+      // which we are navigating away from implicitly by resetting to 'final'
+      setDrawTool(prev => prev === 'brush' ? 'none' : prev);
+  }, [currentId]);
+
+  // 6. Shared Actions
   const detectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const triggerAutoColorDetection = useCallback((bubbleId: string) => {
@@ -226,6 +358,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     isZipping, setIsZipping,
     zipProgress, setZipProgress,
     showGlobalStyles, setShowGlobalStyles,
+    activeLayer, setActiveLayer,
     updateBubble,
     updateImageBubbles,
     triggerAutoColorDetection,
@@ -236,6 +369,16 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     handleResetStatus: processor.handleResetStatus,
     handleLocalDetectionScan: processor.handleLocalDetectionScan,
     handleGlobalColorDetection: processor.handleGlobalColorDetection,
+    handleBatchInpaint: processor.handleBatchInpaint,
+    // inpainting
+    handleInpaint,
+    isInpainting,
+    handleRestoreRegion,
+    handlePaintSave,
+    // Brush
+    brushColor, setBrushColor,
+    brushSize, setBrushSize,
+    paintMode, setPaintMode
   };
 
   return (

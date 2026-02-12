@@ -27,7 +27,7 @@ interface UseCanvasInteractionProps {
     setSelectedBubbleId: (id: string | null) => void;
     setSelectedMaskId: (id: string | null) => void;
     triggerAutoColorDetection: (id: string) => void;
-    drawTool: 'none' | 'bubble' | 'mask';
+    drawTool: 'none' | 'bubble' | 'mask' | 'brush';
 }
 
 export const useCanvasInteraction = ({

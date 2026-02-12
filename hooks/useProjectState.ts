@@ -1,4 +1,5 @@
 
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { ImageState } from '../types';
 
@@ -108,9 +109,11 @@ export const useProjectState = () => {
           const img = new Image();
           img.onload = () => {
             resolve({
-              id: crypto.randomUUID(), name: file.name, url, base64,
+              id: crypto.randomUUID(), name: file.name, 
+              url, base64, // Current display (starts as original)
+              originalUrl: url, originalBase64: base64, // Persistent original
               width: img.width, height: img.height, bubbles: [], maskRegions: [],
-              status: 'idle', detectionStatus: 'idle', skipped: false
+              status: 'idle', detectionStatus: 'idle', inpaintingStatus: 'idle', skipped: false
             });
           };
           img.onerror = () => resolve(null);
