@@ -102,6 +102,8 @@ interface ProjectContextType {
   setBrushSize: (s: number) => void;
   paintMode: 'brush' | 'box';
   setPaintMode: (mode: 'brush' | 'box') => void;
+  brushType: 'paint' | 'restore'; // New brush type
+  setBrushType: (t: 'paint' | 'restore') => void;
 
   // Actions
   updateBubble: (bubbleId: string, updates: Partial<Bubble>) => void;
@@ -170,6 +172,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [brushColor, setBrushColor] = useState('#ffffff');
   const [brushSize, setBrushSize] = useState(20);
   const [paintMode, setPaintMode] = useState<'brush' | 'box'>('brush');
+  const [brushType, setBrushType] = useState<'paint' | 'restore'>('paint');
 
   // 3. Processor Logic
   const processor = useProcessor({ images, setImages, aiConfig });
@@ -377,14 +380,29 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Save manual paint result
   const handlePaintSave = useCallback((imageId: string, newBase64: string) => {
-      setImages(prev => prev.map(p => p.id === imageId ? {
-          ...p,
-          base64: newBase64.replace(/^data:image\/\w+;base64,/, ""),
-          url: newBase64,
-          inpaintedUrl: newBase64,
-          inpaintedBase64: newBase64.replace(/^data:image\/\w+;base64,/, ""),
-          inpaintingStatus: 'done'
-      } : p));
+      setImages(prev => prev.map(p => {
+          if (p.id !== imageId) return p;
+
+          // When we save the paint canvas, any 'filled' masks (Box Tool) that were visible 
+          // are now baked into the pixels. We must disable their virtual DOM rendering 
+          // to prevent them from appearing on top of the restored areas.
+          const newMasks = (p.maskRegions || []).map(m => {
+              if (m.method === 'fill' && m.isCleaned) {
+                  return { ...m, isCleaned: false, fillColor: undefined };
+              }
+              return m;
+          });
+
+          return {
+              ...p,
+              base64: newBase64.replace(/^data:image\/\w+;base64,/, ""),
+              url: newBase64,
+              inpaintedUrl: newBase64,
+              inpaintedBase64: newBase64.replace(/^data:image\/\w+;base64,/, ""),
+              inpaintingStatus: 'done',
+              maskRegions: newMasks
+          };
+      }));
   }, [setImages]);
 
   // 6. Shared Actions
@@ -534,7 +552,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // Brush
     brushColor, setBrushColor,
     brushSize, setBrushSize,
-    paintMode, setPaintMode
+    paintMode, setPaintMode,
+    brushType, setBrushType
   };
 
   return (

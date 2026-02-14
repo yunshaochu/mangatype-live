@@ -24,12 +24,14 @@ export const Workspace: React.FC<WorkspaceProps> = ({
     updateBubble, triggerAutoColorDetection,
     // Brush
     brushColor, brushSize, setBrushColor, handlePaintSave, paintMode, setPaintMode,
+    brushType, // 'paint' | 'restore'
     // Layers
     activeLayer, setActiveLayer
   } = useProjectContext();
   
   // Paint Canvas Ref
   const paintCanvasRef = useRef<HTMLCanvasElement>(null);
+  const originalImageRef = useRef<HTMLImageElement | null>(null); // Store original image for restoring
   const [isPainting, setIsPainting] = useState(false);
   const lastPos = useRef<{x: number, y: number} | null>(null);
 
@@ -71,6 +73,11 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       }
   }
 
+  // Hide DOM filled masks if we are painting (because we draw them on the canvas instead)
+  if (showPaintCanvas) {
+      showFilledMasks = false;
+  }
+
   // --- PAINTING LOGIC (Freehand Brush Only) ---
   
   // Initialize canvas with current image when entering brush mode
@@ -80,6 +87,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           const ctx = canvas.getContext('2d', { willReadFrequently: true });
           if (!ctx) return;
 
+          // 1. Load the current "Clean" layer as the base for the canvas
           const img = new Image();
           img.crossOrigin = "Anonymous";
           img.src = displayUrl;
@@ -87,7 +95,35 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               canvas.width = img.width;
               canvas.height = img.height;
               ctx.drawImage(img, 0, 0);
+
+              // 2. COMPOSITE METADATA FILLS ONTO CANVAS
+              // This allows the brush to see and paint over "Box Tool" fills
+              if (currentImage.maskRegions) {
+                  currentImage.maskRegions.forEach(region => {
+                      if (region.isCleaned && region.method === 'fill') {
+                          const x = (region.x / 100) * canvas.width;
+                          const y = (region.y / 100) * canvas.height;
+                          const w = (region.width / 100) * canvas.width;
+                          const h = (region.height / 100) * canvas.height;
+                          
+                          ctx.fillStyle = region.fillColor || '#ffffff';
+                          // Calculate top-left from center x/y
+                          ctx.fillRect(x - w / 2, y - h / 2, w, h);
+                      }
+                  });
+              }
           };
+
+          // 2. Pre-load the ORIGINAL image for the "Restore" brush
+          // This is what we will paint *from* when in Restore mode.
+          if (currentImage.originalUrl || currentImage.url) {
+              const orig = new Image();
+              orig.crossOrigin = "Anonymous";
+              orig.src = currentImage.originalUrl || currentImage.url;
+              orig.onload = () => {
+                  originalImageRef.current = orig;
+              };
+          }
       }
   }, [showPaintCanvas, currentImage?.id, displayUrl]); // Re-init when visibility or image changes
 
@@ -102,6 +138,16 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       };
   };
 
+  const getBrushStyle = (ctx: CanvasRenderingContext2D) => {
+      if (brushType === 'restore' && originalImageRef.current) {
+          // Create a pattern from the original image. 
+          // Since the canvas size matches the image size 1:1, 'no-repeat' draws it aligned at 0,0.
+          // This effectively "reveals" the original image under the brush stroke.
+          return ctx.createPattern(originalImageRef.current, 'no-repeat');
+      }
+      return brushColor;
+  };
+
   const handlePaintStart = (e: React.MouseEvent) => {
       if (!showPaintCanvas) return;
       
@@ -110,7 +156,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       if (!ctx) return;
 
       // If Alt key is pressed, use Eyedropper behavior
-      if (e.altKey) {
+      if (e.altKey && brushType === 'paint') {
           const pixel = ctx.getImageData(x, y, 1, 1).data;
           const hex = "#" + ((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1);
           setBrushColor(hex);
@@ -121,13 +167,16 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       setIsPainting(true);
       lastPos.current = { x, y };
       
-      // Draw a single dot in case it's a click
+      const style = getBrushStyle(ctx);
+      if (!style) return;
+
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.strokeStyle = brushColor;
-      ctx.fillStyle = brushColor;
+      ctx.strokeStyle = style;
+      ctx.fillStyle = style;
       ctx.lineWidth = brushSize;
       
+      // Draw a single dot in case it's a click
       ctx.beginPath();
       ctx.arc(x, y, brushSize/2, 0, Math.PI * 2);
       ctx.fill();
@@ -142,6 +191,12 @@ export const Workspace: React.FC<WorkspaceProps> = ({
 
       const newPos = getCanvasCoords(e);
       
+      const style = getBrushStyle(ctx);
+      if (!style) return;
+
+      ctx.strokeStyle = style;
+      ctx.lineWidth = brushSize;
+
       ctx.beginPath();
       ctx.moveTo(lastPos.current.x, lastPos.current.y);
       ctx.lineTo(newPos.x, newPos.y);
@@ -289,6 +344,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
         <div className="absolute inset-0 pointer-events-none" style={{ containerType: 'inline-size' } as React.CSSProperties}>
           
           {/* Filled Masks (Instant Render) - z-1: Above image, below everything else */}
+          {/* We ONLY render these if we are NOT painting. If painting, they are drawn on canvas. */}
           {showFilledMasks && maskRegions.map(region => (
               (region.isCleaned && region.method === 'fill') && (
                   <div

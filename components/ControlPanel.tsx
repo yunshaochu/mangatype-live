@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon, Eraser, Brush, Pipette, Hash, PaintBucket, MousePointerClick } from 'lucide-react';
+import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon, Eraser, Brush, Pipette, Hash, PaintBucket, MousePointerClick, History } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { createBubble } from '../utils/editorUtils';
@@ -25,7 +25,8 @@ export const ControlPanel: React.FC = () => {
     setShowManualJson,
     // Brush
     brushColor, setBrushColor, brushSize, setBrushSize,
-    paintMode, setPaintMode
+    paintMode, setPaintMode,
+    brushType, setBrushType
   } = useProjectContext();
 
   const lang = aiConfig.language;
@@ -290,6 +291,24 @@ export const ControlPanel: React.FC = () => {
                       {/* Brush Settings - Only show in Freehand Mode */}
                       {paintMode === 'brush' && (
                         <div className="space-y-2 animate-fade-in">
+                            {/* Brush Type Toggle (Paint vs Restore) */}
+                            <div className="flex bg-gray-800 p-0.5 rounded-lg border border-gray-700">
+                                <button
+                                    onClick={() => setBrushType('paint')}
+                                    className={`flex-1 py-1 rounded-md text-xs flex items-center justify-center gap-1 transition-all ${brushType === 'paint' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                                    title={t('brushModePaintDesc', lang)}
+                                >
+                                    <PaintBucket size={12} /> {t('brushModePaint', lang)}
+                                </button>
+                                <button
+                                    onClick={() => setBrushType('restore')}
+                                    className={`flex-1 py-1 rounded-md text-xs flex items-center justify-center gap-1 transition-all ${brushType === 'restore' ? 'bg-green-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                                    title={t('brushModeRestoreDesc', lang)}
+                                >
+                                    <History size={12} /> {t('brushModeRestore', lang)}
+                                </button>
+                            </div>
+
                             <div className="flex items-center gap-2">
                                 <span className="text-[10px] text-gray-400 w-12">{t('brushSize', lang)}</span>
                                 <input 
@@ -300,39 +319,41 @@ export const ControlPanel: React.FC = () => {
                                 <span className="text-[10px] w-6 text-right text-gray-400">{brushSize}</span>
                             </div>
                             
-                            {/* Brush Color */}
-                            <div className="flex gap-1 items-center">
-                                <div className="relative flex-1">
-                                    <div className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"><Hash size={10}/></div>
-                                    <input 
-                                        type="text" 
-                                        value={brushColor.replace('#', '')}
-                                        onChange={(e) => setBrushColor(`#${e.target.value}`)}
-                                        className="w-full bg-gray-800 border border-gray-700 rounded h-6 pl-5 text-[10px] text-white uppercase font-mono focus:border-purple-500 outline-none"
-                                    />
-                                </div>
-                                
-                                {PRESET_BRUSH_COLORS.map(c => (
-                                    <button
-                                        key={c}
-                                        onClick={() => setBrushColor(c)}
-                                        className={`w-6 h-6 rounded border transition-all ${brushColor.toLowerCase() === c ? 'border-purple-500 ring-1 ring-purple-500/50' : 'border-gray-600 hover:scale-105'}`}
-                                        style={{ backgroundColor: c }}
-                                    />
-                                ))}
-                                
-                                <div className="relative w-6 h-6 rounded border border-gray-600 overflow-hidden shrink-0 cursor-pointer group">
+                            {/* Brush Color (Only visible in Paint Mode) */}
+                            {brushType === 'paint' && (
+                                <div className="flex gap-1 items-center animate-fade-in">
+                                    <div className="relative flex-1">
+                                        <div className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"><Hash size={10}/></div>
                                         <input 
-                                            type="color"
-                                            value={brushColor}
-                                            onChange={(e) => setBrushColor(e.target.value)}
-                                            className="absolute -top-2 -left-2 w-10 h-10 p-0 border-0 cursor-pointer"
+                                            type="text" 
+                                            value={brushColor.replace('#', '')}
+                                            onChange={(e) => setBrushColor(`#${e.target.value}`)}
+                                            className="w-full bg-gray-800 border border-gray-700 rounded h-6 pl-5 text-[10px] text-white uppercase font-mono focus:border-purple-500 outline-none"
                                         />
+                                    </div>
+                                    
+                                    {PRESET_BRUSH_COLORS.map(c => (
+                                        <button
+                                            key={c}
+                                            onClick={() => setBrushColor(c)}
+                                            className={`w-6 h-6 rounded border transition-all ${brushColor.toLowerCase() === c ? 'border-purple-500 ring-1 ring-purple-500/50' : 'border-gray-600 hover:scale-105'}`}
+                                            style={{ backgroundColor: c }}
+                                        />
+                                    ))}
+                                    
+                                    <div className="relative w-6 h-6 rounded border border-gray-600 overflow-hidden shrink-0 cursor-pointer group">
+                                            <input 
+                                                type="color"
+                                                value={brushColor}
+                                                onChange={(e) => setBrushColor(e.target.value)}
+                                                className="absolute -top-2 -left-2 w-10 h-10 p-0 border-0 cursor-pointer"
+                                            />
+                                    </div>
+                                    <button onClick={handleEyedropper} className="w-6 h-6 flex items-center justify-center bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 text-gray-400" title={t('pickScreenColor', lang)}>
+                                        <Pipette size={12}/>
+                                    </button>
                                 </div>
-                                <button onClick={handleEyedropper} className="w-6 h-6 flex items-center justify-center bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 text-gray-400" title={t('pickScreenColor', lang)}>
-                                    <Pipette size={12}/>
-                                </button>
-                            </div>
+                            )}
                         </div>
                       )}
 

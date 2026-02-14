@@ -167,6 +167,8 @@ export const translations = {
     brushColor: "画笔颜色",
     brushSettings: "画笔设置",
     pickScreenColor: "吸取屏幕颜色",
+    brushModePaint: "绘画模式 (Paint)",
+    brushModeRestore: "还原模式 (Restore)",
     // Tooltips
     fontSizeTooltip: "字体大小",
     maskSizeTooltip: "遮罩大小",
@@ -394,6 +396,8 @@ export const translations = {
     brushColor: "Brush Color",
     brushSettings: "Brush Settings",
     pickScreenColor: "Pick Screen Color",
+    brushModePaint: "Paint Mode",
+    brushModeRestore: "Restore Mode",
     // Tooltips
     fontSizeTooltip: "Font Size",
     maskSizeTooltip: "Mask Size",
