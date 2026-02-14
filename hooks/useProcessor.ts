@@ -1,4 +1,3 @@
-
 import { useState, useRef } from 'react';
 import { ImageState, AIConfig, MaskRegion, Bubble } from '../types';
 import { detectAndTypesetComic, fetchRawDetectedRegions } from '../services/geminiService';
@@ -77,12 +76,24 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                 } as Bubble;
             }));
 
-            // If we have an inpainted layer available, maybe we should make backgrounds transparent if they are white?
-            // Per prompt: "when there is b... bubbles (default transparent) appear on b"
-            // We implement this as a post-processing step if Inpainting is DONE for this image.
+            // FIXED LOGIC:
+            // Only set transparent if the SPECIFIC bubble overlaps a CLEANED mask region.
+            // Previously, this checked `if (img.inpaintedUrl)`, which turned ALL bubbles transparent
+            // if ANY cleaning had been done on the page.
+            
+            const cleanedMasks = (img.maskRegions || []).filter(m => m.isCleaned);
+            
             const adjustedBubbles = processedBubbles.map(b => {
-                if (img.inpaintedUrl && b.backgroundColor === '#ffffff') {
-                    return { ...b, backgroundColor: 'transparent' };
+                const overlaps = cleanedMasks.some(m => {
+                    const xDiff = Math.abs(b.x - m.x);
+                    const yDiff = Math.abs(b.y - m.y);
+                    const halfW = m.width / 2;
+                    const halfH = m.height / 2;
+                    return xDiff <= halfW && yDiff <= halfH;
+                });
+
+                if (overlaps) {
+                    return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
                 }
                 return b;
             });
