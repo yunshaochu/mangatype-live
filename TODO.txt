@@ -10,6 +10,7 @@
 6. 并发增强：目前只有一个api，改为多api轮询并发
 7. bug：狂草手写/快乐Q版的字，在合并到原图时，会向上偏移
 8. 支持更多字体/支持更多字的颜色(比如白字黑框）
+9. 支持自动获取cloud studio的公网url，以便运行后端py的iopaint和detector
 
 
 2.隔壁banana pro重绘项目的todo也写这里好了：
