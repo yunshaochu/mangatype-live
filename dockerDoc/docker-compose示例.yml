@@ -1,0 +1,50 @@
+services:
+  # ── Comic Text Detector API (Flask, port 5000) ──
+  text-detector:
+    build: ./comic-text-detector-api
+    ports:
+      - "5000:5000"
+    volumes:
+      # Persist the downloaded model so it survives container rebuilds
+      - detector-models:/app/data
+    restart: unless-stopped
+    # Uncomment below for NVIDIA GPU support:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # ── IOPaint (FastAPI, port 8080) ──
+  iopaint:
+    build: ./IOPaint
+    ports:
+      - "8080:8080"
+    volumes:
+      # Persist HuggingFace / model cache
+      - iopaint-models:/root/.cache
+    restart: unless-stopped
+    # Uncomment below for NVIDIA GPU support:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # ── MangaType Live (React frontend, port 3000) ──
+  frontend:
+    build: ./mangatype-live
+    ports:
+      - "3000:80"
+    depends_on:
+      - text-detector
+      - iopaint
+    restart: unless-stopped
+
+volumes:
+  detector-models:
+  iopaint-models:
