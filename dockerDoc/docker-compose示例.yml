@@ -40,6 +40,11 @@ services:
     build: ./mangatype-live
     ports:
       - "3000:80"
+    environment:
+      # Cloud Studio 环境变量 - 用于构建公网 URL
+      - X_IDE_SPACE_KEY=${X_IDE_SPACE_KEY}
+      - X_IDE_PREVIEW_DOMAIN=${X_IDE_PREVIEW_DOMAIN}
+      - X_IDE_SPACE_REGION=${X_IDE_SPACE_REGION}
     depends_on:
       - text-detector
       - iopaint
