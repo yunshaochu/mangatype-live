@@ -27,7 +27,9 @@ export interface MaskRegion {
   y: number;
   width: number;
   height: number;
-  isCleaned?: boolean; // New: True if this region has been Inpainted or Filled
+  isCleaned?: boolean; // True if this region has been Inpainted or Filled
+  method?: 'fill' | 'inpaint'; // New: Tag to determine batch processing method. Default is 'fill'.
+  fillColor?: string; // New: Store color for instant rendering
 }
 
 export interface DetectedBubble {

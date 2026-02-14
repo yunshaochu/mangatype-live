@@ -156,8 +156,12 @@ export const generateMaskedImage = async (image: ImageState): Promise<string> =>
 
 /**
  * Generates a black/white mask for inpainting.
+ * 
+ * Options:
+ * - specificMaskId: Only include this mask ID.
+ * - onlyInpaintMethod: If true, only include masks marked with method='inpaint'.
  */
-export const generateInpaintMask = async (image: ImageState, options?: { specificMaskId?: string, useRefinedMask?: boolean }): Promise<string> => {
+export const generateInpaintMask = async (image: ImageState, options?: { specificMaskId?: string, useRefinedMask?: boolean, onlyInpaintMethod?: boolean }): Promise<string> => {
     const w = image.width;
     const h = image.height;
     const canvas = document.createElement('canvas');
@@ -167,14 +171,22 @@ export const generateInpaintMask = async (image: ImageState, options?: { specifi
     if (!ctx) throw new Error("Canvas context failed");
 
     const specificMaskId = options?.specificMaskId;
+    const onlyInpaintMethod = options?.onlyInpaintMethod;
     
     // Fill Black (Keep)
     ctx.fillStyle = '#000000';
     ctx.fillRect(0, 0, w, h);
 
-    const targetRegions = specificMaskId 
-        ? (image.maskRegions || []).filter(m => m.id === specificMaskId)
-        : (image.maskRegions || []);
+    let targetRegions = image.maskRegions || [];
+
+    // Filter by ID
+    if (specificMaskId) {
+        targetRegions = targetRegions.filter(m => m.id === specificMaskId);
+    } 
+    // Filter by Method (e.g., only 'inpaint' type for batch AI tasks)
+    else if (onlyInpaintMethod) {
+        targetRegions = targetRegions.filter(m => m.method === 'inpaint');
+    }
 
     if (targetRegions.length === 0) return canvas.toDataURL('image/png');
 
@@ -335,6 +347,23 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
         const bgSrc = imageState.inpaintedUrl || imageState.originalUrl || imageState.url || `data:image/png;base64,${imageState.base64}`;
         const imgBg = await loadImage(bgSrc);
         ctx.drawImage(imgBg, 0, 0, width, height);
+
+        // --- NEW: DRAW FILLED MASKS (Manual Fill) ---
+        // These are masks that are cleaned but NOT via inpainting (method='fill')
+        // We must burn them into the exported image here because they exist only as metadata in the app.
+        if (imageState.maskRegions) {
+            imageState.maskRegions.forEach(m => {
+                if (m.isCleaned && m.method === 'fill') {
+                    const x = (m.x / 100) * width;
+                    const y = (m.y / 100) * height;
+                    const w = (m.width / 100) * width;
+                    const h = (m.height / 100) * height;
+                    ctx.fillStyle = m.fillColor || '#ffffff';
+                    ctx.fillRect(x - w/2, y - h/2, w, h);
+                }
+            });
+        }
+        // --------------------------------------------
 
         const svgSrc = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgXml);
         const imgSvg = await loadImage(svgSrc);

@@ -40,6 +40,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   // Determine display URL based strictly on Active Layer
   let displayUrl = currentImage ? (currentImage.originalUrl || currentImage.url) : '';
   let showBubbles = false;
+  let showFilledMasks = false; // Flag to show instant filled masks overlay
   
   // Show Masks if:
   // 1. Tool is Mask
@@ -47,28 +48,26 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   let showMasks = drawTool === 'mask' || (drawTool === 'brush' && paintMode === 'box');
   
   // Determine if the "Clean" tab should be visible
-  // Ensure it stays visible if it's currently selected (activeLayer === 'clean') to allow switching back.
   const showCleanTab = !!currentImage?.inpaintedUrl || aiConfig.enableInpainting || drawTool === 'brush' || activeLayer === 'clean';
 
   // Determine if we should show the Paint Canvas
-  // ONLY if tool is brush AND we are looking at the 'clean' layer
-  // NOTE: If in Box mode, we don't draw on canvas with mouse, we manipulate boxes. 
-  // Actually, Freehand Brush needs canvas overlay. Box mode works with RegionLayers.
-  // So only show paint canvas if paintMode == 'brush'
   const showPaintCanvas = drawTool === 'brush' && paintMode === 'brush' && activeLayer === 'clean';
 
   if (currentImage) {
       if (activeLayer === 'original') {
           displayUrl = currentImage.originalUrl || currentImage.url;
           showBubbles = false;
+          showFilledMasks = false; // Don't show fills on original layer
       } else if (activeLayer === 'clean') {
-          // Clean layer shows inpainted image if available, otherwise falls back to original (so you can start painting on it)
+          // Clean layer shows inpainted image if available, otherwise falls back to original
+          // PLUS the metadata fills
           displayUrl = currentImage.inpaintedUrl || currentImage.originalUrl || currentImage.url;
           showBubbles = false;
-          // When painting, we might want to see masks to know where text was
+          showFilledMasks = true; 
       } else if (activeLayer === 'final') {
           displayUrl = currentImage.inpaintedUrl || currentImage.originalUrl || currentImage.url;
           showBubbles = true;
+          showFilledMasks = true; 
       }
   }
 
@@ -212,7 +211,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               setDrawTool('brush');
               setPaintMode('box');
           } else {
-              // Already on clean layer: ensure 'bubble' tool is disabled if it was somehow active
               if (drawTool === 'bubble') setDrawTool('none');
           }
       } else {
@@ -227,9 +225,8 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   return (
     <div className="flex-1 overflow-auto flex items-center justify-center p-8 relative bg-[#1a1a1a]">
       
-      {/* Layer Tabs - Top Left */}
+      {/* Layer Tabs */}
       <div className="absolute top-4 left-4 z-50 flex flex-col gap-2">
-          
           <div className="flex bg-gray-900/90 backdrop-blur border border-gray-700 p-1 rounded-lg shadow-xl">
                 <button
                     onClick={() => handleSwitchLayer('original')}
@@ -291,7 +288,25 @@ export const Workspace: React.FC<WorkspaceProps> = ({
         */}
         <div className="absolute inset-0 pointer-events-none" style={{ containerType: 'inline-size' } as React.CSSProperties}>
           
-          {/* Main Interaction Layer (Bubble/Mask creation/resize) - Only active if NOT painting */}
+          {/* Filled Masks (Instant Render) - z-1: Above image, below everything else */}
+          {showFilledMasks && maskRegions.map(region => (
+              (region.isCleaned && region.method === 'fill') && (
+                  <div
+                      key={`filled-${region.id}`}
+                      className="absolute z-[1]" 
+                      style={{
+                          top: `${region.y}%`,
+                          left: `${region.x}%`,
+                          width: `${region.width}%`,
+                          height: `${region.height}%`,
+                          transform: `translate(-50%, -50%)`,
+                          backgroundColor: region.fillColor || '#ffffff',
+                      }}
+                  />
+              )
+          ))}
+
+          {/* Main Interaction Layer */}
           {!showPaintCanvas && (
               <div
                 className={`absolute inset-0 z-0 pointer-events-auto ${drawTool !== 'none' ? 'cursor-crosshair' : 'cursor-default'}`}
@@ -299,6 +314,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               />
           )}
 
+          {/* Interactive Selection Masks - z-30 */}
           {showMasks && maskRegions.map(region => (
             <RegionLayer
               key={region.id}
@@ -311,6 +327,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
             />
           ))}
 
+          {/* Text Bubbles - z-10 (Usually above fill, but logic handles it) */}
           {showBubbles && bubbles.map(bubble => (
             <BubbleLayer
               key={bubble.id}

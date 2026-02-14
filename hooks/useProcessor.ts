@@ -104,13 +104,18 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
     };
 
     // --- Core Logic: Inpaint a Single Image ---
-    const runInpaintingForImage = async (img: ImageState, signal?: AbortSignal) => {
+    // Updated: Supports filtering mask generation by method='inpaint'
+    const runInpaintingForImage = async (img: ImageState, signal?: AbortSignal, options: { onlyInpaintMethod?: boolean } = {}) => {
         if (!aiConfig.enableInpainting || !aiConfig.inpaintingUrl) return;
         
-        // Check availability of masks
-        const hasMasks = img.maskRegions && img.maskRegions.length > 0;
+        const onlyInpaintMethod = options.onlyInpaintMethod || false;
         
-        if (!hasMasks) return;
+        // Check availability of masks (Filtered if necessary)
+        const relevantMasks = onlyInpaintMethod 
+            ? (img.maskRegions || []).filter(m => m.method === 'inpaint')
+            : (img.maskRegions || []);
+
+        if (relevantMasks.length === 0) return;
 
         setImages(prev => prev.map(p => p.id === img.id ? { ...p, inpaintingStatus: 'processing' } : p));
 
@@ -118,8 +123,8 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             // Iterative Inpaint: Use existing inpainted image as source if available, otherwise original
             const sourceBase64 = img.inpaintedBase64 || img.originalBase64 || img.base64;
             
-            // Generate mask: always use red boxes (masks), refined mask option is deprecated/removed
-            const maskBase64 = await generateInpaintMask(img, { useRefinedMask: false });
+            // Generate mask: Pass the onlyInpaintMethod flag
+            const maskBase64 = await generateInpaintMask(img, { useRefinedMask: false, onlyInpaintMethod });
             
             const cleanedBase64Raw = await inpaintImage(
                 aiConfig.inpaintingUrl,
@@ -134,13 +139,29 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                 ? cleanedBase64Raw 
                 : `data:image/png;base64,${cleanedBase64Raw}`;
 
+            // We need to mark only the relevant masks as cleaned
+            const affectedMaskIds = new Set(relevantMasks.map(m => m.id));
+
             setImages(prev => prev.map(p => {
                 if (p.id !== img.id) return p;
                 
-                // Update bubbles: Convert white background to transparent now that we have a clean plate
-                const newBubbles = p.bubbles.map(b => 
-                    b.backgroundColor === '#ffffff' ? { ...b, backgroundColor: 'transparent' } : b
-                );
+                // Update specific masks to clean
+                const newMasks = (p.maskRegions || []).map(m => affectedMaskIds.has(m.id) ? { ...m, isCleaned: true } : m);
+                
+                // Update bubbles overlapping with newly cleaned masks
+                const newBubbles = p.bubbles.map(b => {
+                    const overlaps = relevantMasks.some(mask => {
+                        const xDiff = Math.abs(b.x - mask.x);
+                        const yDiff = Math.abs(b.y - mask.y);
+                        const halfW = mask.width / 2;
+                        const halfH = mask.height / 2;
+                        return xDiff <= halfW && yDiff <= halfH;
+                    });
+                    if (overlaps) {
+                        return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
+                    }
+                    return b;
+                });
 
                 return {
                     ...p,
@@ -149,6 +170,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                     // If view was on "Final" (using url/base64), update them to point to new clean version?
                     // For now, let the Workspace logic handle "which to show", but update bubbles
                     bubbles: newBubbles,
+                    maskRegions: newMasks,
                     inpaintingStatus: 'done'
                 };
             }));
@@ -189,7 +211,8 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                 if (task === 'translate') {
                     await Promise.all(chunk.map(img => runDetectionForImage(img, signal)));
                 } else if (task === 'inpaint') {
-                    await Promise.all(chunk.map(img => runInpaintingForImage(img, signal)));
+                    // For batch inpaint, we force "onlyInpaintMethod: true"
+                    await Promise.all(chunk.map(img => runInpaintingForImage(img, signal, { onlyInpaintMethod: true })));
                 }
             }
         } catch (e) {
@@ -225,36 +248,37 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
         }
     };
 
+    // Updated: Handle Batch Inpaint (Filtered by method='inpaint')
     const handleBatchInpaint = async (currentImage: ImageState | undefined, onlyCurrent: boolean, concurrency: number) => {
         if (isProcessingBatch) return;
         if (!aiConfig.enableInpainting) return;
 
         if (onlyCurrent && currentImage) {
-            const canUseRects = currentImage.maskRegions && currentImage.maskRegions.length > 0;
+            // For current image, we check if there are ANY 'inpaint' method masks
+            const hasPurpleMasks = (currentImage.maskRegions || []).some(m => m.method === 'inpaint');
 
-            if (!canUseRects) {
-                alert("No mask regions found on current image.");
+            if (!hasPurpleMasks) {
+                alert("No masks marked as 'API Erase' (Purple) found on current image.");
                 return;
             }
             const controller = new AbortController();
             abortControllerRef.current = controller;
             setIsProcessingBatch(true);
             try {
-                await runInpaintingForImage(currentImage, controller.signal);
+                await runInpaintingForImage(currentImage, controller.signal, { onlyInpaintMethod: true });
             } finally {
                 setIsProcessingBatch(false);
                 abortControllerRef.current = null;
             }
         } else {
+            // Filter queue for images that have pending 'inpaint' masks
             const queue = images.filter(img => 
                 !img.skipped && 
-                // Only process images that have a valid mask source based on config
-                (img.maskRegions && img.maskRegions.length > 0) &&
-                (img.inpaintingStatus === 'idle' || img.inpaintingStatus === 'error')
+                (img.maskRegions || []).some(m => m.method === 'inpaint' && !m.isCleaned)
             );
             
             if (queue.length === 0) {
-                alert("No images with valid masks pending for text removal.");
+                alert("No images with uncleaned 'API Erase' masks found.");
                 return;
             }
             await processQueue(queue, 'inpaint', concurrency);
@@ -323,7 +347,8 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
 
                         const maskRegions: MaskRegion[] = expandedRegions.map(r => ({
                             id: crypto.randomUUID(),
-                            x: r.x, y: r.y, width: r.width, height: r.height
+                            x: r.x, y: r.y, width: r.width, height: r.height,
+                            method: 'fill' // Default local detection to fill
                         }));
 
                         // Process Mask (Refined Pixel Mask) - We store it but don't use it for auto-inpaint anymore

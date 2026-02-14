@@ -1,5 +1,6 @@
+
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
-import { ImageState, Bubble, AIConfig, ViewLayer } from '../types';
+import { ImageState, Bubble, AIConfig, ViewLayer, MaskRegion } from '../types';
 import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
@@ -105,6 +106,7 @@ interface ProjectContextType {
   // Actions
   updateBubble: (bubbleId: string, updates: Partial<Bubble>) => void;
   updateImageBubbles: (imgId: string, newBubbles: Bubble[]) => void;
+  updateMaskRegion: (maskId: string, updates: Partial<MaskRegion>) => void; // New helper
   triggerAutoColorDetection: (bubbleId: string) => void;
   reorderBubble: (bubbleId: string, direction: 'front' | 'back' | 'forward' | 'backward') => void;
   
@@ -192,6 +194,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     setIsInpainting(true);
     try {
+        // Generate mask (if specific ID is passed, only that one is used; otherwise ALL for batch)
+        // NOTE: For single box click, we respect the specific ID.
         const maskBase64 = await generateInpaintMask(img, { specificMaskId, useRefinedMask: false });
         const sourceBase64 = img.inpaintedBase64 || img.originalBase64 || img.base64;
 
@@ -210,7 +214,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             if (p.id !== imageId) return p;
             
             // Mark mask as cleaned
-            const newMasks = (p.maskRegions || []).map(m => m.id === specificMaskId ? { ...m, isCleaned: true } : m);
+            const newMasks = (p.maskRegions || []).map(m => m.id === specificMaskId ? { ...m, isCleaned: true, method: 'inpaint' as const } : m);
             
             // Check bubbles intersection
             const targetMask = (p.maskRegions || []).find(m => m.id === specificMaskId);
@@ -251,185 +255,108 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [aiConfig, setImages, historyRef, setActiveLayer]);
 
-  // Handle Box Fill (Whitening or Coloring)
+  // Handle Box Fill (OPTIMIZED: Metadata Update Only)
   const handleBoxFill = useCallback(async (imageId: string, maskId: string, color: string) => {
-    const img = historyRef.current.present.find(i => i.id === imageId);
-    if (!img) return;
-    const mask = img.maskRegions?.find(m => m.id === maskId);
-    if (!mask) return;
-
-    try {
-        // Load current clean layer (or original) into canvas
-        const sourceUrl = img.inpaintedUrl || img.originalUrl || img.url;
-        const image = new Image();
-        image.crossOrigin = 'Anonymous';
-        image.src = sourceUrl;
+    // Just update the metadata. Rendering happens in Workspace via CSS overlay.
+    setImages(prev => prev.map(img => {
+        if (img.id !== imageId) return img;
         
-        await new Promise((resolve) => { image.onload = resolve; });
-        
-        const canvas = document.createElement('canvas');
-        canvas.width = image.width;
-        canvas.height = image.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        const mask = (img.maskRegions || []).find(m => m.id === maskId);
+        if (!mask) return img;
 
-        ctx.drawImage(image, 0, 0);
+        // Update masks status
+        const newMasks = (img.maskRegions || []).map(m => m.id === maskId ? { ...m, isCleaned: true, method: 'fill' as const, fillColor: color } : m);
 
-        // Draw the fill
-        const x = (mask.x / 100) * canvas.width;
-        const y = (mask.y / 100) * canvas.height;
-        const w = (mask.width / 100) * canvas.width;
-        const h = (mask.height / 100) * canvas.height;
+        // Update overlapping bubbles to transparent
+        const newBubbles = img.bubbles.map(b => {
+            const xDiff = Math.abs(b.x - mask.x);
+            const yDiff = Math.abs(b.y - mask.y);
+            const halfW = mask.width / 2;
+            const halfH = mask.height / 2;
+            const overlaps = xDiff <= halfW && yDiff <= halfH;
+            if (overlaps) {
+                return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
+            }
+            return b;
+        });
 
-        ctx.fillStyle = color;
-        ctx.fillRect(x - w/2, y - h/2, w, h);
+        return {
+            ...img,
+            inpaintingStatus: 'done', // Mark as "processed" so UI shows filled
+            maskRegions: newMasks,
+            bubbles: newBubbles
+        };
+    }));
+    setActiveLayer('clean');
+  }, [setImages, setActiveLayer]);
 
-        const newBase64 = canvas.toDataURL('image/png');
-        
-        setImages(prev => prev.map(p => {
-            if (p.id !== imageId) return p;
+  // Handle Batch Box Fill (OPTIMIZED: Metadata Update Only)
+  const handleBatchBoxFill = useCallback(async (scope: 'current' | 'all', color: string) => {
+    const targetIds = new Set(
+        scope === 'current'
+        ? (currentId ? [currentId] : [])
+        : historyRef.current.present.filter(i => !i.skipped).map(i => i.id)
+    );
 
-            // Mark mask as cleaned/filled
-            const newMasks = (p.maskRegions || []).map(m => m.id === maskId ? { ...m, isCleaned: true } : m);
+    if (targetIds.size === 0) return;
 
-            // Update overlapping bubbles
-            const newBubbles = p.bubbles.map(b => {
+    setImages(prev => prev.map(img => {
+        if (!targetIds.has(img.id)) return img;
+
+        // Filter masks: Must NOT be 'inpaint' method
+        const masksToFill = (img.maskRegions || []).filter(m => m.method !== 'inpaint');
+        if (masksToFill.length === 0) return img;
+
+        // Update masks status
+        const filledIds = new Set(masksToFill.map(m => m.id));
+        const newMasks = (img.maskRegions || []).map(m => filledIds.has(m.id) ? { ...m, isCleaned: true, method: 'fill' as const, fillColor: color } : m);
+
+        // Update bubbles overlapping with FILLED masks
+        const newBubbles = img.bubbles.map(b => {
+            const overlaps = masksToFill.some(mask => {
                 const xDiff = Math.abs(b.x - mask.x);
                 const yDiff = Math.abs(b.y - mask.y);
                 const halfW = mask.width / 2;
                 const halfH = mask.height / 2;
-                const overlaps = xDiff <= halfW && yDiff <= halfH;
-                if (overlaps) {
-                    return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
-                }
-                return b;
+                return xDiff <= halfW && yDiff <= halfH;
             });
-
-            return {
-                ...p,
-                base64: newBase64.replace(/^data:image\/\w+;base64,/, ""),
-                url: newBase64,
-                inpaintedUrl: newBase64,
-                inpaintedBase64: newBase64.replace(/^data:image\/\w+;base64,/, ""),
-                inpaintingStatus: 'done',
-                maskRegions: newMasks,
-                bubbles: newBubbles
-            };
-        }));
-        
-        setActiveLayer('clean');
-
-    } catch (e) {
-        console.error("Box fill failed", e);
-    }
-  }, [setImages, historyRef, setActiveLayer]);
-
-  // Handle Batch Box Fill
-  const handleBatchBoxFill = useCallback(async (scope: 'current' | 'all', color: string) => {
-    const targets = scope === 'current'
-        ? (currentId ? historyRef.current.present.filter(i => i.id === currentId) : [])
-        : historyRef.current.present.filter(i => !i.skipped);
-
-    if (targets.length === 0) return;
-
-    setIsInpainting(true); // Reuse loading state
-
-    try {
-        const updates = await Promise.all(targets.map(async (img) => {
-            if (!img.maskRegions || img.maskRegions.length === 0) return null;
-
-            const sourceUrl = img.inpaintedUrl || img.originalUrl || img.url;
-            const image = new Image();
-            image.crossOrigin = 'Anonymous';
-            image.src = sourceUrl;
-            await new Promise((resolve, reject) => {
-                image.onload = resolve;
-                image.onerror = resolve; // Continue even if one fails
-            });
-
-            if (!image.width) return null;
-
-            const canvas = document.createElement('canvas');
-            canvas.width = image.width;
-            canvas.height = image.height;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) return null;
-
-            ctx.drawImage(image, 0, 0);
-            ctx.fillStyle = color;
-
-            // Draw all masks
-            img.maskRegions.forEach(mask => {
-                const x = (mask.x / 100) * canvas.width;
-                const y = (mask.y / 100) * canvas.height;
-                const w = (mask.width / 100) * canvas.width;
-                const h = (mask.height / 100) * canvas.height;
-                ctx.fillRect(x - w/2, y - h/2, w, h);
-            });
-
-            const newBase64 = canvas.toDataURL('image/png');
-            const dataUrlContent = newBase64.replace(/^data:image\/\w+;base64,/, "");
-
-            // Update masks status
-            const newMasks = img.maskRegions.map(m => ({ ...m, isCleaned: true }));
-
-            // Update bubbles overlapping
-            const newBubbles = img.bubbles.map(b => {
-                // Check overlap with ANY mask
-                const overlaps = newMasks.some(mask => {
-                    const xDiff = Math.abs(b.x - mask.x);
-                    const yDiff = Math.abs(b.y - mask.y);
-                    const halfW = mask.width / 2;
-                    const halfH = mask.height / 2;
-                    return xDiff <= halfW && yDiff <= halfH;
-                });
-                if (overlaps) {
-                    return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
-                }
-                return b;
-            });
-
-            return {
-                id: img.id,
-                updates: {
-                    base64: dataUrlContent,
-                    url: newBase64,
-                    inpaintedUrl: newBase64,
-                    inpaintedBase64: dataUrlContent,
-                    inpaintingStatus: 'done',
-                    maskRegions: newMasks,
-                    bubbles: newBubbles
-                }
-            };
-        }));
-
-        setImages(prev => prev.map(p => {
-            const update = updates.find(u => u && u.id === p.id);
-            if (update) {
-                // Cast to any to merge properly or define partial
-                return { ...p, ...(update.updates as any) };
+            if (overlaps) {
+                return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
             }
-            return p;
-        }));
+            return b;
+        });
 
-        // Switch active layer to 'clean' if we modified the current image
-        if (scope === 'current' || targets.some(t => t.id === currentId)) {
-            setActiveLayer('clean');
-        }
+        return {
+            ...img,
+            inpaintingStatus: 'done',
+            maskRegions: newMasks,
+            bubbles: newBubbles
+        };
+    }));
 
-    } catch (e: any) {
-        console.error("Batch box fill failed", e);
-        alert("Batch fill failed: " + e.message);
-    } finally {
-        setIsInpainting(false);
+    if (scope === 'current' || (currentId && targetIds.has(currentId))) {
+        setActiveLayer('clean');
     }
-  }, [currentId, historyRef, setImages, setActiveLayer, setIsInpainting]);
+  }, [currentId, historyRef, setImages, setActiveLayer]);
 
   // Restore Region
   const handleRestoreRegion = useCallback(async (imageId: string, regionId: string) => {
       const img = historyRef.current.present.find(i => i.id === imageId);
       if (!img) return;
 
+      const region = img.maskRegions?.find(m => m.id === regionId);
+      if (!region) return;
+
+      // If it was a 'fill' region, just metadata update (Instant)
+      if (region.method === 'fill') {
+          setImages(prev => prev.map(p => p.id === imageId ? {
+              ...p,
+              maskRegions: (p.maskRegions || []).map(m => m.id === regionId ? { ...m, isCleaned: false, fillColor: undefined } : m)
+          } : p));
+          return;
+      }
+
+      // If it was 'inpaint', we must restore pixels (Slower, but necessary)
       try {
           const restoredBase64 = await restoreImageRegion(img, regionId);
           if (restoredBase64) {
@@ -440,9 +367,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   inpaintedUrl: restoredBase64,
                   inpaintedBase64: restoredBase64.replace(/^data:image\/\w+;base64,/, ""),
                   maskRegions: (p.maskRegions || []).map(m => m.id === regionId ? { ...m, isCleaned: false } : m)
-                  // Note: We don't necessarily need to turn transparent bubbles back to white here, 
-                  // as they might just be transparent by user choice. But if strict reversal is needed, we could.
-                  // For now, let's leave bubbles as is.
               } : p));
               setActiveLayer('clean');
           }
@@ -531,6 +455,14 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (finalUpdates.autoDetectBackground === true) triggerAutoColorDetection(bubbleId);
   }, [currentId, setImages, triggerAutoColorDetection, historyRef]);
 
+  const updateMaskRegion = useCallback((maskId: string, updates: Partial<MaskRegion>) => {
+      if (!currentId) return;
+      setImages(prev => prev.map(img => img.id === currentId ? {
+          ...img,
+          maskRegions: (img.maskRegions || []).map(m => m.id === maskId ? { ...m, ...updates } : m)
+      } : img));
+  }, [currentId, setImages]);
+
   const updateImageBubbles = useCallback((imgId: string, newBubbles: Bubble[]) => {
       setImages(prev => prev.map(img => img.id === imgId ? { ...img, bubbles: newBubbles } : img));
   }, [setImages]);
@@ -582,6 +514,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     activeLayer, setActiveLayer,
     updateBubble,
     updateImageBubbles,
+    updateMaskRegion,
     triggerAutoColorDetection,
     reorderBubble,
     aiConfigRef,
