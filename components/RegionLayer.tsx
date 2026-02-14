@@ -16,9 +16,15 @@ interface RegionLayerProps {
 export const RegionLayer: React.FC<RegionLayerProps> = React.memo(({ 
     region, isSelected, onMouseDown, onResizeStart, onDelete, isInteractive = true 
 }) => {
+    // Determine color based on method (fill=red, inpaint=purple)
+    const isErase = region.method === 'inpaint';
+    const mainColor = isErase ? '#a855f7' : '#ef4444'; // purple-500 : red-500
+    const mainBg = isErase ? 'bg-purple-500/10' : 'bg-red-500/10';
+    const borderColor = isErase ? 'border-purple-500' : 'border-red-500';
+
     const regionHandleStyle = (cursor: string): React.CSSProperties => ({
         ...handleStyle(cursor),
-        borderColor: '#ef4444', 
+        borderColor: mainColor, 
     });
 
     return (
@@ -33,7 +39,7 @@ export const RegionLayer: React.FC<RegionLayerProps> = React.memo(({
                 transform: `translate(-50%, -50%)`, 
             }}
         >
-            <div className={`absolute inset-0 border-2 border-dashed border-red-500 bg-red-500/10 pointer-events-none transition-opacity ${isSelected ? 'opacity-100' : 'opacity-60 hover:opacity-80'}`}></div>
+            <div className={`absolute inset-0 border-2 border-dashed ${borderColor} ${mainBg} pointer-events-none transition-opacity ${isSelected ? 'opacity-100' : 'opacity-60 hover:opacity-80'}`}></div>
 
             {isSelected && isInteractive && (
                 <>
@@ -41,7 +47,7 @@ export const RegionLayer: React.FC<RegionLayerProps> = React.memo(({
                         className="absolute -top-12 left-1/2 -translate-x-1/2 cursor-pointer z-40 transform hover:scale-110 transition-transform pointer-events-auto"
                         onMouseDown={(e) => { e.stopPropagation(); onDelete(); }}
                     >
-                        <div className="bg-red-500 text-white rounded-full p-1.5 shadow-md border-2 border-white hover:bg-red-600">
+                        <div className="text-white rounded-full p-1.5 shadow-md border-2 border-white hover:opacity-90" style={{ backgroundColor: mainColor }}>
                             <X size={14} strokeWidth={3} />
                         </div>
                     </div>
@@ -58,5 +64,8 @@ export const RegionLayer: React.FC<RegionLayerProps> = React.memo(({
         </div>
     );
 }, (prev, next) => {
-    return prev.isSelected === next.isSelected && prev.region === next.region && prev.isInteractive === next.isInteractive;
+    return prev.isSelected === next.isSelected && 
+           prev.region === next.region && 
+           prev.region.method === next.region.method && // Check for method change
+           prev.isInteractive === next.isInteractive;
 });
