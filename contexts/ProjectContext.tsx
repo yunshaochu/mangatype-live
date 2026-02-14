@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import { ImageState, Bubble, AIConfig, ViewLayer, MaskRegion } from '../types';
 import { useProjectState } from '../hooks/useProjectState';
@@ -9,6 +8,26 @@ import { inpaintImage } from '../services/inpaintingService';
 
 const STORAGE_KEY = 'mangatype_live_settings_v1';
 
+// --- Runtime Configuration Injection ---
+declare global {
+  interface Window {
+    APP_CONFIG?: {
+      TEXT_DETECTION_API_URL?: string;
+      IOPAINT_API_URL?: string;
+    };
+  }
+}
+
+const getRuntimeConfig = () => {
+  if (typeof window !== 'undefined' && window.APP_CONFIG) {
+    return window.APP_CONFIG;
+  }
+  return {};
+};
+
+const runtimeConfig = getRuntimeConfig();
+// ----------------------------------------
+
 const DEFAULT_CONFIG: AIConfig = {
   provider: 'gemini',
   apiKey: '', 
@@ -17,7 +36,7 @@ const DEFAULT_CONFIG: AIConfig = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   defaultFontSize: 1.0,
   useTextDetectionApi: false,
-  textDetectionApiUrl: 'http://localhost:5000',
+  textDetectionApiUrl: runtimeConfig.TEXT_DETECTION_API_URL || 'http://localhost:5000',
   language: 'zh',
   customMessages: [{ role: 'user', content: '翻译' }],
   autoDetectBackground: false,
@@ -31,7 +50,7 @@ const DEFAULT_CONFIG: AIConfig = {
   defaultMaskFeather: 0,
   // Inpainting defaults
   enableInpainting: false,
-  inpaintingUrl: 'http://localhost:8080',
+  inpaintingUrl: runtimeConfig.IOPAINT_API_URL || 'http://localhost:8080',
   inpaintingModel: 'lama',
 };
 
@@ -144,7 +163,30 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (saved) {
         const parsed = JSON.parse(saved);
         if (!parsed.customMessages) parsed.customMessages = DEFAULT_CONFIG.customMessages;
-        return { ...DEFAULT_CONFIG, ...parsed };
+        
+        // Merge with defaults
+        const merged = { ...DEFAULT_CONFIG, ...parsed };
+        
+        // --- Runtime Config Priority Logic ---
+        const runtime = getRuntimeConfig();
+
+        // 1. Text Detection API
+        // If runtime URL exists AND user is still using the default localhost URL, upgrade it.
+        // If user changed it manually, respect their choice.
+        if (runtime.TEXT_DETECTION_API_URL) {
+            if (parsed.textDetectionApiUrl === 'http://localhost:5000') {
+                merged.textDetectionApiUrl = runtime.TEXT_DETECTION_API_URL;
+            }
+        }
+
+        // 2. Inpainting API
+        if (runtime.IOPAINT_API_URL) {
+            if (parsed.inpaintingUrl === 'http://localhost:8080') {
+                merged.inpaintingUrl = runtime.IOPAINT_API_URL;
+            }
+        }
+        
+        return merged;
       }
     } catch (e) { console.warn("Failed to load settings", e); }
     return DEFAULT_CONFIG;
