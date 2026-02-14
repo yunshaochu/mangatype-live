@@ -306,8 +306,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setImages(prev => prev.map(img => {
         if (!targetIds.has(img.id)) return img;
 
-        // Filter masks: Must NOT be 'inpaint' method
-        const masksToFill = (img.maskRegions || []).filter(m => m.method !== 'inpaint');
+        // Filter masks: Must NOT be 'inpaint' method AND must NOT be already cleaned
+        // This prevents overwriting already filled or inpainted masks
+        const masksToFill = (img.maskRegions || []).filter(m => m.method !== 'inpaint' && !m.isCleaned);
+        
         if (masksToFill.length === 0) return img;
 
         // Update masks status

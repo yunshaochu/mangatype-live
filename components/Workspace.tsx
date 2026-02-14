@@ -22,6 +22,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
     currentImage, drawTool, setDrawTool, selectedMaskId, selectedBubbleId, aiConfig, 
     setImages, currentId, setSelectedMaskId, setSelectedBubbleId,
     updateBubble, triggerAutoColorDetection,
+    updateMaskRegion, // Added
     // Brush
     brushColor, brushSize, setBrushColor, handlePaintSave, paintMode, setPaintMode,
     brushType, // 'paint' | 'restore'
@@ -380,6 +381,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               onMouseDown={(e) => onMaskMouseDown(e, region.id)}
               onResizeStart={(e, handle) => onResizeStart(e, region.id, 'mask', handle)}
               onDelete={() => onDeleteMask(region.id)}
+              onUpdate={(updates) => updateMaskRegion(region.id, updates)}
             />
           ))}
 

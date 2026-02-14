@@ -1,8 +1,8 @@
 
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { MaskRegion, HandleType } from '../types';
 import { X } from 'lucide-react';
-import { handleStyle, HANDLE_OFFSET } from '../utils/editorUtils';
+import { handleStyle, HANDLE_OFFSET, clamp } from '../utils/editorUtils';
 
 interface RegionLayerProps {
   region: MaskRegion;
@@ -10,12 +10,17 @@ interface RegionLayerProps {
   onMouseDown: (e: React.MouseEvent) => void;
   onResizeStart: (e: React.MouseEvent, handle: HandleType) => void;
   onDelete: () => void;
+  onUpdate: (updates: Partial<MaskRegion>) => void;
   isInteractive?: boolean;
 }
 
 export const RegionLayer: React.FC<RegionLayerProps> = React.memo(({ 
-    region, isSelected, onMouseDown, onResizeStart, onDelete, isInteractive = true 
+    region, isSelected, onMouseDown, onResizeStart, onDelete, onUpdate, isInteractive = true 
 }) => {
+    const divRef = useRef<HTMLDivElement>(null);
+    const regionRef = useRef(region);
+    regionRef.current = region;
+
     // Determine color based on method (fill=red, inpaint=purple)
     const isErase = region.method === 'inpaint';
     const mainColor = isErase ? '#a855f7' : '#ef4444'; // purple-500 : red-500
@@ -27,8 +32,44 @@ export const RegionLayer: React.FC<RegionLayerProps> = React.memo(({
         borderColor: mainColor, 
     });
 
+    useEffect(() => {
+        const el = divRef.current;
+        if (!el || !isInteractive) return;
+
+        const handleWheel = (e: WheelEvent) => {
+            if (!isSelected) return;
+
+            if (e.altKey) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const currentRegion = regionRef.current;
+                const delta = e.deltaY > 0 ? -1 : 1;
+                
+                const scale = delta > 0 ? 1.05 : 0.95;
+                let newWidth = currentRegion.width * scale;
+                let newHeight = currentRegion.height * scale;
+                
+                // Allow resizing down to 0.5% for precise masks
+                newWidth = clamp(newWidth, 0.5, 100);
+                newHeight = clamp(newHeight, 0.5, 100);
+
+                onUpdate({
+                    width: parseFloat(newWidth.toFixed(1)),
+                    height: parseFloat(newHeight.toFixed(1))
+                });
+            }
+        };
+
+        el.addEventListener('wheel', handleWheel, { passive: false });
+        return () => {
+            el.removeEventListener('wheel', handleWheel);
+        };
+    }, [isSelected, onUpdate, isInteractive]);
+
     return (
         <div
+            ref={divRef}
             onMouseDown={isInteractive ? onMouseDown : undefined}
             className={`absolute select-none z-30 group ${isInteractive ? 'cursor-move pointer-events-auto' : 'pointer-events-none'}`} 
             style={{
