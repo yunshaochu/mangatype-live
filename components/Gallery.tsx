@@ -1,7 +1,9 @@
 
 
+
+
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Trash2, CheckCircle, Loader2, XCircle, Ban, FilePlus, FolderPlus, ScanText, AlertTriangle } from 'lucide-react';
+import { X, Trash2, CheckCircle, Loader2, XCircle, Ban, FilePlus, FolderPlus, ScanText, AlertTriangle, Eraser } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 
@@ -130,6 +132,11 @@ export const Gallery: React.FC<GalleryProps> = ({ onAddFile, onAddFolder }) => {
 
                 {/* Status Indicators - Bottom Right */}
                 <div className="absolute bottom-1 right-1 z-10 flex gap-1 bg-gray-900/70 p-0.5 rounded-full backdrop-blur-sm">
+                    {/* Inpainting Status (Purple/Red) */}
+                    {img.inpaintingStatus === 'processing' && <Loader2 size={14} className="text-purple-400 animate-spin" />}
+                    {img.inpaintingStatus === 'done' && <Eraser size={14} className="text-purple-400" />}
+                    {img.inpaintingStatus === 'error' && <AlertTriangle size={14} className="text-red-500" />}
+
                     {/* Detection Status (Orange) */}
                     {img.detectionStatus === 'processing' && <Loader2 size={14} className="text-orange-400 animate-spin" />}
                     {img.detectionStatus === 'done' && <ScanText size={14} className="text-orange-400" />}

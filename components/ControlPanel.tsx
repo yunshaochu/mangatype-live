@@ -1,11 +1,12 @@
 
-
 import React from 'react';
-import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon } from 'lucide-react';
+import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon, Eraser, Brush, Pipette, Hash, PaintBucket, MousePointerClick, History } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { createBubble } from '../utils/editorUtils';
-import { compositeImage, downloadAllAsZip, downloadSingleImage } from '../services/exportService';
+import { compositeImage, downloadAllAsZip, downloadSingleImage, ExportOptions } from '../services/exportService';
+
+const PRESET_BRUSH_COLORS = ['#ffffff', '#000000', '#f3f4f6', '#d1d5db'];
 
 export const ControlPanel: React.FC = () => {
   const {
@@ -13,21 +14,25 @@ export const ControlPanel: React.FC = () => {
     currentId, setSelectedBubbleId, setSelectedMaskId, updateImageBubbles,
     aiConfig,
     // Processing state
-    isProcessingBatch, handleBatchProcess, handleResetStatus, stopProcessing, handleLocalDetectionScan,
+    isProcessingBatch, handleBatchProcess, handleResetStatus, stopProcessing, handleLocalDetectionScan, handleBatchInpaint,
     // UI state
-    drawTool, setDrawTool, 
+    drawTool, setDrawTool, activeLayer,
     showGlobalStyles, setShowGlobalStyles,
     concurrency, setConcurrency,
     isMerging, setIsMerging,
     isZipping, setIsZipping,
     zipProgress, setZipProgress,
-    setShowManualJson
+    setShowManualJson,
+    // Brush
+    brushColor, setBrushColor, brushSize, setBrushSize,
+    paintMode, setPaintMode,
+    brushType, setBrushType
   } = useProjectContext();
 
   const lang = aiConfig.language;
   const bubbles = currentImage?.bubbles || [];
 
-  const handleToolChange = (tool: 'none' | 'bubble' | 'mask') => {
+  const handleToolChange = (tool: 'none' | 'bubble' | 'mask' | 'brush') => {
       setDrawTool(tool);
       setSelectedBubbleId(null);
       setSelectedMaskId(null);
@@ -56,7 +61,27 @@ export const ControlPanel: React.FC = () => {
       updateImageBubbles(currentImage.id, currentImage.bubbles.map(b => ({ ...b, fontFamily })));
   };
 
+  const handleEyedropper = async () => {
+    if (!window.EyeDropper) {
+      alert("Browser doesn't support EyeDropper API.");
+      return;
+    }
+    const eyeDropper = new window.EyeDropper();
+    try {
+      const result = await eyeDropper.open();
+      setBrushColor(result.sRGBHex);
+    } catch (e) {
+      // ignore
+    }
+  };
+
   // --- Export Actions ---
+  const getExportOptions = (): ExportOptions => ({
+      defaultMaskShape: aiConfig.defaultMaskShape,
+      defaultMaskCornerRadius: aiConfig.defaultMaskCornerRadius,
+      defaultMaskFeather: aiConfig.defaultMaskFeather
+  });
+
   const blobToBase64 = (blob: Blob): Promise<string> => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -70,7 +95,7 @@ export const ControlPanel: React.FC = () => {
     if (!currentImage || currentImage.bubbles.length === 0) return;
     setIsMerging(true);
     try {
-        const blob = await compositeImage(currentImage);
+        const blob = await compositeImage(currentImage, getExportOptions());
         if (blob) {
             const newUrl = URL.createObjectURL(blob);
             const newBase64 = await blobToBase64(blob);
@@ -83,7 +108,9 @@ export const ControlPanel: React.FC = () => {
   const onZipDownload = async () => {
     if (images.length === 0 || isZipping) return;
     setIsZipping(true); setZipProgress({ current: 0, total: images.length });
-    try { await downloadAllAsZip(images, (curr, total) => { setZipProgress({ current: curr, total }); }); } catch (e) { console.error(e); alert("Zip creation failed"); } finally { setIsZipping(false); setZipProgress({ current: 0, total: 0 }); }
+    try { 
+        await downloadAllAsZip(images, (curr, total) => { setZipProgress({ current: curr, total }); }, getExportOptions()); 
+    } catch (e) { console.error(e); alert("Zip creation failed"); } finally { setIsZipping(false); setZipProgress({ current: 0, total: 0 }); }
   };
 
   return (
@@ -124,24 +151,37 @@ export const ControlPanel: React.FC = () => {
 
       <div className="p-3 space-y-3">
         {/* Tool Switcher */}
-        <div className="flex p-1 bg-gray-800 rounded-lg">
+        <div className="flex p-1 bg-gray-800 rounded-lg overflow-x-auto no-scrollbar gap-1">
           <button
             onClick={() => handleToolChange('none')}
-            className={`flex-1 py-1 text-xs rounded-md transition-all flex items-center justify-center gap-1 ${drawTool === 'none' ? 'bg-gray-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+            className={`flex-1 py-1 px-2 text-xs rounded-md transition-all flex items-center justify-center gap-1 whitespace-nowrap ${drawTool === 'none' ? 'bg-gray-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
             title={t('toolNone', lang)}
           >
             <MousePointer2 size={12} /> View
           </button>
-          <button
-            onClick={() => handleToolChange('bubble')}
-            className={`flex-1 py-1 text-xs rounded-md transition-all flex items-center justify-center gap-1 ${drawTool === 'bubble' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
-            title={t('toolBubble', lang)}
-          >
-            <MessageSquareDashed size={12} /> Bubble
-          </button>
+          
+          {/* Conditional Slot: Paint (if clean layer) vs Bubble (if other layers) */}
+          {activeLayer === 'clean' ? (
+            <button
+                onClick={() => handleToolChange('brush')}
+                className={`flex-1 py-1 px-2 text-xs rounded-md transition-all flex items-center justify-center gap-1 whitespace-nowrap ${drawTool === 'brush' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+                title={t('toolBrush', lang)}
+            >
+                <Brush size={12} /> Paint
+            </button>
+          ) : (
+            <button
+                onClick={() => handleToolChange('bubble')}
+                className={`flex-1 py-1 px-2 text-xs rounded-md transition-all flex items-center justify-center gap-1 whitespace-nowrap ${drawTool === 'bubble' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+                title={t('toolBubble', lang)}
+            >
+                <MessageSquareDashed size={12} /> Bubble
+            </button>
+          )}
+
           <button
             onClick={() => handleToolChange('mask')}
-            className={`flex-1 py-1 text-xs rounded-md transition-all flex items-center justify-center gap-1 ${drawTool === 'mask' ? 'bg-red-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
+            className={`flex-1 py-1 px-2 text-xs rounded-md transition-all flex items-center justify-center gap-1 whitespace-nowrap ${drawTool === 'mask' ? 'bg-red-600 text-white shadow' : 'text-gray-400 hover:text-gray-200'}`}
             title={t('toolMask', lang)}
           >
             <Scan size={12} /> Mask
@@ -149,36 +189,37 @@ export const ControlPanel: React.FC = () => {
         </div>
 
         {/* Action Buttons Area */}
-        <div className="h-10 relative">
+        <div className="flex flex-col gap-1.5 relative">
           {isProcessingBatch ? (
             <button
               onClick={stopProcessing}
-              className="w-full h-full bg-red-900/50 hover:bg-red-800 border border-red-700 rounded text-xs text-red-200 flex items-center justify-center gap-2 animate-pulse"
+              className="w-full h-10 bg-red-900/50 hover:bg-red-800 border border-red-700 rounded text-xs text-red-200 flex items-center justify-center gap-2 animate-pulse"
             >
               <Square size={12} fill="currentColor" /> {t('stop', lang)}
             </button>
           ) : (
             <>
+              {/* Row 1: Primary Actions */}
               {drawTool === 'none' && (
-                <div className="flex gap-1 h-full">
+                <div className="flex gap-1 h-8">
                   <button
                     onClick={() => handleBatchProcess(currentImage, true, concurrency)}
                     disabled={!currentImage}
                     className="flex-1 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded text-xs font-bold flex items-center justify-center gap-1 disabled:opacity-50 shadow-sm px-2"
-                    title={t('current', lang)}
+                    title={t('translateCurrent', lang)}
                   >
-                    <Sparkles size={14} /> {t('current', lang)}
+                    <Sparkles size={14} /> {t('translateCurrent', lang)}
                   </button>
                   <button
                     onClick={() => handleBatchProcess(currentImage, false, concurrency)}
                     className="flex-[1.5] bg-gray-700 hover:bg-gray-600 text-gray-200 rounded text-xs flex items-center justify-center gap-1 px-2"
-                    title={t('processPending', lang)}
+                    title={t('translateAll', lang)}
                   >
-                    <Layers size={14} /> {t('processAll', lang)}
+                    <Layers size={14} /> {t('translateAll', lang)}
                   </button>
                   <button
                     onClick={handleResetStatus}
-                    className="w-10 bg-gray-700 hover:bg-gray-600 text-yellow-500 rounded text-xs flex items-center justify-center"
+                    className="w-8 bg-gray-700 hover:bg-gray-600 text-yellow-500 rounded text-xs flex items-center justify-center"
                     title={t('resetStatus', lang)}
                   >
                     <RefreshCw size={14} />
@@ -195,47 +236,134 @@ export const ControlPanel: React.FC = () => {
               )}
 
               {drawTool === 'mask' && (
-                <div className="grid grid-cols-4 gap-1 h-full">
-                  <button
-                    onClick={() => handleBatchProcess(currentImage, true, concurrency)}
-                    disabled={!currentImage}
-                    className="bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold flex items-center justify-center gap-1 disabled:opacity-50 shadow-sm"
-                    title={t('current', lang)}
-                  >
-                    <Sparkles size={14} /> Trans.
-                  </button>
-                  <button
-                    onClick={() => handleBatchProcess(currentImage, false, concurrency)}
-                    className="bg-gray-700 hover:bg-gray-600 text-gray-200 rounded text-xs flex items-center justify-center gap-1"
-                    title={t('processAll', lang)}
-                  >
-                    <Layers size={14} /> Batch
-                  </button>
-                  <button
-                    onClick={() => handleLocalDetectionScan(currentImage, false, concurrency)}
-                    className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                    title={t('scanCurrent', lang)}
-                  >
-                    <ScanText size={14} /> Scan
-                  </button>
-                  <button
-                    onClick={() => handleLocalDetectionScan(currentImage, true, concurrency)}
-                    className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                    title={t('scanAll', lang)}
-                  >
-                    <Layers size={14} /> All
-                  </button>
-                </div>
+                <>
+                    <div className="grid grid-cols-2 gap-1 h-8">
+                        <button
+                            onClick={() => handleLocalDetectionScan(currentImage, false, concurrency)}
+                            className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
+                            title={t('scanCurrent', lang)}
+                        >
+                            <ScanText size={14} /> {t('scanCurrent', lang)}
+                        </button>
+                        <button
+                            onClick={() => handleLocalDetectionScan(currentImage, true, concurrency)}
+                            className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
+                            title={t('scanAll', lang)}
+                        >
+                            <Layers size={14} /> {t('scanAll', lang)}
+                        </button>
+                    </div>
+                </>
               )}
 
               {drawTool === 'bubble' && (
-                <button
-                  onClick={onAddManualBubble}
-                  disabled={!currentImage}
-                  className="w-full h-full bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
-                >
-                  <PlusIcon size={16} /> {t('manualAdd', lang)}
-                </button>
+                <div className="h-8">
+                    <button
+                        onClick={onAddManualBubble}
+                        disabled={!currentImage}
+                        className="w-full h-full bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold flex items-center justify-center gap-2 shadow-sm"
+                    >
+                    <PlusIcon size={16} /> {t('manualAdd', lang)}
+                    </button>
+                </div>
+              )}
+
+              {drawTool === 'brush' && (
+                  <div className="space-y-2 animate-fade-in-down">
+                      {/* Sub-tool Selection (Brush vs Box) */}
+                      <div className="flex bg-gray-800 p-0.5 rounded-lg border border-gray-700">
+                           <button 
+                                onClick={() => setPaintMode('brush')}
+                                className={`flex-1 py-1 rounded-md text-xs flex items-center justify-center gap-1 transition-all ${paintMode === 'brush' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                                title="Freehand Brush (Alt+Click on canvas to pick color)"
+                           >
+                               <Brush size={12}/> Freehand
+                           </button>
+                           <button 
+                                onClick={() => setPaintMode('box')}
+                                className={`flex-1 py-1 rounded-md text-xs flex items-center justify-center gap-1 transition-all ${paintMode === 'box' ? 'bg-purple-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                                title="Box Tool (Drag to Create, Click to Edit)"
+                           >
+                               <Square size={12}/> Box Tool
+                           </button>
+                      </div>
+
+                      {/* Brush Settings - Only show in Freehand Mode */}
+                      {paintMode === 'brush' && (
+                        <div className="space-y-2 animate-fade-in">
+                            {/* Brush Type Toggle (Paint vs Restore) */}
+                            <div className="flex bg-gray-800 p-0.5 rounded-lg border border-gray-700">
+                                <button
+                                    onClick={() => setBrushType('paint')}
+                                    className={`flex-1 py-1 rounded-md text-xs flex items-center justify-center gap-1 transition-all ${brushType === 'paint' ? 'bg-blue-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                                    title={t('brushModePaintDesc', lang)}
+                                >
+                                    <PaintBucket size={12} /> {t('brushModePaint', lang)}
+                                </button>
+                                <button
+                                    onClick={() => setBrushType('restore')}
+                                    className={`flex-1 py-1 rounded-md text-xs flex items-center justify-center gap-1 transition-all ${brushType === 'restore' ? 'bg-green-600 text-white shadow' : 'text-gray-400 hover:text-white'}`}
+                                    title={t('brushModeRestoreDesc', lang)}
+                                >
+                                    <History size={12} /> {t('brushModeRestore', lang)}
+                                </button>
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-gray-400 w-12">{t('brushSize', lang)}</span>
+                                <input 
+                                    type="range" min="1" max="100" 
+                                    value={brushSize} onChange={(e) => setBrushSize(parseInt(e.target.value))}
+                                    className="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                                />
+                                <span className="text-[10px] w-6 text-right text-gray-400">{brushSize}</span>
+                            </div>
+                            
+                            {/* Brush Color (Only visible in Paint Mode) */}
+                            {brushType === 'paint' && (
+                                <div className="flex gap-1 items-center animate-fade-in">
+                                    <div className="relative flex-1">
+                                        <div className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"><Hash size={10}/></div>
+                                        <input 
+                                            type="text" 
+                                            value={brushColor.replace('#', '')}
+                                            onChange={(e) => setBrushColor(`#${e.target.value}`)}
+                                            className="w-full bg-gray-800 border border-gray-700 rounded h-6 pl-5 text-[10px] text-white uppercase font-mono focus:border-purple-500 outline-none"
+                                        />
+                                    </div>
+                                    
+                                    {PRESET_BRUSH_COLORS.map(c => (
+                                        <button
+                                            key={c}
+                                            onClick={() => setBrushColor(c)}
+                                            className={`w-6 h-6 rounded border transition-all ${brushColor.toLowerCase() === c ? 'border-purple-500 ring-1 ring-purple-500/50' : 'border-gray-600 hover:scale-105'}`}
+                                            style={{ backgroundColor: c }}
+                                        />
+                                    ))}
+                                    
+                                    <div className="relative w-6 h-6 rounded border border-gray-600 overflow-hidden shrink-0 cursor-pointer group">
+                                            <input 
+                                                type="color"
+                                                value={brushColor}
+                                                onChange={(e) => setBrushColor(e.target.value)}
+                                                className="absolute -top-2 -left-2 w-10 h-10 p-0 border-0 cursor-pointer"
+                                            />
+                                    </div>
+                                    <button onClick={handleEyedropper} className="w-6 h-6 flex items-center justify-center bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 text-gray-400" title={t('pickScreenColor', lang)}>
+                                        <Pipette size={12}/>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                      )}
+
+                      {/* Box Mode Hint */}
+                      {paintMode === 'box' && (
+                          <div className="text-[10px] text-gray-400 text-center animate-fade-in p-1 bg-gray-800/50 rounded">
+                              Select a red box to see fill/clean options.
+                          </div>
+                      )}
+                  </div>
               )}
             </>
           )}
@@ -275,7 +403,7 @@ export const ControlPanel: React.FC = () => {
               {isMerging ? <Loader2 className="animate-spin" size={16} /> : <FileStack size={16} />}
             </button>
             <button
-              onClick={() => currentImage && downloadSingleImage(currentImage)}
+              onClick={() => currentImage && downloadSingleImage(currentImage, getExportOptions())}
               disabled={!currentImage}
               className="p-2 text-gray-300 hover:text-white hover:bg-gray-800 rounded disabled:opacity-30 transition-colors"
               title={t('saveImage', lang)}

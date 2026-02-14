@@ -1,5 +1,4 @@
 
-
 export interface Bubble {
   id: string;
   x: number; // Center X percentage 0-100
@@ -28,6 +27,9 @@ export interface MaskRegion {
   y: number;
   width: number;
   height: number;
+  isCleaned?: boolean; // True if this region has been Inpainted or Filled
+  method?: 'fill' | 'inpaint'; // New: Tag to determine batch processing method. Default is 'fill'.
+  fillColor?: string; // New: Store color for instant rendering
 }
 
 export interface DetectedBubble {
@@ -44,12 +46,23 @@ export interface DetectedBubble {
 export interface ImageState {
   id: string;
   name: string;
-  url: string;
-  base64: string; // Cache base64 for AI analysis
+  // Primary display/export URL (usually the translated background)
+  url: string; 
+  base64: string; 
+  
+  // Storage for layers
+  originalUrl: string;
+  originalBase64: string;
+  inpaintedUrl?: string;
+  inpaintedBase64?: string;
+
   width: number;
   height: number;
   bubbles: Bubble[];
-  maskRegions?: MaskRegion[]; // Store Mode 2 regions
+  maskRegions?: MaskRegion[]; // Store Mode 2 regions (Red Boxes)
+  
+  // New: Pixel-perfect mask from detection API (Base64 string)
+  maskRefinedBase64?: string; 
   
   // Translation (AI) Status
   status: 'idle' | 'processing' | 'done' | 'error';
@@ -57,6 +70,9 @@ export interface ImageState {
   
   // Local Detection Status (Separate)
   detectionStatus?: 'idle' | 'processing' | 'done' | 'error';
+
+  // Inpainting Status (Separate)
+  inpaintingStatus?: 'idle' | 'processing' | 'done' | 'error';
   
   skipped?: boolean; // If true, skip AI processing but include in export
 }
@@ -94,9 +110,16 @@ export interface AIConfig {
   useMasksAsHints?: boolean; // Send manual red boxes as hints to AI
   useTextDetectionApi?: boolean; // Toggle Local OCR
   textDetectionApiUrl?: string;
+  detectionExpansionRatio?: number; // New: 0.0 - 0.5 (Expansion rate for detected boxes)
   enableDialogSnap?: boolean; // Snap AI bubbles to manual masks
   forceSnapSize?: boolean; // Force snapped bubbles to use mask size
   
+  // Inpainting (Cleanup) Tab
+  enableInpainting?: boolean;
+  inpaintingUrl?: string;
+  inpaintingModel?: string;
+  // autoInpaintMasks Removed per user request
+
   language: 'zh' | 'en'; 
   allowAiRotation?: boolean; 
   allowAiFontSelection?: boolean; // New: Toggle AI font selection
@@ -117,3 +140,5 @@ declare global {
 }
 
 export type HandleType = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+export type ViewLayer = 'original' | 'clean' | 'final';

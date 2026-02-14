@@ -1,5 +1,4 @@
 
-
 import React, { useRef, useEffect } from 'react';
 import { Bubble, AIConfig, HandleType } from '../types';
 import { X } from 'lucide-react';
@@ -14,9 +13,12 @@ interface BubbleLayerProps {
   onUpdate: (id: string, updates: Partial<Bubble>) => void;
   onDelete: () => void;
   onTriggerAutoColor: (id: string) => void;
+  isInteractive?: boolean;
 }
 
-export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isSelected, config, onMouseDown, onResizeStart, onUpdate, onDelete, onTriggerAutoColor }) => {
+export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ 
+    bubble, isSelected, config, onMouseDown, onResizeStart, onUpdate, onDelete, onTriggerAutoColor, isInteractive = true 
+}) => {
   const divRef = useRef<HTMLDivElement>(null);
   const bubbleRef = useRef(bubble);
   bubbleRef.current = bubble;
@@ -37,7 +39,7 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isS
 
   useEffect(() => {
     const el = divRef.current;
-    if (!el) return;
+    if (!el || !isInteractive) return;
 
     const handleWheel = (e: WheelEvent) => {
       if (!isSelected) return;
@@ -72,13 +74,13 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isS
     return () => {
       el.removeEventListener('wheel', handleWheel);
     };
-  }, [isSelected, onUpdate, onTriggerAutoColor]);
+  }, [isSelected, onUpdate, onTriggerAutoColor, isInteractive]);
 
   return (
     <div
       ref={divRef}
-      onMouseDown={onMouseDown}
-      className={`absolute cursor-move select-none z-10 group`}
+      onMouseDown={isInteractive ? onMouseDown : undefined}
+      className={`absolute select-none z-10 group ${isInteractive ? 'cursor-move pointer-events-auto' : 'pointer-events-none'}`}
       style={{
         top: `${bubble.y}%`,
         left: `${bubble.x}%`,
@@ -96,14 +98,14 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isS
         }}
       />
 
-      {isSelected && (
+      {isSelected && isInteractive && (
         <>
             <div 
                 className="absolute inset-0 border-2 border-blue-500 pointer-events-none z-20 opacity-80 shadow-sm"
                 style={{ borderRadius: borderRadius }}
             ></div>
             <div 
-              className="absolute -top-12 left-1/2 -translate-x-1/2 cursor-pointer z-40 transform hover:scale-110 transition-transform"
+              className="absolute -top-12 left-1/2 -translate-x-1/2 cursor-pointer z-40 transform hover:scale-110 transition-transform pointer-events-auto"
               onMouseDown={(e) => { e.stopPropagation(); onDelete(); }}
             >
                <div className="bg-red-500 text-white rounded-full p-1.5 shadow-md border-2 border-white hover:bg-red-600">
@@ -133,7 +135,7 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isS
           fontWeight: 'bold',
           color: bubble.color,
           writingMode: bubble.isVertical ? 'vertical-rl' : 'horizontal-tb',
-          whiteSpace: 'pre-wrap',
+          whiteSpace: 'pre',
           lineHeight: '1.5',
           textAlign: bubble.isVertical ? 'left' : 'center',
           WebkitTextStroke: '3px #ffffff',
@@ -150,6 +152,7 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({ bubble, isS
         prev.bubble === next.bubble &&
         prev.config.defaultMaskShape === next.config.defaultMaskShape &&
         prev.config.defaultMaskCornerRadius === next.config.defaultMaskCornerRadius &&
-        prev.config.defaultMaskFeather === next.config.defaultMaskFeather
+        prev.config.defaultMaskFeather === next.config.defaultMaskFeather &&
+        prev.isInteractive === next.isInteractive
     );
 });

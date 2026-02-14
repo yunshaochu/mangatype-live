@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useCallback } from 'react';
 import { ImageState, HandleType, AIConfig, Bubble } from '../types';
 import { createBubble, createMaskRegion, clamp } from '../utils/editorUtils';
@@ -27,7 +28,8 @@ interface UseCanvasInteractionProps {
     setSelectedBubbleId: (id: string | null) => void;
     setSelectedMaskId: (id: string | null) => void;
     triggerAutoColorDetection: (id: string) => void;
-    drawTool: 'none' | 'bubble' | 'mask';
+    drawTool: 'none' | 'bubble' | 'mask' | 'brush';
+    paintMode: 'brush' | 'box'; // Add paintMode
 }
 
 export const useCanvasInteraction = ({
@@ -39,7 +41,8 @@ export const useCanvasInteraction = ({
     setSelectedBubbleId,
     setSelectedMaskId,
     triggerAutoColorDetection,
-    drawTool
+    drawTool,
+    paintMode // Receive paintMode
 }: UseCanvasInteractionProps) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const dragRef = useRef<DragState | null>(null);
@@ -62,6 +65,21 @@ export const useCanvasInteraction = ({
 
         if (drawTool === 'bubble') {
             const newBubble = createBubble(startXPct, startYPct, aiConfig.defaultFontSize, 0, 0);
+            
+            // Check immediate overlap for new bubble (point overlap)
+            const cleanedMasks = (currentImg.maskRegions || []).filter(m => m.isCleaned);
+            const overlaps = cleanedMasks.some(m => {
+                 const xDiff = Math.abs(newBubble.x - m.x);
+                 const yDiff = Math.abs(newBubble.y - m.y);
+                 const halfW = m.width / 2;
+                 const halfH = m.height / 2;
+                 return xDiff <= halfW && yDiff <= halfH;
+            });
+            if (overlaps) {
+                newBubble.backgroundColor = 'transparent';
+                newBubble.autoDetectBackground = false;
+            }
+
             updateImageBubbles(currentId, [...currentImg.bubbles, newBubble]);
             setSelectedBubbleId(newBubble.id);
             setSelectedMaskId(null);
@@ -76,7 +94,8 @@ export const useCanvasInteraction = ({
                 initialSnapshot: images,
                 hasMoved: false
             };
-        } else if (drawTool === 'mask') {
+        } else if (drawTool === 'mask' || (drawTool === 'brush' && paintMode === 'box')) {
+            // Allow mask creation in Mask mode OR Paint mode (Box sub-mode)
             const newMask = createMaskRegion(startXPct, startYPct);
             setImages(prev => prev.map(img => img.id === currentId ? { ...img, maskRegions: [...(img.maskRegions || []), newMask] } : img));
             setSelectedMaskId(newMask.id);
@@ -120,6 +139,9 @@ export const useCanvasInteraction = ({
                 hasMoved: false
             };
         } else {
+            // Mask selection valid in Mask tool OR Brush (Box) tool
+            if (drawTool !== 'mask' && !(drawTool === 'brush' && paintMode === 'box')) return;
+            
             setSelectedMaskId(id);
             setSelectedBubbleId(null);
             const mask = (currentImg.maskRegions || []).find(m => m.id === id);
@@ -156,6 +178,8 @@ export const useCanvasInteraction = ({
                 hasMoved: false
             };
         } else {
+            if (drawTool !== 'mask' && !(drawTool === 'brush' && paintMode === 'box')) return;
+            
             const mask = (currentImg.maskRegions || []).find(m => m.id === id);
             if (!mask) return;
             dragRef.current = {
@@ -179,6 +203,18 @@ export const useCanvasInteraction = ({
         
         if (Math.abs(dxPx) > 1 || Math.abs(dyPx) > 1) dragRef.current.hasMoved = true;
 
+        const checkOverlap = (bubble: Bubble, maskRegions: any[]) => {
+            const cleanedMasks = maskRegions.filter(m => m.isCleaned);
+            return cleanedMasks.some(m => {
+                 const xDiff = Math.abs(bubble.x - m.x);
+                 const yDiff = Math.abs(bubble.y - m.y);
+                 const halfW = m.width / 2;
+                 const halfH = m.height / 2;
+                 // Check if bubble center is within the mask box
+                 return xDiff <= halfW && yDiff <= halfH;
+            });
+        };
+
         if (mode === 'drawing') {
             const currentXPct = clamp((e.clientX - rect.left) / rect.width * 100, 0, 100);
             const currentYPct = clamp((e.clientY - rect.top) / rect.height * 100, 0, 100);
@@ -193,7 +229,18 @@ export const useCanvasInteraction = ({
                 const img = prev.find(i => i.id === currentId);
                 if (!img) return prev;
                 if (targetType === 'bubble') {
-                    const newBubbles = img.bubbles.map(b => b.id === id ? { ...b, x: centerX, y: centerY, width: Math.max(1, w), height: Math.max(1, h) } : b);
+                    let newBubble = img.bubbles.find(b => b.id === id);
+                    if (!newBubble) return prev; // Should be there
+                    
+                    newBubble = { ...newBubble, x: centerX, y: centerY, width: Math.max(1, w), height: Math.max(1, h) };
+                    
+                    // Check overlap on draw
+                    if (checkOverlap(newBubble, img.maskRegions || [])) {
+                        newBubble.backgroundColor = 'transparent';
+                        newBubble.autoDetectBackground = false;
+                    }
+
+                    const newBubbles = img.bubbles.map(b => b.id === id ? newBubble : b);
                     return prev.map(p => p.id === currentId ? { ...p, bubbles: newBubbles } : p);
                 } else {
                     const newMasks = (img.maskRegions || []).map(m => m.id === id ? { ...m, x: centerX, y: centerY, width: Math.max(1, w), height: Math.max(1, h) } : m);
@@ -213,7 +260,18 @@ export const useCanvasInteraction = ({
                 const img = prev.find(i => i.id === currentId);
                 if (!img) return prev;
                 if (targetType === 'bubble') {
-                    const newBubbles = img.bubbles.map(b => b.id === id ? { ...b, x: newX, y: newY } : b);
+                    let newBubble = img.bubbles.find(b => b.id === id);
+                    if (!newBubble) return prev;
+
+                    newBubble = { ...newBubble, x: newX, y: newY };
+
+                    // Check overlap on move
+                    if (checkOverlap(newBubble, img.maskRegions || [])) {
+                        newBubble.backgroundColor = 'transparent';
+                        newBubble.autoDetectBackground = false;
+                    }
+
+                    const newBubbles = img.bubbles.map(b => b.id === id ? newBubble : b);
                     return prev.map(p => p.id === currentId ? { ...p, bubbles: newBubbles } : p);
                 } else {
                     const newMasks = (img.maskRegions || []).map(m => m.id === id ? { ...m, x: newX, y: newY } : m);
@@ -244,7 +302,18 @@ export const useCanvasInteraction = ({
                 const img = prev.find(i => i.id === currentId);
                 if (!img) return prev;
                 if (targetType === 'bubble') {
-                    const newBubbles = img.bubbles.map(b => b.id === id ? { ...b, x: newX, y: newY, width: newW, height: newH } : b);
+                    let newBubble = img.bubbles.find(b => b.id === id);
+                    if (!newBubble) return prev;
+
+                    newBubble = { ...newBubble, x: newX, y: newY, width: newW, height: newH };
+
+                    // Check overlap on resize
+                    if (checkOverlap(newBubble, img.maskRegions || [])) {
+                        newBubble.backgroundColor = 'transparent';
+                        newBubble.autoDetectBackground = false;
+                    }
+
+                    const newBubbles = img.bubbles.map(b => b.id === id ? newBubble : b);
                     return prev.map(p => p.id === currentId ? { ...p, bubbles: newBubbles } : p);
                 } else {
                     const newMasks = (img.maskRegions || []).map(m => m.id === id ? { ...m, x: newX, y: newY, width: newW, height: newH } : m);

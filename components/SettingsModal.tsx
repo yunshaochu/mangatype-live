@@ -1,8 +1,7 @@
 
-
 import React, { useState, useEffect, useRef } from 'react';
 import { AIConfig, AIProvider, CustomMessage } from '../types';
-import { Settings, X, RefreshCw, CheckCircle, AlertCircle, Server, RotateCcw, Type, ScanText, Globe, RotateCw, ChevronDown, Check, MessageSquarePlus, Trash2, Plus, Scan, Pipette, Zap, Bot, Layout, Cpu, FileText, Magnet, Paintbrush, Square, Circle, Box, Eye, PenTool } from 'lucide-react';
+import { Settings, X, RefreshCw, CheckCircle, AlertCircle, Server, RotateCcw, Type, ScanText, Globe, RotateCw, ChevronDown, Check, MessageSquarePlus, Trash2, Plus, Scan, Pipette, Zap, Bot, Layout, Cpu, FileText, Magnet, Paintbrush, Square, Circle, Box, Eye, PenTool, Eraser, MoveHorizontal } from 'lucide-react';
 import { fetchAvailableModels, DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
 import { t } from '../services/i18n';
 
@@ -13,7 +12,7 @@ interface SettingsModalProps {
 }
 
 // Renamed 'model' to 'prompt' to better reflect new structure
-type TabKey = 'general' | 'provider' | 'prompt' | 'detection' | 'style' | 'advanced';
+type TabKey = 'general' | 'provider' | 'prompt' | 'detection' | 'inpainting' | 'style' | 'advanced';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, onClose }) => {
   const [localConfig, setLocalConfig] = useState<AIConfig>(config);
@@ -102,7 +101,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
       { id: 'general', label: 'General', icon: Layout },
       { id: 'provider', label: 'Provider & Model', icon: Server },
       { id: 'prompt', label: 'Prompts', icon: FileText },
-      { id: 'detection', label: 'Detection', icon: Scan }, // New Tab
+      { id: 'detection', label: 'Detection', icon: Scan }, 
+      { id: 'inpainting', label: 'Inpainting', icon: Eraser }, 
       { id: 'style', label: 'Styles', icon: Paintbrush },
       { id: 'advanced', label: 'Advanced', icon: Zap },
   ];
@@ -126,10 +126,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 ${
+                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 outline-none focus:outline-none ${
                             activeTab === tab.id 
                             ? 'bg-blue-600/10 text-blue-400 border border-blue-600/20 shadow-sm' 
-                            : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+                            : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200 border border-transparent'
                         }`}
                     >
                         <tab.icon size={18} />
@@ -202,7 +202,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                         </div>
                     )}
 
-                    {/* --- PROVIDER & MODEL TAB --- */}
+                    {/* ... (Provider & Model Tab remains same) ... */}
                     {activeTab === 'provider' && (
                         <div className="space-y-8 animate-fade-in-right">
                             <div className="space-y-1">
@@ -351,7 +351,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                         </div>
                     )}
 
-                    {/* --- PROMPTS TAB --- */}
+                    {/* ... (Prompts Tab remains same) ... */}
                     {activeTab === 'prompt' && (
                         <div className="space-y-8 animate-fade-in-right">
                              <div className="space-y-1">
@@ -432,7 +432,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                         </div>
                     )}
                     
-                    {/* --- DETECTION TAB (NEW) --- */}
+                    {/* --- DETECTION TAB --- */}
                     {activeTab === 'detection' && (
                         <div className="space-y-8 animate-fade-in-right">
                             <div className="space-y-1">
@@ -441,6 +441,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                             </div>
                             
                             <div className="grid gap-4">
+                                {/* ... (Image Mode & Masks Hints remain same) ... */}
                                 {/* 1. Masked Image Mode (New) */}
                                 <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-pink-500/30 rounded-xl transition-colors group">
                                     <div className="flex justify-between items-start">
@@ -507,17 +508,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                                     </div>
                                     
                                     {localConfig.useTextDetectionApi && (
-                                        <div className="animate-fade-in-down pl-11">
-                                            <input 
-                                                type="text" 
-                                                value={localConfig.textDetectionApiUrl}
-                                                onChange={(e) => setLocalConfig({ ...localConfig, textDetectionApiUrl: e.target.value })}
-                                                placeholder="http://localhost:5000"
-                                                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-xs text-white focus:border-orange-500 outline-none placeholder-gray-600 font-mono"
-                                            />
-                                            <p className="text-[10px] text-gray-500 mt-1">
-                                                Target endpoint. The app will POST to <code>/detect</code>.
-                                            </p>
+                                        <div className="animate-fade-in-down pl-11 space-y-4">
+                                            {/* URL Input */}
+                                            <div>
+                                                <input 
+                                                    type="text" 
+                                                    value={localConfig.textDetectionApiUrl}
+                                                    onChange={(e) => setLocalConfig({ ...localConfig, textDetectionApiUrl: e.target.value })}
+                                                    placeholder="http://localhost:5000"
+                                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-xs text-white focus:border-orange-500 outline-none placeholder-gray-600 font-mono"
+                                                />
+                                                <p className="text-[10px] text-gray-500 mt-1">
+                                                    Target endpoint. The app will POST to <code>/detect</code>.
+                                                </p>
+                                            </div>
+
+                                            {/* Expansion Ratio Slider */}
+                                            <div className="pt-2 border-t border-gray-700/50">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <label className="text-xs font-medium text-gray-300 flex items-center gap-1">
+                                                        <MoveHorizontal size={12} className="text-orange-400" /> {t('detectionExpansion', lang)}
+                                                    </label>
+                                                    <span className="text-xs font-mono text-orange-300 bg-gray-900 px-2 py-0.5 rounded border border-gray-700">
+                                                        {((localConfig.detectionExpansionRatio || 0) * 100).toFixed(0)}%
+                                                    </span>
+                                                </div>
+                                                <input 
+                                                    type="range" 
+                                                    min="-0.2" 
+                                                    max="0.5" 
+                                                    step="0.05"
+                                                    value={localConfig.detectionExpansionRatio || 0}
+                                                    onChange={(e) => setLocalConfig({...localConfig, detectionExpansionRatio: parseFloat(e.target.value)})}
+                                                    className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500"
+                                                />
+                                                <p className="text-[10px] text-gray-500 mt-1">{t('detectionExpansionHint', lang)}</p>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
@@ -568,7 +594,67 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                         </div>
                     )}
 
-                    {/* --- STYLE TAB --- */}
+                    {/* ... (Inpainting Tab, Style Tab, Advanced Tab remain same) ... */}
+                    {activeTab === 'inpainting' && (
+                        <div className="space-y-8 animate-fade-in-right">
+                             <div className="space-y-1">
+                                <h3 className="text-lg font-semibold text-white">{t('inpaintingTab', lang)}</h3>
+                                <p className="text-sm text-gray-500">{t('inpaintingTabDesc', lang)}</p>
+                            </div>
+
+                            <div className={`p-4 rounded-xl border transition-colors ${localConfig.enableInpainting ? 'bg-cyan-900/10 border-cyan-500/30' : 'bg-gray-800/30 border-gray-800 hover:border-cyan-500/30'}`}>
+                                <div className="flex justify-between items-start mb-3">
+                                    <div className="flex gap-3">
+                                        <div className="mt-1 p-1.5 bg-cyan-500/10 rounded text-cyan-400"><Eraser size={18}/></div>
+                                        <div>
+                                            <h4 className="text-sm font-medium text-white mb-1">{t('enableInpainting', lang)}</h4>
+                                            <p className="text-xs text-gray-500">{t('enableInpaintingHint', lang)}</p>
+                                        </div>
+                                    </div>
+                                    <label className="relative inline-flex items-center cursor-pointer">
+                                        <input 
+                                            type="checkbox" 
+                                            className="sr-only peer"
+                                            checked={localConfig.enableInpainting}
+                                            onChange={(e) => setLocalConfig({...localConfig, enableInpainting: e.target.checked})}
+                                        />
+                                        <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-cyan-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-600"></div>
+                                    </label>
+                                </div>
+
+                                {localConfig.enableInpainting && (
+                                    <div className="animate-fade-in-down pl-11 space-y-4">
+                                        {/* URL Input */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase">{t('inpaintingUrl', lang)}</label>
+                                            <input 
+                                                type="text" 
+                                                value={localConfig.inpaintingUrl}
+                                                onChange={(e) => setLocalConfig({ ...localConfig, inpaintingUrl: e.target.value })}
+                                                placeholder="http://localhost:8080"
+                                                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-xs text-white focus:border-cyan-500 outline-none placeholder-gray-600 font-mono"
+                                            />
+                                        </div>
+
+                                        {/* Model Input */}
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-gray-400 uppercase">{t('inpaintingModel', lang)}</label>
+                                            <input 
+                                                type="text" 
+                                                value={localConfig.inpaintingModel || 'lama'}
+                                                onChange={(e) => setLocalConfig({ ...localConfig, inpaintingModel: e.target.value })}
+                                                placeholder="lama"
+                                                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-xs text-white focus:border-cyan-500 outline-none placeholder-gray-600 font-mono"
+                                            />
+                                            <p className="text-[10px] text-gray-500">{t('inpaintingModelHint', lang)}</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ... (Style & Advanced Tabs remain same) ... */}
                     {activeTab === 'style' && (
                         <div className="space-y-8 animate-fade-in-right">
                             <div className="space-y-1">
@@ -642,7 +728,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                         </div>
                     )}
 
-                    {/* --- ADVANCED TAB --- */}
+                    {/* ... (Advanced Tab remains same) ... */}
                     {activeTab === 'advanced' && (
                         <div className="space-y-8 animate-fade-in-right">
                             <div className="space-y-1">

@@ -1,5 +1,4 @@
 
-
 import { GoogleGenAI, FunctionDeclaration, Type, FunctionCallingConfigMode } from "@google/genai";
 import { AIConfig, DetectedBubble, MaskRegion } from "../types";
 
@@ -335,11 +334,14 @@ export const polishDialogue = async (text: string, style: 'dramatic' | 'casual' 
 
 // --- Detection API Helper ---
 
-export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: string): Promise<{x:number, y:number, width:number, height:number}[]> => {
+export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: string): Promise<{
+    rects: {x:number, y:number, width:number, height:number}[],
+    maskBase64?: string
+}> => {
     try {
         const payload = {
             image: `data:image/jpeg;base64,${base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "")}`,
-            return_mask: "false"
+            return_mask: "true"
         };
         
         const response = await fetch(`${apiUrl}/detect`, {
@@ -357,11 +359,11 @@ export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: strin
             throw new Error(data.error || "API returned failure");
         }
         
-        if (!data.text_blocks || !data.image_size) return [];
+        if (!data.text_blocks || !data.image_size) return { rects: [] };
 
         const { width: imgW, height: imgH } = data.image_size;
         
-        return data.text_blocks.map((block: any) => {
+        const rects = data.text_blocks.map((block: any) => {
             const [x1, y1, x2, y2] = block.xyxy;
             const widthPx = x2 - x1;
             const heightPx = y2 - y1;
@@ -375,6 +377,8 @@ export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: strin
             
             return { x, y, width: w, height: h };
         });
+
+        return { rects, maskBase64: data.mask_refined_base64 };
 
     } catch (e) {
         console.warn("External detection API failed:", e);
