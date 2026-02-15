@@ -461,8 +461,20 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           if (imgState) {
               const bubble = imgState.bubbles.find(b => b.id === bubbleId);
               if (bubble && bubble.width >= 1 && bubble.height >= 1) {
+                  // Check if bubble center is inside any cleaned mask region — if so, force transparent
+                  const cleanedMasks = (imgState.maskRegions || []).filter(m => m.isCleaned);
+                  const insideCleanedMask = cleanedMasks.some(m => {
+                      const xDiff = Math.abs(bubble.x - m.x);
+                      const yDiff = Math.abs(bubble.y - m.y);
+                      return xDiff <= m.width / 2 && yDiff <= m.height / 2;
+                  });
+                  if (insideCleanedMask) {
+                      setImages(prev => prev.map(img => img.id === currentId ? { ...img, bubbles: img.bubbles.map(b => b.id === bubbleId ? { ...b, backgroundColor: 'transparent', autoDetectBackground: false } : b) } : img));
+                      return;
+                  }
+
                   const shouldDetect = bubble.autoDetectBackground !== undefined ? bubble.autoDetectBackground : aiConfigRef.current.autoDetectBackground;
-                  if (shouldDetect === false) return; 
+                  if (shouldDetect === false) return;
                   const detectedColor = await detectBubbleColor(imgState.url || `data:image/png;base64,${imgState.base64}`, bubble.x, bubble.y, bubble.width, bubble.height);
                   setImages(prev => prev.map(img => img.id === currentId ? { ...img, bubbles: img.bubbles.map(b => b.id === bubbleId ? { ...b, backgroundColor: detectedColor } : b) } : img));
               }

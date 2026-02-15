@@ -327,7 +327,7 @@ export const useCanvasInteraction = ({
         const dragData = dragRef.current;
         if (!dragData) return;
         dragRef.current = null;
-        
+
         const { id, mode, targetType, initialSnapshot, hasMoved } = dragData;
 
         // Cleanup empty drawn items
@@ -348,6 +348,29 @@ export const useCanvasInteraction = ({
                 }
                 return prev;
             }, true); // We update history manually below
+        }
+
+        // Final overlap check: ensure bubble transparency is correct before committing to history
+        if (targetType === 'bubble' && currentId && (hasMoved || mode === 'drawing')) {
+            setImages(prev => {
+                const img = prev.find(i => i.id === currentId);
+                if (!img) return prev;
+                const bubble = img.bubbles.find(b => b.id === id);
+                if (!bubble) return prev;
+
+                const cleanedMasks = (img.maskRegions || []).filter(m => m.isCleaned);
+                const overlaps = cleanedMasks.some(m => {
+                    const xDiff = Math.abs(bubble.x - m.x);
+                    const yDiff = Math.abs(bubble.y - m.y);
+                    return xDiff <= m.width / 2 && yDiff <= m.height / 2;
+                });
+
+                if (overlaps && bubble.backgroundColor !== 'transparent') {
+                    const newBubbles = img.bubbles.map(b => b.id === id ? { ...b, backgroundColor: 'transparent', autoDetectBackground: false } : b);
+                    return prev.map(p => p.id === currentId ? { ...p, bubbles: newBubbles } : p);
+                }
+                return prev;
+            }, true);
         }
 
         // Commit history if changed
