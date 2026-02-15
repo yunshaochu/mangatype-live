@@ -273,12 +273,18 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
        const spreadPx = w * (featherVal * 0.0008) * 10;
 
        const safeText = escapeHtml(b.text);
-       // Vertical Text Fix
+       // Vertical Text Fix: 牺牲行用于解决 Chrome ForeignObject 竖排第一行缩进 Bug
        const renderText = b.isVertical ? `\n${safeText}` : safeText;
-       const verticalFixStyle = b.isVertical ? 'transform: translateX(0.75em);' : '';
+
+       // 方案 C: 绝对定位手动居中，避免 Flexbox 在 SVG ForeignObject 中的渲染差异
+       // 基础 transform: 将文字中心对齐到父容器中心
+       // 竖排额外补偿: translateX(0.75em) 补偿牺牲行导致的宽度增加
+       const centerTransform = b.isVertical
+         ? 'translate(-50%, -50%) translateX(0.75em)'
+         : 'translate(-50%, -50%)';
 
        const strokeStyle = `
-         -webkit-text-stroke: 4px #ffffff; 
+         -webkit-text-stroke: 3px #ffffff;
          paint-order: stroke fill;
        `;
 
@@ -301,14 +307,13 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
                 box-shadow: ${(b.backgroundColor === 'transparent' || featherVal <= 0) ? 'none' : `0 0 ${blurPx}px ${spreadPx}px ${b.backgroundColor}`};
                 z-index: 1;
             "></div>
-            
-            <!-- Text Content -->
+
+            <!-- Text Content - 绝对定位手动居中 -->
             <div style="
                 position: absolute;
-                top: 0; left: 0; width: 100%; height: 100%;
-                display: flex;
-                align-items: center;
-                justify-content: center;
+                top: 50%;
+                left: 50%;
+                transform: ${centerTransform};
                 writing-mode: ${b.isVertical ? 'vertical-rl' : 'horizontal-tb'};
                 font-family: ${fontStack};
                 font-size: ${fontSize}px;
@@ -316,9 +321,8 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
                 color: ${b.color};
                 line-height: 1.5;
                 text-align: ${b.isVertical ? 'left' : 'center'};
-                white-space: pre; 
+                white-space: pre;
                 z-index: 2;
-                ${verticalFixStyle}
                 ${strokeStyle}
             ">
                 ${renderText}

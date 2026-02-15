@@ -99,8 +99,27 @@ export const ControlPanel: React.FC = () => {
         if (blob) {
             const newUrl = URL.createObjectURL(blob);
             const newBase64 = await blobToBase64(blob);
-            setImages(prev => prev.map(img => img.id === currentImage.id ? { ...img, url: newUrl, base64: newBase64, bubbles: [] } : img));
+            setImages(prev => prev.map(img => img.id === currentImage.id ? {
+                ...img,
+                // 合并后的图片作为新的原图
+                originalUrl: newUrl,
+                originalBase64: newBase64,
+                url: newUrl,
+                base64: newBase64,
+                // 清除已合并的图层
+                inpaintedUrl: undefined,
+                inpaintedBase64: undefined,
+                // 清除已绘制的内容
+                bubbles: [],
+                maskRegions: [],
+                // 重置状态
+                status: 'idle',
+                detectionStatus: 'idle',
+                inpaintingStatus: 'idle',
+                errorMessage: undefined
+            } : img));
             setSelectedBubbleId(null);
+            setSelectedMaskId(null);
         }
     } catch (e) { console.error("Merge failed", e); alert("Failed to merge layers."); } finally { setIsMerging(false); }
   };
