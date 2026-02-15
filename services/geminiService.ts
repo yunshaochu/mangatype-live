@@ -2,6 +2,17 @@
 import { GoogleGenAI, FunctionDeclaration, Type, FunctionCallingConfigMode } from "@google/genai";
 import { AIConfig, DetectedBubble, MaskRegion } from "../types";
 
+export const DEFAULT_FONT_SELECTION_PROMPT = `### 字体选择指南：
+- **'noto' (标准黑体)**：默认字体，适用于普通对话、旁白。
+- **'noto-bold' (粗黑体)**：用于喊叫、强调、激烈的情绪、动作场景。
+- **'serif' (宋体)**：用于正式场合、内心独白、回忆、书信体。
+- **'happy' (快乐体)**：用于可爱、搞笑、Q版风格、轻松愉快的场景。
+- **'xiaowei' (温柔体)**：用于温柔、浪漫、甜蜜的时刻。
+- **'mashan' (毛笔体)**：用于武侠招式、书法效果、史诗感场景。
+- **'zhimang' (狂草体)**：用于潦草字迹、绝望、恐怖、混乱的情绪。
+- **'longcang' (手写体)**：用于日记、信件、随意的笔记。
+- **'liujian' (草书体)**：用于艺术效果、梦境、幻想场景。`;
+
 export const DEFAULT_SYSTEM_PROMPT = `You are an expert Manga Typesetter and Translator. 
 Your task is to identify speech bubbles, translate them, and provide layout coordinates.
 
@@ -11,11 +22,7 @@ Your task is to identify speech bubbles, translate them, and provide layout coor
 2. **Translation**: Translate the text to **Chinese (Simplified)**.
    - Style: Natural, colloquial comic-book style.
    - **Formatting**: Try to match the line breaks of the original text visually. **Do NOT add excessive newlines.** Only break lines where semantically appropriate or necessary for the bubble shape.
-3. **Styling & Font**:
-   - **'noto' (Standard)**: Default for normal dialogue, narration, and monologues.
-   - **'happy' (Comedy)**: Use for cute, funny, "chibi" style moments, or cheerful exclamations.
-   - **'zhimang' (Wild/Draft)**: Use for messy handwriting, scribbles, despair, or horror.
-   - **'mashan' (Brush)**: Use for loud shouting, martial arts moves, or calligraphy.
+3. **Styling & Font**: Select the most appropriate font based on the mood and context of the dialogue.
 4. **Masking**: Calculate the bounding box (center x, center y, width, height in %) to cover the original text.
    - **Constraint**: The mask must be a **TIGHT FIT**. It should cover the text pixels completely but be as small as possible.
 
@@ -73,8 +80,8 @@ const baseGeminiToolSchema: FunctionDeclaration = {
             isVertical: { type: Type.BOOLEAN, description: 'True for vertical text.' },
             fontFamily: { 
               type: Type.STRING, 
-              description: "Font style. 'noto' (Dialogue), 'happy' (Comedy), 'zhimang' (Handwriting), 'mashan' (Brush).",
-              enum: ['noto', 'happy', 'zhimang', 'mashan']
+              description: "Font style: 'noto'(dialogue), 'noto-bold'(shouting), 'serif'(formal), 'happy'(comedy), 'xiaowei'(gentle), 'mashan'(brush), 'zhimang'(wild), 'longcang'(handwriting), 'liujian'(cursive).",
+              enum: ['noto', 'noto-bold', 'serif', 'happy', 'xiaowei', 'mashan', 'zhimang', 'longcang', 'liujian']
             },
             // Rotation will be injected here if enabled
           },
@@ -105,8 +112,8 @@ const baseOpenAIToolSchema = {
             isVertical: { type: 'boolean', description: 'True for vertical text.' },
             fontFamily: { 
               type: 'string', 
-              enum: ['noto', 'happy', 'zhimang', 'mashan'],
-              description: "Font style. 'noto' (Dialogue), 'happy' (Comedy), 'zhimang' (Handwriting), 'mashan' (Brush)." 
+              enum: ['noto', 'noto-bold', 'serif', 'happy', 'xiaowei', 'mashan', 'zhimang', 'longcang', 'liujian'],
+              description: "Font style: 'noto'(dialogue), 'noto-bold'(shouting), 'serif'(formal), 'happy'(comedy), 'xiaowei'(gentle), 'mashan'(brush), 'zhimang'(wild), 'longcang'(handwriting), 'liujian'(cursive)." 
             }
             // Rotation will be injected here if enabled
           },
@@ -431,6 +438,10 @@ export const detectAndTypesetComic = async (
       
       // 2. Inject prompt instruction to suppress font thinking
       systemPrompt += "\n[IMPORTANT] Do NOT output 'fontFamily'. Use default font for all bubbles.";
+  } else {
+      // Inject font selection prompt (user-customizable, Chinese by default)
+      const fontPrompt = config.fontSelectionPrompt || DEFAULT_FONT_SELECTION_PROMPT;
+      systemPrompt += `\n\n${fontPrompt}`;
   }
 
   if (signal?.aborted) throw new Error("Aborted by user");

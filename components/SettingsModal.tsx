@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AIConfig, AIProvider, CustomMessage } from '../types';
 import { Settings, X, RefreshCw, CheckCircle, AlertCircle, Server, RotateCcw, Type, ScanText, Globe, RotateCw, ChevronDown, Check, MessageSquarePlus, Trash2, Plus, Scan, Pipette, Zap, Bot, Layout, Cpu, FileText, Magnet, Paintbrush, Square, Circle, Box, Eye, PenTool, Eraser, MoveHorizontal } from 'lucide-react';
-import { fetchAvailableModels, DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
+import { fetchAvailableModels, DEFAULT_SYSTEM_PROMPT, DEFAULT_FONT_SELECTION_PROMPT } from '../services/geminiService';
 import { t } from '../services/i18n';
 
 interface SettingsModalProps {
@@ -782,7 +782,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                                 </div>
 
                                 {/* Allow AI Font Selection */}
-                                <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-teal-500/30 rounded-xl transition-colors group">
+                                <div className={`p-4 rounded-xl border transition-colors ${localConfig.allowAiFontSelection !== false ? 'bg-teal-900/10 border-teal-500/30' : 'bg-gray-800/30 border-gray-800 hover:border-teal-500/30'}`}>
                                     <div className="flex justify-between items-start">
                                         <div className="flex gap-3">
                                             <div className="mt-1 p-1.5 bg-teal-500/10 rounded text-teal-400"><PenTool size={18}/></div>
@@ -801,6 +801,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
                                             <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-teal-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-teal-600"></div>
                                         </label>
                                     </div>
+
+                                    {/* Font Selection Prompt Editor */}
+                                    {localConfig.allowAiFontSelection !== false && (
+                                        <div className="mt-4 pt-4 border-t border-gray-700/50 animate-fade-in-down">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{t('fontSelectionPrompt', lang)}</label>
+                                                <button 
+                                                    onClick={() => setLocalConfig({...localConfig, fontSelectionPrompt: DEFAULT_FONT_SELECTION_PROMPT})} 
+                                                    className="text-xs flex items-center gap-1 text-gray-500 hover:text-white transition-colors"
+                                                >
+                                                    <RotateCcw size={12}/> Reset
+                                                </button>
+                                            </div>
+                                            <textarea
+                                                value={localConfig.fontSelectionPrompt || DEFAULT_FONT_SELECTION_PROMPT}
+                                                onChange={(e) => setLocalConfig({...localConfig, fontSelectionPrompt: e.target.value})}
+                                                className="w-full bg-gray-900/50 border border-gray-700 rounded-lg p-3 text-xs text-gray-300 focus:border-teal-500 focus:ring-1 focus:ring-teal-500/50 outline-none font-mono leading-relaxed resize-y min-h-[180px]"
+                                                spellCheck={false}
+                                            />
+                                            <p className="text-[10px] text-gray-500 mt-1">{t('fontSelectionPromptHint', lang)}</p>
+                                        </div>
+                                    )}
                                 </div>
                             </div>
                         </div>

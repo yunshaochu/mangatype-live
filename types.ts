@@ -143,6 +143,7 @@ export interface AIConfig {
   language: 'zh' | 'en'; 
   allowAiRotation?: boolean; 
   allowAiFontSelection?: boolean; // New: Toggle AI font selection
+  fontSelectionPrompt?: string; // Custom font selection prompt (Chinese)
   customMessages?: CustomMessage[]; // Pre-request messages
   autoDetectBackground?: boolean; // New: Toggle for auto background color detection
   
