@@ -4,7 +4,7 @@ import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, Ref
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { createBubble } from '../utils/editorUtils';
-import { compositeImage, downloadAllAsZip, downloadSingleImage, ExportOptions } from '../services/exportService';
+import { compositeImageWithCanvas, downloadAllAsZip, downloadSingleImage, ExportOptions } from '../services/exportService';
 
 const PRESET_BRUSH_COLORS = ['#ffffff', '#000000', '#f3f4f6', '#d1d5db'];
 
@@ -95,7 +95,7 @@ export const ControlPanel: React.FC = () => {
     if (!currentImage || currentImage.bubbles.length === 0) return;
     setIsMerging(true);
     try {
-        const blob = await compositeImage(currentImage, getExportOptions());
+        const blob = await compositeImageWithCanvas(currentImage, getExportOptions());
         if (blob) {
             const newUrl = URL.createObjectURL(blob);
             const newBase64 = await blobToBase64(blob);

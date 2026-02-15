@@ -239,6 +239,254 @@ export const restoreImageRegion = async (image: ImageState, regionId: string): P
 };
 
 /**
+ * Composites the image and bubbles using pure Canvas API with DOM measurement.
+ * Uses DOM to measure exact text positions for WYSIWYG accuracy.
+ */
+export const compositeImageWithCanvas = async (imageState: ImageState, options?: ExportOptions): Promise<Blob | null> => {
+    const { width, height, bubbles } = imageState;
+
+    // Ensure fonts are loaded before rendering
+    await document.fonts.ready;
+    await Promise.all([
+        document.fonts.load("bold 48px 'Zhi Mang Xing'").catch(() => {}),
+        document.fonts.load("bold 48px 'Ma Shan Zheng'").catch(() => {}),
+        document.fonts.load("bold 48px 'ZCOOL KuaiLe'").catch(() => {}),
+        document.fonts.load("bold 48px 'Noto Sans SC'").catch(() => {}),
+    ]);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(width);
+    canvas.height = Math.floor(height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error("No Context");
+
+    // 1. Draw background image
+    const bgSrc = imageState.inpaintedUrl || imageState.originalUrl || imageState.url || `data:image/png;base64,${imageState.base64}`;
+    const imgBg = await loadImage(bgSrc);
+    ctx.drawImage(imgBg, 0, 0, width, height);
+
+    // 2. Draw filled masks (manual fill regions)
+    if (imageState.maskRegions) {
+        imageState.maskRegions.forEach(m => {
+            if (m.isCleaned && m.method === 'fill') {
+                const x = (m.x / 100) * width;
+                const y = (m.y / 100) * height;
+                const w = (m.width / 100) * width;
+                const h = (m.height / 100) * height;
+                ctx.fillStyle = m.fillColor || '#ffffff';
+                ctx.fillRect(x - w/2, y - h/2, w, h);
+            }
+        });
+    }
+
+    // 3. Create hidden DOM container for measuring text positions
+    const measureContainer = document.createElement('div');
+    measureContainer.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: ${width}px;
+        height: ${height}px;
+        pointer-events: none;
+        visibility: hidden;
+    `;
+    document.body.appendChild(measureContainer);
+
+    try {
+        // 4. Draw each bubble
+        for (const b of bubbles) {
+            const centerX = width * (b.x / 100);
+            const centerY = height * (b.y / 100);
+            const bubbleW = width * (b.width / 100);
+            const bubbleH = height * (b.height / 100);
+            const fontSize = width * (b.fontSize * 0.02);
+
+            const fontStack = b.fontFamily === 'zhimang' ? "'Zhi Mang Xing', cursive"
+                : b.fontFamily === 'mashan' ? "'Ma Shan Zheng', cursive"
+                : b.fontFamily === 'happy' ? "'ZCOOL KuaiLe', cursive"
+                : "'Noto Sans SC', sans-serif";
+
+            const shape = b.maskShape || options?.defaultMaskShape || 'ellipse';
+            const radiusVal = b.maskCornerRadius !== undefined ? b.maskCornerRadius : (options?.defaultMaskCornerRadius ?? 15);
+            const featherVal = b.maskFeather !== undefined ? b.maskFeather : (options?.defaultMaskFeather ?? 10);
+
+            // Create DOM element to measure exact text position
+            const textMeasureEl = document.createElement('div');
+            textMeasureEl.style.cssText = `
+                position: absolute;
+                top: ${centerY - bubbleH / 2}px;
+                left: ${centerX - bubbleW / 2}px;
+                width: ${bubbleW}px;
+                height: ${bubbleH}px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-family: ${fontStack};
+                font-size: ${fontSize}px;
+                font-weight: bold;
+                color: ${b.color};
+                writing-mode: ${b.isVertical ? 'vertical-rl' : 'horizontal-tb'};
+                white-space: pre;
+                line-height: 1.5;
+                text-align: ${b.isVertical ? 'left' : 'center'};
+                -webkit-text-stroke: 3px #ffffff;
+                paint-order: stroke fill;
+                transform: rotate(${b.rotation}deg);
+            `;
+            textMeasureEl.textContent = b.text;
+            measureContainer.appendChild(textMeasureEl);
+
+            // Wait for layout
+            await new Promise(r => setTimeout(r, 0));
+
+            // Get the text content's bounding rect (relative to container)
+            const textRect = textMeasureEl.getBoundingClientRect();
+            const containerRect = measureContainer.getBoundingClientRect();
+
+            // Text position relative to image coordinates
+            const textCenterX = textRect.left - containerRect.left + textRect.width / 2;
+            const textCenterY = textRect.top - containerRect.top + textRect.height / 2;
+
+            ctx.save();
+
+            // Draw mask background with shape (at bubble center, with rotation)
+            ctx.translate(centerX, centerY);
+            ctx.rotate((b.rotation * Math.PI) / 180);
+
+            if (b.backgroundColor !== 'transparent') {
+                const blurPx = bubbleW * (featherVal * 0.0015) * 10;
+                const spreadPx = bubbleW * (featherVal * 0.0008) * 10;
+
+                // Draw feathered shadow
+                if (featherVal > 0) {
+                    const halfW = bubbleW / 2;
+                    const halfH = bubbleH / 2;
+                    const passes = 8;
+                    for (let i = passes; i >= 1; i--) {
+                        const alpha = 0.15 / i;
+                        const expand = (spreadPx + blurPx) * (i / passes);
+                        ctx.fillStyle = b.backgroundColor;
+                        ctx.globalAlpha = alpha;
+                        ctx.beginPath();
+                        if (shape === 'ellipse') {
+                            ctx.ellipse(0, 0, halfW + expand, halfH + expand, 0, 0, Math.PI * 2);
+                        } else if (shape === 'rounded') {
+                            const r = Math.min(halfW, halfH) * (radiusVal / 100);
+                            drawRoundedRect(ctx, -halfW - expand, -halfH - expand, bubbleW + expand * 2, bubbleH + expand * 2, r + expand);
+                        } else {
+                            ctx.rect(-halfW - expand, -halfH - expand, bubbleW + expand * 2, bubbleH + expand * 2);
+                        }
+                        ctx.fill();
+                    }
+                    ctx.globalAlpha = 1;
+                }
+
+                // Draw main background
+                ctx.fillStyle = b.backgroundColor;
+                ctx.beginPath();
+                const halfW = bubbleW / 2;
+                const halfH = bubbleH / 2;
+                if (shape === 'ellipse') {
+                    ctx.ellipse(0, 0, halfW, halfH, 0, 0, Math.PI * 2);
+                } else if (shape === 'rounded') {
+                    const r = Math.min(halfW, halfH) * (radiusVal / 100);
+                    drawRoundedRect(ctx, -halfW, -halfH, bubbleW, bubbleH, r);
+                } else {
+                    ctx.rect(-halfW, -halfH, bubbleW, bubbleH);
+                }
+                ctx.fill();
+            }
+
+            ctx.restore();
+
+            // Draw text at measured position (no rotation for text, CSS handles it)
+            ctx.font = `bold ${fontSize}px ${fontStack}`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = Math.max(2, fontSize * 0.1);
+            ctx.lineJoin = 'round';
+            ctx.fillStyle = b.color;
+
+            const lines = b.text.split('\n');
+            const lineHeight = fontSize * 1.5;
+
+            if (b.isVertical) {
+                // Vertical text
+                const charSpacing = fontSize;
+                const columnSpacing = lineHeight;
+                const maxChars = Math.max(...lines.map(l => l.length));
+                const totalHeight = maxChars > 0 ? (maxChars - 1) * charSpacing : 0;
+                const totalWidth = lines.length > 1 ? (lines.length - 1) * columnSpacing : 0;
+
+                // Draw at measured center position
+                ctx.save();
+                ctx.translate(textCenterX, textCenterY);
+                ctx.rotate((b.rotation * Math.PI) / 180);
+
+                lines.forEach((line, lineIdx) => {
+                    const chars = line.split('');
+                    const x = totalWidth / 2 - lineIdx * columnSpacing;
+                    const startY = -totalHeight / 2;
+                    chars.forEach((char, charIdx) => {
+                        const y = startY + charIdx * charSpacing;
+                        ctx.strokeText(char, x, y);
+                        ctx.fillText(char, x, y);
+                    });
+                });
+                ctx.restore();
+            } else {
+                // Horizontal text
+                const totalHeight = (lines.length - 1) * lineHeight;
+
+                ctx.save();
+                ctx.translate(textCenterX, textCenterY);
+                ctx.rotate((b.rotation * Math.PI) / 180);
+
+                const startY = -totalHeight / 2;
+                lines.forEach((line, idx) => {
+                    const y = startY + idx * lineHeight;
+                    ctx.strokeText(line, 0, y);
+                    ctx.fillText(line, 0, y);
+                });
+                ctx.restore();
+            }
+
+            // Clean up measure element
+            measureContainer.removeChild(textMeasureEl);
+        }
+    } finally {
+        document.body.removeChild(measureContainer);
+    }
+
+    return new Promise((resolve, reject) => {
+        try {
+            canvas.toBlob(blob => {
+                if (blob) resolve(blob);
+                else reject(new Error("Canvas toBlob failed"));
+            }, 'image/png');
+        } catch (e) {
+            reject(e);
+        }
+    });
+};
+
+// Helper: Draw rounded rectangle path
+const drawRoundedRect = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+};
+
+/**
  * Composites the image and bubbles using SVG ForeignObject.
  * This ensures the exported image matches the HTML view (white-space: pre, exact layout).
  */
@@ -392,7 +640,8 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
 
 export const downloadSingleImage = async (imageState: ImageState, options?: ExportOptions) => {
   try {
-      const blob = await compositeImage(imageState, options);
+      // Use pure Canvas method for reliable font rendering
+      const blob = await compositeImageWithCanvas(imageState, options);
       if (!blob) return;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -423,7 +672,8 @@ export const downloadAllAsZip = async (
     if (onProgress) onProgress(i + 1, total);
 
     try {
-        const blob = await compositeImage(img, options);
+        // Use pure Canvas method for reliable font rendering
+        const blob = await compositeImageWithCanvas(img, options);
         if (blob && folder) {
             folder.file(`${img.name.replace(/\.[^/.]+$/, "")}.png`, blob);
             successCount++;
