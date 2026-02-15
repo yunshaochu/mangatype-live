@@ -19,7 +19,7 @@ services:
 
   # ── IOPaint (FastAPI, port 8080) ──
   iopaint:
-    build: ./IOPaint
+    build: ./IOPaint-docker-improve
     ports:
       - "8080:8080"
     volumes:
