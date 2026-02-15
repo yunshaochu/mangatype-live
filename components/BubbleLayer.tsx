@@ -124,15 +124,10 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
       )}
       
       <div 
-        className={`absolute inset-0 flex items-center justify-center ${
-          bubble.fontFamily === 'zhimang' ? 'font-zhimang' : 
-          bubble.fontFamily === 'mashan' ? 'font-mashan' : 
-          bubble.fontFamily === 'happy' ? 'font-happy' : 
-          'font-noto'
-        } leading-[1.2] overflow-visible text-center`}
+        className={`absolute inset-0 flex items-center justify-center font-${bubble.fontFamily} leading-[1.2] overflow-visible text-center`}
         style={{
           fontSize: `${bubble.fontSize * 2}cqw`,
-          fontWeight: 'bold',
+          fontWeight: bubble.fontFamily === 'noto-bold' ? 900 : 'bold',
           color: bubble.color,
           writingMode: bubble.isVertical ? 'vertical-rl' : 'horizontal-tb',
           whiteSpace: 'pre',

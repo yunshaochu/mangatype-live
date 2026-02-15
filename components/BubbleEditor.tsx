@@ -441,12 +441,7 @@ export const BubbleEditor: React.FC = () => {
                 className={`text-left px-3 py-3 rounded border transition-all flex justify-between items-center ${bubble.fontFamily === font.id ? 'border-blue-500 bg-blue-900/20 text-white' : 'border-gray-700 bg-gray-800/50 hover:bg-gray-700 text-gray-400'}`}
               >
                 <span className="text-xs opacity-70 font-sans">{font.name.split('(')[0]}</span>
-                <span className={`text-lg leading-none ${
-                  font.id === 'zhimang' ? 'font-zhimang' : 
-                  font.id === 'mashan' ? 'font-mashan' : 
-                  font.id === 'happy' ? 'font-happy' : 
-                  'font-noto'
-                }`}>
+                <span className={`text-lg leading-none font-${font.id}`}>
                   {font.preview}
                 </span>
               </button>

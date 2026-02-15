@@ -1,4 +1,15 @@
 
+export type FontFamily = 
+  | 'noto'      // 黑体 - 标准对话
+  | 'noto-bold' // 粗黑体 - 喊叫/强调
+  | 'serif'     // 宋体 - 正式/内心独白
+  | 'happy'     // 可爱体 - Q版/喜剧
+  | 'xiaowei'   // 小薇体 - 温柔/圆润
+  | 'mashan'    // 毛笔 - 古风/武侠
+  | 'zhimang'   // 狂草 - 手写/狂野
+  | 'longcang'  // 龙藏体 - 手写日记
+  | 'liujian';  // 流浪毛草 - 草书艺术
+
 export interface Bubble {
   id: string;
   x: number; // Center X percentage 0-100
@@ -7,7 +18,7 @@ export interface Bubble {
   height: number; // Height percentage relative to image height
   text: string;
   isVertical: boolean;
-  fontFamily: 'noto' | 'happy' | 'zhimang' | 'mashan';
+  fontFamily: FontFamily;
   fontSize: number; // rem
   color: string;
   backgroundColor: string; // For masking original text (e.g., #ffffff)
@@ -40,7 +51,7 @@ export interface DetectedBubble {
   height: number;
   isVertical: boolean;
   rotation?: number; // Added rotation support from AI
-  fontFamily?: 'noto' | 'happy' | 'zhimang' | 'mashan'; // Added font support from AI
+  fontFamily?: FontFamily; // Added font support from AI
 }
 
 export interface ImageState {
@@ -84,10 +95,19 @@ export type FontOption = {
 };
 
 export const FONTS: FontOption[] = [
-  { id: 'noto', name: 'Noto Sans (Standard)', preview: '黑体对话' },
-  { id: 'happy', name: 'ZCOOL KuaiLe (Comedy)', preview: '快乐Q版' },
-  { id: 'zhimang', name: 'Zhi Mang Xing (Draft)', preview: '狂草手写' },
-  { id: 'mashan', name: 'Ma Shan Zheng (Brush)', preview: '毛笔招式' },
+  // 对话类
+  { id: 'noto', name: 'Noto Sans 黑体', preview: '标准对话' },
+  { id: 'noto-bold', name: 'Noto Sans 粗黑', preview: '喊叫强调' },
+  { id: 'serif', name: 'Noto Serif 宋体', preview: '正式独白' },
+  // 可爱类
+  { id: 'happy', name: 'ZCOOL KuaiLe', preview: '快乐Q版' },
+  { id: 'xiaowei', name: 'ZCOOL XiaoWei', preview: '温柔圆润' },
+  // 手写类
+  { id: 'longcang', name: 'Long Cang 龙藏', preview: '手写日记' },
+  { id: 'zhimang', name: 'Zhi Mang Xing', preview: '狂草手写' },
+  { id: 'liujian', name: 'Liu Jian Mao Cao', preview: '流浪毛草' },
+  // 古风类
+  { id: 'mashan', name: 'Ma Shan Zheng', preview: '毛笔古风' },
 ];
 
 export type AIProvider = 'gemini' | 'openai';
