@@ -13,6 +13,13 @@ export const DEFAULT_FONT_SELECTION_PROMPT = `### 字体选择指南：
 - **'longcang' (手写体)**：用于日记、信件、随意的笔记。
 - **'liujian' (草书体)**：用于艺术效果、梦境、幻想场景。`;
 
+export const DEFAULT_COLOR_SELECTION_PROMPT = `### 字色选择指南：
+- **黑字白边 (#000000 + #ffffff)**：默认经典组合，适用于大多数对话框。
+- **白字黑边 (#ffffff + #000000)**：适用于深色背景、夜晚场景、严肃氛围。
+- **红字白边 (#dc2626 + #ffffff)**：适用于强调、警告、愤怒情绪。
+- **无边框 (transparent)**：适用于清晰的对话框内文字、旁白框。
+- **注意**：选择颜色时要考虑气泡背景色，确保文字清晰可读。优先选择与背景对比度高的颜色组合。`;
+
 export const DEFAULT_SYSTEM_PROMPT = `你是一位专业的漫画嵌字师和翻译师。
 你的任务是识别漫画中的对话气泡，翻译文本并提供布局坐标。
 
@@ -80,6 +87,14 @@ const baseGeminiToolSchema: FunctionDeclaration = {
               description: "Font style: 'noto'(dialogue), 'noto-bold'(shouting), 'serif'(formal), 'happy'(comedy), 'xiaowei'(gentle), 'mashan'(brush), 'zhimang'(wild), 'longcang'(handwriting), 'liujian'(cursive).",
               enum: ['noto', 'noto-bold', 'serif', 'happy', 'xiaowei', 'mashan', 'zhimang', 'longcang', 'liujian']
             },
+            color: { 
+              type: Type.STRING, 
+              description: "Text color in hex (e.g., '#000000' for black, '#ffffff' for white). Default is black."
+            },
+            strokeColor: { 
+              type: Type.STRING, 
+              description: "Text stroke/border color in hex (e.g., '#ffffff' for white stroke). Use 'transparent' for no stroke."
+            },
             // Rotation will be injected here if enabled
           },
           required: ['text', 'x', 'y', 'width', 'height', 'isVertical'],
@@ -111,6 +126,14 @@ const baseOpenAIToolSchema = {
               type: 'string', 
               enum: ['noto', 'noto-bold', 'serif', 'happy', 'xiaowei', 'mashan', 'zhimang', 'longcang', 'liujian'],
               description: "Font style: 'noto'(dialogue), 'noto-bold'(shouting), 'serif'(formal), 'happy'(comedy), 'xiaowei'(gentle), 'mashan'(brush), 'zhimang'(wild), 'longcang'(handwriting), 'liujian'(cursive)." 
+            },
+            color: { 
+              type: 'string', 
+              description: "Text color in hex (e.g., '#000000' for black, '#ffffff' for white). Default is black."
+            },
+            strokeColor: { 
+              type: 'string', 
+              description: "Text stroke/border color in hex (e.g., '#ffffff' for white stroke). Use 'transparent' for no stroke."
             }
             // Rotation will be injected here if enabled
           },
@@ -439,6 +462,21 @@ export const detectAndTypesetComic = async (
       // Inject font selection prompt (user-customizable, Chinese by default)
       const fontPrompt = config.fontSelectionPrompt || DEFAULT_FONT_SELECTION_PROMPT;
       systemPrompt += `\n\n${fontPrompt}`;
+  }
+
+  // Handle Color Selection Logic
+  if (config.allowAiColorSelection === false) {
+      // Remove color fields from schemas
+      delete geminiToolSchema.parameters.properties.bubbles.items.properties.color;
+      delete geminiToolSchema.parameters.properties.bubbles.items.properties.strokeColor;
+      delete openAIToolSchema.parameters.properties.bubbles.items.properties.color;
+      delete openAIToolSchema.parameters.properties.bubbles.items.properties.strokeColor;
+      
+      systemPrompt += "\n[IMPORTANT] Do NOT output 'color' or 'strokeColor'. Use default colors for all bubbles.";
+  } else {
+      // Inject color selection prompt
+      const colorPrompt = config.colorSelectionPrompt || DEFAULT_COLOR_SELECTION_PROMPT;
+      systemPrompt += `\n\n${colorPrompt}`;
   }
 
   if (signal?.aborted) throw new Error("Aborted by user");
