@@ -43,7 +43,7 @@ export const BubbleEditor: React.FC = () => {
 
   const currentShape = bubble.maskShape || aiConfig.defaultMaskShape || 'ellipse';
   const currentRadius = bubble.maskCornerRadius !== undefined ? bubble.maskCornerRadius : (aiConfig.defaultMaskCornerRadius || 15);
-  const currentFeather = bubble.maskFeather !== undefined ? bubble.maskFeather : (aiConfig.defaultMaskFeather || 10);
+  const currentFeather = bubble.maskFeather !== undefined ? bubble.maskFeather : (aiConfig.defaultMaskFeather || 0);
 
   const handleManualColorChange = (color: string) => {
     updateBubble(bubble.id, { 
