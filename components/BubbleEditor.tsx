@@ -177,10 +177,10 @@ export const BubbleEditor: React.FC = () => {
                   <span>{bubble.width.toFixed(1)}%</span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={() => updateBubble(bubble.id, { width: Math.max(5, bubble.width - 0.5) })} className="p-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-400 hover:text-white"><Minus size={12}/></button>
+                    <button onClick={() => updateBubble(bubble.id, { width: Math.max(0, bubble.width - 0.5) })} className="p-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-400 hover:text-white"><Minus size={12}/></button>
                     <input
                     type="range"
-                    min="5"
+                    min="0"
                     max="50"
                     step="0.5"
                     value={bubble.width}
@@ -196,10 +196,10 @@ export const BubbleEditor: React.FC = () => {
                   <span>{bubble.height.toFixed(1)}%</span>
                 </div>
                 <div className="flex items-center gap-2">
-                    <button onClick={() => updateBubble(bubble.id, { height: Math.max(5, bubble.height - 0.5) })} className="p-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-400 hover:text-white"><Minus size={12}/></button>
+                    <button onClick={() => updateBubble(bubble.id, { height: Math.max(0, bubble.height - 0.5) })} className="p-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-400 hover:text-white"><Minus size={12}/></button>
                     <input
                     type="range"
-                    min="5"
+                    min="0"
                     max="50"
                     step="0.5"
                     value={bubble.height}

@@ -53,7 +53,7 @@ export const ControlPanel: React.FC = () => {
   };
   const onGlobalMaskScale = (factor: number) => {
     if (!currentImage) return;
-    const newBubbles = currentImage.bubbles.map(b => ({ ...b, width: Math.max(2, Math.min(100, parseFloat((b.width * factor).toFixed(1)))), height: Math.max(2, Math.min(100, parseFloat((b.height * factor).toFixed(1)))) }));
+    const newBubbles = currentImage.bubbles.map(b => ({ ...b, width: Math.max(0, Math.min(100, parseFloat((b.width * factor).toFixed(1)))), height: Math.max(0, Math.min(100, parseFloat((b.height * factor).toFixed(1)))) }));
     updateImageBubbles(currentImage.id, newBubbles);
   };
   const onGlobalFontFamily = (fontFamily: any) => {
