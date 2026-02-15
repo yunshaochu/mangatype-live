@@ -59,8 +59,8 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
             const scale = delta > 0 ? 1.05 : 0.95;
             let newWidth = currentBubble.width * scale;
             let newHeight = currentBubble.height * scale;
-            newWidth = clamp(newWidth, 2, 100);
-            newHeight = clamp(newHeight, 2, 100);
+            newWidth = clamp(newWidth, 0, 100);
+            newHeight = clamp(newHeight, 0, 100);
             onUpdate(currentBubble.id, {
                 width: parseFloat(newWidth.toFixed(1)),
                 height: parseFloat(newHeight.toFixed(1))
