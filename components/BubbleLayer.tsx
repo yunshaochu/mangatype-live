@@ -131,6 +131,7 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
           color: bubble.color,
           writingMode: bubble.isVertical ? 'vertical-rl' : 'horizontal-tb',
           textOrientation: bubble.isVertical ? 'upright' : undefined,
+          textCombineUpright: bubble.isVertical ? 'none' : undefined,
           whiteSpace: 'pre',
           lineHeight: '1.5',
           textAlign: bubble.isVertical ? 'left' : 'center',
@@ -138,7 +139,36 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
           paintOrder: 'stroke fill',
         }}
       >
-        {bubble.text}
+        {bubble.isVertical ? (
+          // Vertical text with punctuation handling
+          bubble.text.split('\n').map((line, lineIdx) => (
+            <span key={lineIdx} style={{ display: 'inline-block' }}>
+              {line.split('').map((char, charIdx) => {
+                // 感叹号和问号需要旋转90度（横着显示）
+                const needsRotation = /[！？]/.test(char);
+
+                if (needsRotation) {
+                  return (
+                    <span
+                      key={charIdx}
+                      style={{
+                        display: 'inline-block',
+                        transform: 'rotate(90deg)',
+                        textOrientation: 'mixed',
+                      }}
+                    >
+                      {char}
+                    </span>
+                  );
+                }
+                // 省略号和破折号保持竖着（不旋转）
+                return <span key={charIdx}>{char}</span>;
+              })}
+            </span>
+          ))
+        ) : (
+          bubble.text
+        )}
       </div>
     </div>
   );

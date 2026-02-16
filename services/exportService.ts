@@ -429,16 +429,52 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 ctx.translate(textCenterX, textCenterY);
                 ctx.rotate((b.rotation * Math.PI) / 180);
 
+                // Helper: 省略号和破折号需要旋转90度（横着显示）
+                const needsEllipsisRotation = (char: string) => {
+                    return /[…—]/.test(char);
+                };
+
+                // Helper: 感叹号和问号需要旋转90度（横着显示）
+                const needsPunctuationRotation = (char: string) => {
+                    return /[！？]/.test(char);
+                };
+
+                // Helper: Check if character needs centering
+                const needsCentering = (char: string) => {
+                    return /[！？]/.test(char);
+                };
+
                 lines.forEach((line, lineIdx) => {
                     const chars = line.split('');
                     const x = totalWidth / 2 - lineIdx * columnSpacing;
                     const startY = -totalHeight / 2;
                     chars.forEach((char, charIdx) => {
                         const y = startY + charIdx * charSpacing;
-                        if (b.strokeColor && b.strokeColor !== 'transparent') {
-                            ctx.strokeText(char, x, y);
+
+                        ctx.save();
+
+                        // Apply character-specific transformations
+                        if (needsEllipsisRotation(char) || needsPunctuationRotation(char)) {
+                            // Rotate 90 degrees for these punctuation marks
+                            ctx.translate(x, y);
+                            ctx.rotate(Math.PI / 2);
+
+                            // Center the rotated character
+                            const offsetX = needsCentering(char) ? fontSize * 0.15 : 0;
+
+                            if (b.strokeColor && b.strokeColor !== 'transparent') {
+                                ctx.strokeText(char, offsetX, 0);
+                            }
+                            ctx.fillText(char, offsetX, 0);
+                        } else {
+                            // Normal vertical character (no rotation)
+                            if (b.strokeColor && b.strokeColor !== 'transparent') {
+                                ctx.strokeText(char, x, y);
+                            }
+                            ctx.fillText(char, x, y);
                         }
-                        ctx.fillText(char, x, y);
+
+                        ctx.restore();
                     });
                 });
                 ctx.restore();
