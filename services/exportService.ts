@@ -429,17 +429,12 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 ctx.translate(textCenterX, textCenterY);
                 ctx.rotate((b.rotation * Math.PI) / 180);
 
-                // Helper: 省略号和破折号需要旋转90度（横着显示）
-                const needsEllipsisRotation = (char: string) => {
+                // Helper: 省略号和破折号需要旋转90度（变成横点/竖线）
+                const needsRotation = (char: string) => {
                     return /[…—]/.test(char);
                 };
 
-                // Helper: 感叹号和问号需要旋转90度（横着显示）
-                const needsPunctuationRotation = (char: string) => {
-                    return /[！？]/.test(char);
-                };
-
-                // Helper: Check if character needs centering
+                // Helper: 感叹号和问号需要居中（但不旋转）
                 const needsCentering = (char: string) => {
                     return /[！？]/.test(char);
                 };
@@ -453,21 +448,25 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
 
                         ctx.save();
 
-                        // Apply character-specific transformations
-                        if (needsEllipsisRotation(char) || needsPunctuationRotation(char)) {
-                            // Rotate 90 degrees for these punctuation marks
+                        if (needsRotation(char)) {
+                            // 旋转90度：省略号变横点，破折号变竖线
                             ctx.translate(x, y);
                             ctx.rotate(Math.PI / 2);
 
-                            // Center the rotated character
-                            const offsetX = needsCentering(char) ? fontSize * 0.15 : 0;
+                            if (b.strokeColor && b.strokeColor !== 'transparent') {
+                                ctx.strokeText(char, 0, 0);
+                            }
+                            ctx.fillText(char, 0, 0);
+                        } else if (needsCentering(char)) {
+                            // 感叹号和问号：不旋转，但居中
+                            const offsetX = fontSize * 0.25; // 增加居中偏移
 
                             if (b.strokeColor && b.strokeColor !== 'transparent') {
-                                ctx.strokeText(char, offsetX, 0);
+                                ctx.strokeText(char, x + offsetX, y);
                             }
-                            ctx.fillText(char, offsetX, 0);
+                            ctx.fillText(char, x + offsetX, y);
                         } else {
-                            // Normal vertical character (no rotation)
+                            // 普通字符
                             if (b.strokeColor && b.strokeColor !== 'transparent') {
                                 ctx.strokeText(char, x, y);
                             }
