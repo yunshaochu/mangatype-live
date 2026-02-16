@@ -139,6 +139,7 @@ export interface AIConfig {
   // Detection & Masks Tab
   enableMaskedImageMode?: boolean; // New: Only send masked parts if regions exist
   useMasksAsHints?: boolean; // Send manual red boxes as hints to AI
+  appendMasksToManualJson?: boolean; // Append mask coordinates to manual JSON prompt
   useTextDetectionApi?: boolean; // Toggle Local OCR
   textDetectionApiUrl?: string;
   detectionExpansionRatio?: number; // New: 0.0 - 0.5 (Expansion rate for detected boxes)

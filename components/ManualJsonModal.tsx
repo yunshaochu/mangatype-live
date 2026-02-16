@@ -2,13 +2,14 @@
 
 import React, { useState } from 'react';
 import { FileJson, X, CheckCircle, AlertCircle, Copy, Terminal, ClipboardCopy } from 'lucide-react';
-import { AIConfig } from '../types';
+import { AIConfig, MaskRegion } from '../types';
 import { t } from '../services/i18n';
 
 interface ManualJsonModalProps {
   onApply: (detected: any[]) => void;
   onClose: () => void;
   config: AIConfig;
+  maskRegions?: MaskRegion[];
 }
 
 const SAMPLE_JSON = `{
@@ -24,30 +25,47 @@ const SAMPLE_JSON = `{
   ]
 }`;
 
-const AI_PROMPT = `你是一个专业的漫画嵌字和翻译专家。请分析这张图片，执行以下步骤：
+const AI_PROMPT = `你是一位专业的漫画嵌字师和翻译师。
+你的任务是识别漫画中的对话气泡，翻译文本并提供布局坐标。
 
-1. **识别气泡**：找出图片中所有的对话气泡。
-2. **翻译内容**：读取气泡内的文字，并将其翻译成自然流畅的**简体中文**。
-3. **计算遮罩坐标**：计算一个矩形框来覆盖原始文字。
-   - \`x\` 和 \`y\` 是气泡的**中心点**坐标（0-100%）。
-   - \`width\` 和 \`height\` 是相对于图片总宽高的百分比（0-100%）。
-   - 确保框足够大以覆盖原文，但不要超出气泡边界。
-4. **判断排版**：如果气泡是竖排文字（漫画通常如此），\`isVertical\` 设为 true。
+### 工作步骤：
+1. **检测**：识别所有包含有意义对话的气泡。
+   - **忽略**音效（SFX），除非用户明确要求翻译。
+2. **翻译**：将文本翻译为**简体中文**。
+   - 风格：自然、口语化的漫画风格。
+   - **换行**：尽量在视觉上匹配原文的换行方式。**不要过度换行**，仅在语义需要或气泡形状必要时换行。
+3. **字体选择**：根据对话的情绪和语境选择最合适的字体。
+4. **遮罩定位**：计算覆盖原文的边界框（中心x、中心y、宽度、高度，单位为百分比）。
+   - **要求**：遮罩必须**紧密贴合**，完全覆盖文字像素但尽可能小。
 
-**请务必只输出以下格式的 JSON 代码，不要包含markdown标记或其他废话：**
+### 输出格式（仅JSON）：
+返回严格有效的JSON对象。
 
+示例：
 {
   "bubbles": [
     {
-      "text": "这里是翻译后的中文内容...",
-      "x": 50,
-      "y": 45,
-      "width": 15,
-      "height": 20,
-      "isVertical": true
+      "text": "第一行\\n第二行",
+      "x": 50.5,
+      "y": 30.0,
+      "width": 10.0,
+      "height": 15.0,
+      "isVertical": true,
+      "fontFamily": "noto"
     }
   ]
-}`;
+}
+
+### 重要约束：
+- **isVertical**：如果气泡是竖排文字（漫画通常如此），'isVertical' 设为 true。
+- **竖排排版**：即使 isVertical 为 true，也不要每2-3个字符就强制换行，应自然换行。
+- **坐标系**：0-100 范围，相对于图片尺寸。
+- **安全输出**：不要在JSON中输出字面的 "\\n" 字符串，使用实际的转义换行符。
+
+### 预检测文本区域：
+如果下方提供了坐标，表示这些是预先检测到的文本区域。
+请将它们作为**参考锚点**——你可以微调坐标以获得更好的贴合效果，如果预检测遗漏或误识别了区域，也可以增加或删除气泡。
+`;
 
 // Duplicate utility to avoid complex export/import in client-side only mode
 const repairJson = (jsonStr: string): string => {
@@ -89,10 +107,25 @@ const repairJson = (jsonStr: string): string => {
   return result;
 };
 
-export const ManualJsonModal: React.FC<ManualJsonModalProps> = ({ onApply, onClose, config }) => {
+export const ManualJsonModal: React.FC<ManualJsonModalProps> = ({ onApply, onClose, config, maskRegions }) => {
   const [jsonText, setJsonText] = useState('');
   const [error, setError] = useState<string | null>(null);
   const lang = config.language || 'zh';
+
+  // Generate dynamic prompt with optional mask coordinates
+  const generatePrompt = () => {
+    let prompt = AI_PROMPT;
+
+    if (config.appendMasksToManualJson && maskRegions && maskRegions.length > 0) {
+      const maskCoords = maskRegions.map((m, idx) =>
+        `区域 ${idx + 1}: x=${m.x.toFixed(1)}, y=${m.y.toFixed(1)}, width=${m.width.toFixed(1)}, height=${m.height.toFixed(1)}`
+      ).join('\n');
+
+      prompt += `\n\n### 当前图片的红框坐标：\n${maskCoords}`;
+    }
+
+    return prompt;
+  };
 
   const handleApply = () => {
     try {
@@ -132,7 +165,7 @@ export const ManualJsonModal: React.FC<ManualJsonModalProps> = ({ onApply, onClo
   };
 
   const copyPrompt = () => {
-    navigator.clipboard.writeText(AI_PROMPT);
+    navigator.clipboard.writeText(generatePrompt());
     alert(t('promptCopied', lang));
   };
 

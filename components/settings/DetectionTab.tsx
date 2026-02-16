@@ -35,7 +35,7 @@ export const DetectionTab: React.FC<TabProps> = ({ config, setConfig, lang }) =>
         </div>
 
         {/* Use Masks As Hints */}
-        <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-red-500/30 rounded-xl transition-colors group">
+        <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-red-500/30 rounded-xl transition-colors group flex flex-col gap-4">
           <div className="flex justify-between items-start">
             <div className="flex gap-3">
               <div className="mt-1 p-1.5 bg-red-500/10 rounded text-red-400"><Scan size={18}/></div>
@@ -54,6 +54,26 @@ export const DetectionTab: React.FC<TabProps> = ({ config, setConfig, lang }) =>
               <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-red-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
             </label>
           </div>
+
+          {config.useMasksAsHints && (
+            <div className="pl-11 pt-2 border-t border-gray-700/50 animate-fade-in-down">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h5 className="text-xs font-medium text-gray-300">{t('appendMasksToManualJson', lang)}</h5>
+                  <p className="text-[10px] text-gray-500 mt-0.5">{t('appendMasksToManualJsonHint', lang)}</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={config.appendMasksToManualJson || false}
+                    onChange={(e) => setConfig({...config, appendMasksToManualJson: e.target.checked})}
+                  />
+                  <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-red-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
+                </label>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Local Text Detection */}
