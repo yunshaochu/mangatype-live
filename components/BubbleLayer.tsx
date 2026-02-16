@@ -130,6 +130,7 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
           fontWeight: bubble.fontFamily === 'noto-bold' ? 900 : 'bold',
           color: bubble.color,
           writingMode: bubble.isVertical ? 'vertical-rl' : 'horizontal-tb',
+          textOrientation: bubble.isVertical ? 'upright' : undefined,
           whiteSpace: 'pre',
           lineHeight: '1.5',
           textAlign: bubble.isVertical ? 'left' : 'center',
