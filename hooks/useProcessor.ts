@@ -12,6 +12,7 @@ interface UseProcessorProps {
 
 export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps) => {
     const [isProcessingBatch, setIsProcessingBatch] = useState(false);
+    const [processingType, setProcessingType] = useState<'translate' | 'scan' | 'inpaint' | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
 
     // --- Core Logic: Process a Single Image (Translate/Bubble) ---
@@ -197,16 +198,18 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             abortControllerRef.current.abort();
             abortControllerRef.current = null;
             setIsProcessingBatch(false);
+            setProcessingType(null);
         }
     };
 
     const processQueue = async (queue: ImageState[], task: 'translate' | 'inpaint', concurrency: number) => {
         if (queue.length === 0) return;
-        
+
         const controller = new AbortController();
         abortControllerRef.current = controller;
         const signal = controller.signal;
         setIsProcessingBatch(true);
+        setProcessingType(task);
 
         try {
             const batchSize = Math.max(1, concurrency);
@@ -224,6 +227,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             console.error(e);
         } finally {
             setIsProcessingBatch(false);
+            setProcessingType(null);
             abortControllerRef.current = null;
         }
     };
@@ -237,10 +241,12 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             const controller = new AbortController();
             abortControllerRef.current = controller;
             setIsProcessingBatch(true);
+            setProcessingType('translate');
             try {
                 await runDetectionForImage(currentImage, controller.signal);
             } finally {
                 setIsProcessingBatch(false);
+                setProcessingType(null);
                 abortControllerRef.current = null;
             }
         } else {
@@ -269,19 +275,21 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             const controller = new AbortController();
             abortControllerRef.current = controller;
             setIsProcessingBatch(true);
+            setProcessingType('inpaint');
             try {
                 await runInpaintingForImage(currentImage, controller.signal, { onlyInpaintMethod: true });
             } finally {
                 setIsProcessingBatch(false);
+                setProcessingType(null);
                 abortControllerRef.current = null;
             }
         } else {
             // Filter queue for images that have pending 'inpaint' masks
-            const queue = images.filter(img => 
-                !img.skipped && 
+            const queue = images.filter(img =>
+                !img.skipped &&
                 (img.maskRegions || []).some(m => m.method === 'inpaint' && !m.isCleaned)
             );
-            
+
             if (queue.length === 0) {
                 alert("No images with uncleaned 'API Erase' masks found.");
                 return;
@@ -317,9 +325,9 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             alert("Please enable 'Local Text Detection' in Settings first.");
             return;
         }
-        
-        const targets = batch 
-            ? images.filter(img => !img.skipped && img.detectionStatus !== 'done') 
+
+        const targets = batch
+            ? images.filter(img => !img.skipped && img.detectionStatus !== 'done')
             : (currentImage ? [currentImage] : []);
 
         if (targets.length === 0) {
@@ -330,18 +338,19 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
         const controller = new AbortController();
         abortControllerRef.current = controller;
         setIsProcessingBatch(true);
+        setProcessingType('scan');
 
         try {
             const batchSize = Math.max(1, concurrency);
             for (let i = 0; i < targets.length; i += batchSize) {
                 if (controller.signal.aborted) break;
                 const chunk = targets.slice(i, i + batchSize);
-                
+
                 await Promise.all(chunk.map(async (img) => {
                     setImages(prev => prev.map(p => p.id === img.id ? { ...p, detectionStatus: 'processing' } : p));
                     try {
                         const data = await fetchRawDetectedRegions(img.originalBase64 || img.base64, aiConfig.textDetectionApiUrl!);
-                        
+
                         // Process Rects (Expansion Logic)
                         const expansion = aiConfig.detectionExpansionRatio || 0;
                         const expandedRegions = data.rects.map(r => {
@@ -359,11 +368,11 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                         // Process Mask (Refined Pixel Mask) - We store it but don't use it for auto-inpaint anymore
                         const maskRefinedBase64 = data.maskBase64;
 
-                        setImages(prev => prev.map(p => p.id === img.id ? { 
-                            ...p, 
+                        setImages(prev => prev.map(p => p.id === img.id ? {
+                            ...p,
                             maskRegions: [...(p.maskRegions || []), ...maskRegions],
                             maskRefinedBase64: maskRefinedBase64,
-                            detectionStatus: 'done' 
+                            detectionStatus: 'done'
                         } : p));
                     } catch (e) {
                         console.error(e);
@@ -373,6 +382,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             }
         } finally {
             setIsProcessingBatch(false);
+            setProcessingType(null);
             abortControllerRef.current = null;
         }
     };
@@ -418,6 +428,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
 
     return {
         isProcessingBatch,
+        processingType,
         handleBatchProcess,
         handleResetStatus,
         handleLocalDetectionScan,

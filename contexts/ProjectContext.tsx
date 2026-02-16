@@ -80,6 +80,7 @@ interface ProjectContextType {
   aiConfig: AIConfig;
   setAiConfig: (config: AIConfig) => void;
   isProcessingBatch: boolean;
+  processingType: 'translate' | 'scan' | 'inpaint' | null;
   handleBatchProcess: (currentImage: ImageState | undefined, onlyCurrent: boolean, concurrency: number) => void;
   handleResetStatus: () => void;
   handleLocalDetectionScan: (currentImage: ImageState | undefined, batch: boolean, concurrency: number) => void;
