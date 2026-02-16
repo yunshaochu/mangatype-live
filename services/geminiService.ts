@@ -65,7 +65,7 @@ export const DEFAULT_SYSTEM_PROMPT = `你是一位专业的漫画嵌字师和翻
 }
 
 ### 重要约束：
-- **isVertical**：如果气泡是竖排文字（漫画通常如此），`isVertical` 设为 true。
+- **isVertical**：如果气泡是竖排文字（漫画通常如此），'isVertical' 设为 true。
 - **竖排排版**：即使 isVertical 为 true，也不要每2-3个字符就强制换行，应自然换行。
 - **坐标系**：0-100 范围，相对于图片尺寸。
 - **安全输出**：不要在JSON中输出字面的 "\\n" 字符串，使用实际的转义换行符。
