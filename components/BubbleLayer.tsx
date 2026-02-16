@@ -124,7 +124,7 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
       )}
       
       <div
-        className={`absolute inset-0 flex items-center justify-center font-${bubble.fontFamily} leading-[1.2] overflow-visible text-center`}
+        className={`absolute inset-0 flex items-center justify-center font-${bubble.fontFamily} leading-[1.2] overflow-visible`}
         style={{
           fontSize: `${bubble.fontSize * 2}cqw`,
           fontWeight: bubble.fontFamily === 'noto-bold' ? 900 : 'bold',
@@ -133,36 +133,20 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
           textOrientation: bubble.isVertical ? 'mixed' : undefined,
           whiteSpace: 'pre',
           lineHeight: '1.5',
-          textAlign: bubble.isVertical ? 'center' : 'center',
+          textAlign: 'center',
           WebkitTextStroke: bubble.strokeColor && bubble.strokeColor !== 'transparent' ? `3px ${bubble.strokeColor}` : '3px #ffffff',
           paintOrder: 'stroke fill',
         }}
       >
         {bubble.isVertical ? (
-          // Vertical text with punctuation handling
+          // Vertical text - centered
           bubble.text.split('\n').map((line, lineIdx) => (
             <span key={lineIdx} style={{ display: 'inline-block' }}>
-              {line.split('').map((char, charIdx) => {
-                // 感叹号和问号需要旋转90度（横着显示）
-                const needsRotation = /[！？]/.test(char);
-
-                if (needsRotation) {
-                  return (
-                    <span
-                      key={charIdx}
-                      style={{
-                        display: 'inline-block',
-                        transform: 'rotate(90deg)',
-                        textOrientation: 'mixed',
-                      }}
-                    >
-                      {char}
-                    </span>
-                  );
-                }
-                // 其他字符（包括破折号）保持竖着
-                return <span key={charIdx}>{char}</span>;
-              })}
+              {line.split('').map((char, charIdx) => (
+                <span key={charIdx} style={{ display: 'inline-block', width: '1.2em', textAlign: 'center' }}>
+                  {char}
+                </span>
+              ))}
             </span>
           ))
         ) : (
