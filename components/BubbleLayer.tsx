@@ -133,25 +133,12 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
           textOrientation: bubble.isVertical ? 'mixed' : undefined,
           whiteSpace: 'pre',
           lineHeight: '1.5',
-          textAlign: 'center',
+          textAlign: bubble.isVertical ? 'start' : 'center',
           WebkitTextStroke: bubble.strokeColor && bubble.strokeColor !== 'transparent' ? `3px ${bubble.strokeColor}` : '3px #ffffff',
           paintOrder: 'stroke fill',
         }}
       >
-        {bubble.isVertical ? (
-          // Vertical text - centered
-          bubble.text.split('\n').map((line, lineIdx) => (
-            <span key={lineIdx} style={{ display: 'inline-block' }}>
-              {line.split('').map((char, charIdx) => (
-                <span key={charIdx} style={{ display: 'inline-block', width: '1.2em', textAlign: 'center' }}>
-                  {char}
-                </span>
-              ))}
-            </span>
-          ))
-        ) : (
-          bubble.text
-        )}
+        {bubble.text}
       </div>
     </div>
   );
