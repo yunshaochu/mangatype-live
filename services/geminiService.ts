@@ -3,6 +3,12 @@ import { GoogleGenAI, FunctionDeclaration, Type, FunctionCallingConfigMode } fro
 import { AIConfig, DetectedBubble, MaskRegion } from "../types";
 
 export const DEFAULT_FONT_SELECTION_PROMPT = `### 字体选择指南：
+
+大前提：如果漫画原图中有提供字体，请优先使用原图中的字体。
+大前提：如果漫画原图中有提供字体，请优先使用原图中的字体。
+大前提：如果漫画原图中有提供字体，请优先使用原图中的字体。
+
+如果没有，可以参考以下指南进行字体选择：
 - **'noto' (标准黑体)**：默认字体，适用于普通对话、旁白。
 - **'noto-bold' (粗黑体)**：用于喊叫、强调、激烈的情绪、动作场景。
 - **'serif' (宋体)**：用于正式场合、内心独白、回忆、书信体。
@@ -14,6 +20,13 @@ export const DEFAULT_FONT_SELECTION_PROMPT = `### 字体选择指南：
 - **'liujian' (草书体)**：用于艺术效果、梦境、幻想场景。`;
 
 export const DEFAULT_COLOR_SELECTION_PROMPT = `### 字色选择指南：
+
+大前提：如果漫画原图中有提供字体颜色，请优先使用原图中的颜色。
+大前提：如果漫画原图中有提供字体颜色，请优先使用原图中的颜色。
+大前提：如果漫画原图中有提供字体颜色，请优先使用原图中的颜色。
+
+
+如果没有，可以参考以下指南进行颜色选择：
 - **黑字白边 (#000000 + #ffffff)**：默认经典组合，适用于大多数对话框。
 - **白字黑边 (#ffffff + #000000)**：适用于深色背景、夜晚场景、严肃氛围。
 - **红字白边 (#dc2626 + #ffffff)**：适用于强调、警告、愤怒情绪。
