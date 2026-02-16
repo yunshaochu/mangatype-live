@@ -57,7 +57,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                 let color = '#ffffff';
                 if (aiConfig.autoDetectBackground !== false) {
                     color = await detectBubbleColor(
-                        img.originalUrl || img.url || `data:image/png;base64,${img.base64}`, 
+                        img.originalUrl || img.url || `data:image/png;base64,${img.base64}`,
                         d.x, d.y, d.width, d.height
                     );
                 }
@@ -67,7 +67,8 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                     text: d.text, isVertical: d.isVertical,
                     fontFamily: (d.fontFamily as any) || 'noto',
                     fontSize: aiConfig.defaultFontSize,
-                    color: '#0f172a',
+                    color: d.color || '#000000',
+                    strokeColor: d.strokeColor || '#ffffff',
                     backgroundColor: color,
                     rotation: d.rotation || 0,
                     maskShape: aiConfig.defaultMaskShape,

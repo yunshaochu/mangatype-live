@@ -329,7 +329,7 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 white-space: pre;
                 line-height: 1.5;
                 text-align: ${b.isVertical ? 'left' : 'center'};
-                -webkit-text-stroke: 3px #ffffff;
+                -webkit-text-stroke: 3px ${b.strokeColor && b.strokeColor !== 'transparent' ? b.strokeColor : '#ffffff'};
                 paint-order: stroke fill;
                 transform: rotate(${b.rotation}deg);
             `;
@@ -532,7 +532,7 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
          : 'translate(-50%, -50%)';
 
        const strokeStyle = `
-         -webkit-text-stroke: 3px #ffffff;
+         -webkit-text-stroke: 3px ${b.strokeColor && b.strokeColor !== 'transparent' ? b.strokeColor : '#ffffff'};
          paint-order: stroke fill;
        `;
 

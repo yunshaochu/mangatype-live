@@ -123,7 +123,7 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
         </>
       )}
       
-      <div 
+      <div
         className={`absolute inset-0 flex items-center justify-center font-${bubble.fontFamily} leading-[1.2] overflow-visible text-center`}
         style={{
           fontSize: `${bubble.fontSize * 2}cqw`,
@@ -133,7 +133,7 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
           whiteSpace: 'pre',
           lineHeight: '1.5',
           textAlign: bubble.isVertical ? 'left' : 'center',
-          WebkitTextStroke: '3px #ffffff',
+          WebkitTextStroke: bubble.strokeColor && bubble.strokeColor !== 'transparent' ? `3px ${bubble.strokeColor}` : '3px #ffffff',
           paintOrder: 'stroke fill',
         }}
       >

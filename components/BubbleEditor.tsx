@@ -366,8 +366,97 @@ export const BubbleEditor: React.FC = () => {
              <Type size={12}/> {t('typography', lang)}
            </label>
 
+          {/* Text Color Section */}
+          <div className="space-y-2 pt-2 border-t border-gray-800">
+            <label className="text-[10px] text-gray-500 font-bold uppercase block">文字颜色 (Text Color)</label>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <div className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"><Hash size={12}/></div>
+                  <input
+                    type="text"
+                    value={bubble.color.replace('#', '')}
+                    onChange={(e) => updateBubble(bubble.id, { color: `#${e.target.value}` })}
+                    placeholder="000000"
+                    className="w-full bg-gray-800 border border-gray-700 rounded h-8 pl-6 text-xs text-white uppercase font-mono focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div className="relative w-8 h-8 rounded border border-gray-600 overflow-hidden shrink-0 cursor-pointer group">
+                  <input
+                    type="color"
+                    value={bubble.color}
+                    onChange={(e) => updateBubble(bubble.id, { color: e.target.value })}
+                    className="absolute -top-2 -left-2 w-16 h-16 p-0 border-0 cursor-pointer"
+                  />
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center bg-black/10 group-hover:bg-transparent">
+                    <Palette size={14} className="text-white drop-shadow-md"/>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {['#000000', '#ffffff', '#dc2626', '#3b82f6', '#10b981', '#f59e0b'].map(c => (
+                  <button
+                    key={c}
+                    onClick={() => updateBubble(bubble.id, { color: c })}
+                    className={`w-6 h-6 rounded border transition-all ${bubble.color.toLowerCase() === c ? 'border-blue-500 ring-1 ring-blue-500/50 scale-110' : 'border-gray-600 hover:scale-105'}`}
+                    style={{ backgroundColor: c }}
+                    title={c}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Stroke Color Section */}
+          <div className="space-y-2 pt-2 border-t border-gray-800">
+            <label className="text-[10px] text-gray-500 font-bold uppercase block">描边颜色 (Stroke Color)</label>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <div className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-500"><Hash size={12}/></div>
+                  <input
+                    type="text"
+                    value={(bubble.strokeColor || '#ffffff').replace('#', '')}
+                    onChange={(e) => updateBubble(bubble.id, { strokeColor: `#${e.target.value}` })}
+                    placeholder="FFFFFF"
+                    className="w-full bg-gray-800 border border-gray-700 rounded h-8 pl-6 text-xs text-white uppercase font-mono focus:border-blue-500 outline-none"
+                  />
+                </div>
+                <div className="relative w-8 h-8 rounded border border-gray-600 overflow-hidden shrink-0 cursor-pointer group">
+                  <input
+                    type="color"
+                    value={bubble.strokeColor || '#ffffff'}
+                    onChange={(e) => updateBubble(bubble.id, { strokeColor: e.target.value })}
+                    className="absolute -top-2 -left-2 w-16 h-16 p-0 border-0 cursor-pointer"
+                  />
+                  <div className="absolute inset-0 pointer-events-none flex items-center justify-center bg-black/10 group-hover:bg-transparent">
+                    <Palette size={14} className="text-white drop-shadow-md"/>
+                  </div>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  onClick={() => updateBubble(bubble.id, { strokeColor: 'transparent' })}
+                  className={`w-6 h-6 rounded border flex items-center justify-center transition-all ${(bubble.strokeColor || '#ffffff') === 'transparent' ? 'border-red-500 ring-1 ring-red-500/50' : 'border-gray-700 hover:border-gray-500'}`}
+                  title="无描边 (No Stroke)"
+                >
+                  <Ban size={12} className="text-red-400"/>
+                </button>
+                {['#ffffff', '#000000', '#dc2626', '#3b82f6', '#10b981', '#f59e0b'].map(c => (
+                  <button
+                    key={c}
+                    onClick={() => updateBubble(bubble.id, { strokeColor: c })}
+                    className={`w-6 h-6 rounded border transition-all ${(bubble.strokeColor || '#ffffff').toLowerCase() === c ? 'border-blue-500 ring-1 ring-blue-500/50 scale-110' : 'border-gray-600 hover:scale-105'}`}
+                    style={{ backgroundColor: c }}
+                    title={c}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* Controls stacked vertically */}
-          <div className="space-y-4">
+          <div className="space-y-4 pt-2 border-t border-gray-800">
             
             {/* Direction */}
             <div className="space-y-1">

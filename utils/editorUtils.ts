@@ -28,7 +28,8 @@ export const createBubble = (x: number, y: number, defaultFontSize: number, widt
   isVertical,
   fontFamily: 'noto', // Changed from 'zhimang' to 'noto'
   fontSize: defaultFontSize,
-  color: '#0f172a',
+  color: '#000000',
+  strokeColor: '#ffffff',
   backgroundColor: '#ffffff',
   rotation: 0,
   maskFeather: 0,

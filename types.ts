@@ -21,6 +21,7 @@ export interface Bubble {
   fontFamily: FontFamily;
   fontSize: number; // rem
   color: string;
+  strokeColor?: string; // Text stroke/outline color
   backgroundColor: string; // For masking original text (e.g., #ffffff)
   rotation: number; // degrees
   isSelected?: boolean;
@@ -52,6 +53,8 @@ export interface DetectedBubble {
   isVertical: boolean;
   rotation?: number; // Added rotation support from AI
   fontFamily?: FontFamily; // Added font support from AI
+  color?: string; // Added color support from AI
+  strokeColor?: string; // Added stroke color support from AI
 }
 
 export interface ImageState {
@@ -140,10 +143,12 @@ export interface AIConfig {
   inpaintingModel?: string;
   // autoInpaintMasks Removed per user request
 
-  language: 'zh' | 'en'; 
-  allowAiRotation?: boolean; 
+  language: 'zh' | 'en';
+  allowAiRotation?: boolean;
   allowAiFontSelection?: boolean; // New: Toggle AI font selection
   fontSelectionPrompt?: string; // Custom font selection prompt (Chinese)
+  allowAiColorSelection?: boolean; // New: Toggle AI color selection
+  colorSelectionPrompt?: string; // Custom color selection prompt (Chinese)
   customMessages?: CustomMessage[]; // Pre-request messages
   autoDetectBackground?: boolean; // New: Toggle for auto background color detection
   
