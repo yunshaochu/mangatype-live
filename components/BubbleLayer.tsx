@@ -130,11 +130,10 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
           fontWeight: bubble.fontFamily === 'noto-bold' ? 900 : 'bold',
           color: bubble.color,
           writingMode: bubble.isVertical ? 'vertical-rl' : 'horizontal-tb',
-          textOrientation: bubble.isVertical ? 'upright' : undefined,
-          textCombineUpright: bubble.isVertical ? 'none' : undefined,
+          textOrientation: bubble.isVertical ? 'mixed' : undefined,
           whiteSpace: 'pre',
           lineHeight: '1.5',
-          textAlign: bubble.isVertical ? 'left' : 'center',
+          textAlign: bubble.isVertical ? 'center' : 'center',
           WebkitTextStroke: bubble.strokeColor && bubble.strokeColor !== 'transparent' ? `3px ${bubble.strokeColor}` : '3px #ffffff',
           paintOrder: 'stroke fill',
         }}
@@ -161,7 +160,7 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
                     </span>
                   );
                 }
-                // 省略号和破折号保持竖着（不旋转）
+                // 其他字符（包括破折号）保持竖着
                 return <span key={charIdx}>{char}</span>;
               })}
             </span>
