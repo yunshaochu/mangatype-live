@@ -7,7 +7,7 @@ import { polishDialogue } from '../services/geminiService';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 
-const PRESET_COLORS = [
+const PRESET_BG_COLORS = [
   '#ffffff', // White
   '#000000', // Black
   '#f3f4f6', // Gray-100
@@ -15,6 +15,14 @@ const PRESET_COLORS = [
   '#fecaca', // Red-200
   '#fde68a', // Amber-200
   '#bfdbfe', // Blue-200
+];
+
+// 文字颜色组合预设
+const TEXT_COLOR_PRESETS = [
+  { label: '黑字白边', color: '#000000', stroke: '#ffffff' },
+  { label: '白字黑边', color: '#ffffff', stroke: '#000000' },
+  { label: '红字白边', color: '#dc2626', stroke: '#ffffff' },
+  { label: '蓝字白边', color: '#3b82f6', stroke: '#ffffff' },
 ];
 
 export const BubbleEditor: React.FC = () => {
@@ -46,7 +54,7 @@ export const BubbleEditor: React.FC = () => {
   const currentFeather = bubble.maskFeather !== undefined ? bubble.maskFeather : (aiConfig.defaultMaskFeather || 0);
 
   const handleManualColorChange = (color: string) => {
-    updateBubble(bubble.id, { 
+    updateBubble(bubble.id, {
         backgroundColor: color,
         autoDetectBackground: false // Disable auto-detect when manually picking
     });
@@ -61,6 +69,34 @@ export const BubbleEditor: React.FC = () => {
     try {
       const result = await eyeDropper.open();
       handleManualColorChange(result.sRGBHex);
+    } catch (e) {
+      // User cancelled selection
+    }
+  };
+
+  const handleTextColorEyedropper = async () => {
+    if (!window.EyeDropper) {
+      alert("Your browser does not support the EyeDropper API (try Chrome or Edge).");
+      return;
+    }
+    const eyeDropper = new window.EyeDropper();
+    try {
+      const result = await eyeDropper.open();
+      updateBubble(bubble.id, { color: result.sRGBHex });
+    } catch (e) {
+      // User cancelled selection
+    }
+  };
+
+  const handleStrokeColorEyedropper = async () => {
+    if (!window.EyeDropper) {
+      alert("Your browser does not support the EyeDropper API (try Chrome or Edge).");
+      return;
+    }
+    const eyeDropper = new window.EyeDropper();
+    try {
+      const result = await eyeDropper.open();
+      updateBubble(bubble.id, { strokeColor: result.sRGBHex });
     } catch (e) {
       // User cancelled selection
     }
@@ -342,7 +378,7 @@ export const BubbleEditor: React.FC = () => {
                     >
                         <Ban size={12} className="text-red-400"/>
                     </button>
-                    {PRESET_COLORS.map(c => (
+                    {PRESET_BG_COLORS.map(c => (
                         <button
                             key={c}
                             onClick={() => handleManualColorChange(c)}
@@ -365,6 +401,27 @@ export const BubbleEditor: React.FC = () => {
            <label className="text-xs text-gray-500 font-medium uppercase tracking-wide flex items-center gap-1">
              <Type size={12}/> {t('typography', lang)}
            </label>
+
+          {/* Color Combination Presets */}
+          <div className="space-y-2 pt-2 border-t border-gray-800">
+            <label className="text-[10px] text-gray-500 font-bold uppercase block">颜色组合 (Color Presets)</label>
+            <div className="grid grid-cols-2 gap-2">
+              {TEXT_COLOR_PRESETS.map(preset => (
+                <button
+                  key={preset.label}
+                  onClick={() => updateBubble(bubble.id, { color: preset.color, strokeColor: preset.stroke })}
+                  className="px-3 py-2 bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 transition-all text-xs flex items-center justify-center gap-2"
+                  title={`${preset.label}: 文字${preset.color} 描边${preset.stroke}`}
+                >
+                  <span className="text-gray-300">{preset.label}</span>
+                  <div className="flex gap-0.5">
+                    <div className="w-3 h-3 rounded-full border border-gray-600" style={{ backgroundColor: preset.color }}></div>
+                    <div className="w-3 h-3 rounded-full border border-gray-600" style={{ backgroundColor: preset.stroke }}></div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Text Color Section */}
           <div className="space-y-2 pt-2 border-t border-gray-800">
@@ -392,6 +449,13 @@ export const BubbleEditor: React.FC = () => {
                     <Palette size={14} className="text-white drop-shadow-md"/>
                   </div>
                 </div>
+                <button
+                  onClick={handleTextColorEyedropper}
+                  className="w-8 h-8 flex items-center justify-center bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 hover:text-white text-gray-400 transition-colors"
+                  title="吸取文字颜色 (Pick Text Color)"
+                >
+                  <Pipette size={14} />
+                </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {['#000000', '#ffffff', '#dc2626', '#3b82f6', '#10b981', '#f59e0b'].map(c => (
@@ -433,6 +497,13 @@ export const BubbleEditor: React.FC = () => {
                     <Palette size={14} className="text-white drop-shadow-md"/>
                   </div>
                 </div>
+                <button
+                  onClick={handleStrokeColorEyedropper}
+                  className="w-8 h-8 flex items-center justify-center bg-gray-800 border border-gray-700 rounded hover:bg-gray-700 hover:text-white text-gray-400 transition-colors"
+                  title="吸取描边颜色 (Pick Stroke Color)"
+                >
+                  <Pipette size={14} />
+                </button>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 <button
