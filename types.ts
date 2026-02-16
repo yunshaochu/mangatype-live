@@ -151,6 +151,10 @@ export interface AIConfig {
   colorSelectionPrompt?: string; // Custom color selection prompt (Chinese)
   customMessages?: CustomMessage[]; // Pre-request messages
   autoDetectBackground?: boolean; // New: Toggle for auto background color detection
+
+  // Model Capabilities (Manual Override)
+  modelSupportsFunctionCalling?: boolean; // If set, skip Function Calling tier
+  modelSupportsJsonMode?: boolean; // If set, skip JSON Mode tier
   
   // Global Defaults for Mask Style
   defaultMaskShape: 'rectangle' | 'rounded' | 'ellipse';

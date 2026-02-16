@@ -126,6 +126,14 @@ export const translations = {
     cornerRadius: "圆角半径",
     feathering: "羽化程度",
     resetStatus: "重置状态",
+    // Model Capabilities
+    modelCapabilities: "模型能力",
+    modelCapabilitiesDesc: "配置模型支持的功能以优化 API 调用。",
+    functionCallingSupport: "Function Calling 支持",
+    functionCallingHint: "如果模型支持结构化函数/工具调用，请启用（如 GPT-4、Gemini 2.0+、DeepSeek V3）。",
+    jsonModeSupport: "JSON Mode 支持",
+    jsonModeHint: "如果模型支持强制 JSON 输出格式，请启用（如 GPT-4、Gemini 2.0+）。回退使用基于提示词的 JSON。",
+    modelCapabilitiesTip: "现代模型请保持两项都启用（默认）。对于不支持工具调用的老旧模型或本地 LLM，请禁用 Function Calling。系统会自动降级到更简单的方法。",
     // Inpainting Tab
     inpaintingTab: "文字去除 (Inpainting)",
     inpaintingTabDesc: "配置 IOPaint 集成以进行文字擦除。",
@@ -361,6 +369,14 @@ export const translations = {
     cornerRadius: "Corner Radius",
     feathering: "Feathering",
     resetStatus: "Reset Status",
+    // Model Capabilities
+    modelCapabilities: "Model Capabilities",
+    modelCapabilitiesDesc: "Configure what features your model supports to optimize API calls.",
+    functionCallingSupport: "Function Calling Support",
+    functionCallingHint: "Enable if your model supports structured function/tool calling (e.g., GPT-4, Gemini 2.0+, DeepSeek V3).",
+    jsonModeSupport: "JSON Mode Support",
+    jsonModeHint: "Enable if your model supports forced JSON output format (e.g., GPT-4, Gemini 2.0+). Fallback uses prompt-based JSON.",
+    modelCapabilitiesTip: "Leave both enabled (default) for modern models. Disable Function Calling for older models or local LLMs that don't support tools. The system will automatically fall back to simpler methods.",
     // Inpainting Tab
     inpaintingTab: "Text Removal (Inpainting)",
     inpaintingTabDesc: "Configure IOPaint integration for text cleaning.",

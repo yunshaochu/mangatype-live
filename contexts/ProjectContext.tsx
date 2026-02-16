@@ -45,9 +45,12 @@ const DEFAULT_CONFIG: AIConfig = {
   enableMaskedImageMode: false,
   useMasksAsHints: false,
   allowAiFontSelection: true,
-  defaultMaskShape: 'rectangle', 
+  defaultMaskShape: 'rectangle',
   defaultMaskCornerRadius: 20,
   defaultMaskFeather: 0,
+  // Model Capabilities (undefined = enabled by default)
+  // modelSupportsFunctionCalling: undefined, // Set to false to skip Function Calling tier
+  // modelSupportsJsonMode: undefined, // Set to false to skip JSON Mode tier
   // Inpainting defaults
   enableInpainting: false,
   inpaintingUrl: runtimeConfig.IOPAINT_API_URL || 'http://localhost:8080',

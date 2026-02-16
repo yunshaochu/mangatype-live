@@ -218,6 +218,46 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
         </div>
         {error && <div className="text-xs text-red-400 flex items-center gap-1 mt-2 bg-red-900/10 p-2 rounded border border-red-900/20"><AlertCircle size={12}/> {error}</div>}
       </div>
+
+      {/* Model Capabilities */}
+      <div className="p-6 bg-gray-800/30 rounded-xl border border-gray-800 space-y-4">
+        <div className="space-y-1">
+          <h4 className="text-sm font-semibold text-white">{t('modelCapabilities', lang)}</h4>
+          <p className="text-xs text-gray-500">{t('modelCapabilitiesDesc', lang)}</p>
+        </div>
+
+        <label className="flex items-start gap-3 cursor-pointer group">
+          <input
+            type="checkbox"
+            checked={config.modelSupportsFunctionCalling !== false}
+            onChange={(e) => setConfig({ ...config, modelSupportsFunctionCalling: e.target.checked ? undefined : false })}
+            className="mt-0.5 w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-0 cursor-pointer"
+          />
+          <div className="flex-1">
+            <div className="text-sm text-gray-200 group-hover:text-white transition-colors">{t('functionCallingSupport', lang)}</div>
+            <p className="text-xs text-gray-500 mt-0.5">{t('functionCallingHint', lang)}</p>
+          </div>
+        </label>
+
+        <label className="flex items-start gap-3 cursor-pointer group">
+          <input
+            type="checkbox"
+            checked={config.modelSupportsJsonMode !== false}
+            onChange={(e) => setConfig({ ...config, modelSupportsJsonMode: e.target.checked ? undefined : false })}
+            className="mt-0.5 w-4 h-4 rounded border-gray-600 bg-gray-700 text-blue-500 focus:ring-2 focus:ring-blue-500/50 focus:ring-offset-0 cursor-pointer"
+          />
+          <div className="flex-1">
+            <div className="text-sm text-gray-200 group-hover:text-white transition-colors">{t('jsonModeSupport', lang)}</div>
+            <p className="text-xs text-gray-500 mt-0.5">{t('jsonModeHint', lang)}</p>
+          </div>
+        </label>
+
+        <div className="mt-4 p-3 bg-blue-900/10 border border-blue-800/30 rounded-lg">
+          <p className="text-xs text-blue-300/80 leading-relaxed">
+            <strong className="text-blue-200">{lang === 'zh' ? '提示' : 'Tip'}:</strong> {t('modelCapabilitiesTip', lang)}
+          </p>
+        </div>
+      </div>
     </div>
   );
 };

@@ -499,9 +499,10 @@ export const detectAndTypesetComic = async (
     const { history, systemInjection } = getCustomMessages(config, 'gemini');
 
     if (systemInjection) systemPrompt += `\n\n[Additional Instructions]:${systemInjection}`;
-    
-    // Tier 1: Function Calling
-    try {
+
+    // Tier 1: Function Calling (Skip if user explicitly disabled)
+    if (config.modelSupportsFunctionCalling !== false) {
+      try {
       if (signal?.aborted) throw new Error("Aborted by user");
       const response = await ai.models.generateContent({
         model: config.model || 'gemini-3-pro-preview',
@@ -530,9 +531,11 @@ export const detectAndTypesetComic = async (
       if (e.message?.includes('Aborted')) throw e;
       console.warn("Tier 1 (Function Calling) failed:", e.message);
     }
+    }
 
-    // Tier 2: Official JSON Mode
-    try {
+    // Tier 2: Official JSON Mode (Skip if user explicitly disabled)
+    if (config.modelSupportsJsonMode !== false) {
+      try {
       if (signal?.aborted) throw new Error("Aborted by user");
       const fallbackResponse = await ai.models.generateContent({
         model: config.model || 'gemini-3-flash-preview',
@@ -555,8 +558,9 @@ export const detectAndTypesetComic = async (
       if (e.message?.includes('Aborted')) throw e;
       console.warn("Tier 2 (JSON Mode) failed:", e.message);
     }
+    }
 
-    // Tier 3: Raw Text Extraction (Dumb Luck Mode)
+    // Tier 3: Raw Text Extraction (Dumb Luck Mode) - Always available as final fallback
     try {
       if (signal?.aborted) throw new Error("Aborted by user");
       const rawResponse = await ai.models.generateContent({
