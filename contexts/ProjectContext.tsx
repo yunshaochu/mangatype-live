@@ -40,7 +40,7 @@ const DEFAULT_CONFIG: AIConfig = {
   language: 'zh',
   customMessages: [{ role: 'user', content: '翻译' }],
   autoDetectBackground: false,
-  enableDialogSnap: true,
+  enableDialogSnap: false,
   forceSnapSize: false,
   enableMaskedImageMode: false,
   useMasksAsHints: false,
