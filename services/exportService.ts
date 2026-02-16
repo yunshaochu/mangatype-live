@@ -408,6 +408,11 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
             ctx.lineJoin = 'round';
             ctx.fillStyle = b.color;
 
+            // Fix letter-spacing to match CSS rendering
+            if ('letterSpacing' in ctx) {
+                (ctx as any).letterSpacing = '0px';
+            }
+
             const lines = b.text.split('\n');
             const lineHeight = fontSize * 1.5;
 
