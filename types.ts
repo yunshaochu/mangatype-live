@@ -95,23 +95,31 @@ export type FontOption = {
   id: Bubble['fontFamily'];
   name: string;
   preview: string;
+  cssStack: string; // CSS font-family value for rendering
+  googleFontName: string; // Google Fonts API name for preloading
 };
 
 export const FONTS: FontOption[] = [
   // 对话类
-  { id: 'noto', name: 'Noto Sans 黑体', preview: '标准对话' },
-  { id: 'noto-bold', name: 'Noto Sans 粗黑', preview: '喊叫强调' },
-  { id: 'serif', name: 'Noto Serif 宋体', preview: '正式独白' },
+  { id: 'noto', name: 'Noto Sans 黑体', preview: '标准对话', cssStack: "'Noto Sans SC', sans-serif", googleFontName: 'Noto Sans SC' },
+  { id: 'noto-bold', name: 'Noto Sans 粗黑', preview: '喊叫强调', cssStack: "'Noto Sans SC', sans-serif", googleFontName: 'Noto Sans SC' },
+  { id: 'serif', name: 'Noto Serif 宋体', preview: '正式独白', cssStack: "'Noto Serif SC', serif", googleFontName: 'Noto Serif SC' },
   // 可爱类
-  { id: 'happy', name: 'ZCOOL KuaiLe', preview: '快乐Q版' },
-  { id: 'xiaowei', name: 'ZCOOL XiaoWei', preview: '温柔圆润' },
+  { id: 'happy', name: 'ZCOOL KuaiLe', preview: '快乐Q版', cssStack: "'ZCOOL KuaiLe', cursive", googleFontName: 'ZCOOL KuaiLe' },
+  { id: 'xiaowei', name: 'ZCOOL XiaoWei', preview: '温柔圆润', cssStack: "'ZCOOL XiaoWei', cursive", googleFontName: 'ZCOOL XiaoWei' },
   // 手写类
-  { id: 'longcang', name: 'Long Cang 龙藏', preview: '手写日记' },
-  { id: 'zhimang', name: 'Zhi Mang Xing', preview: '狂草手写' },
-  { id: 'liujian', name: 'Liu Jian Mao Cao', preview: '流浪毛草' },
+  { id: 'longcang', name: 'Long Cang 龙藏', preview: '手写日记', cssStack: "'Long Cang', cursive", googleFontName: 'Long Cang' },
+  { id: 'zhimang', name: 'Zhi Mang Xing', preview: '狂草手写', cssStack: "'Zhi Mang Xing', cursive", googleFontName: 'Zhi Mang Xing' },
+  { id: 'liujian', name: 'Liu Jian Mao Cao', preview: '流浪毛草', cssStack: "'Liu Jian Mao Cao', cursive", googleFontName: 'Liu Jian Mao Cao' },
   // 古风类
-  { id: 'mashan', name: 'Ma Shan Zheng', preview: '毛笔古风' },
+  { id: 'mashan', name: 'Ma Shan Zheng', preview: '毛笔古风', cssStack: "'Ma Shan Zheng', cursive", googleFontName: 'Ma Shan Zheng' },
 ];
+
+// Helper: Get CSS font stack from fontFamily ID
+export const getFontStack = (fontFamily: FontFamily): string => {
+  const font = FONTS.find(f => f.id === fontFamily);
+  return font?.cssStack || "'Noto Sans SC', sans-serif";
+};
 
 export type AIProvider = 'gemini' | 'openai';
 

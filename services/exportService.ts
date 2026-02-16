@@ -1,5 +1,5 @@
 
-import { ImageState, Bubble, MaskRegion } from '../types';
+import { ImageState, Bubble, MaskRegion, FONTS, getFontStack } from '../types';
 import JSZip from 'jszip';
 
 // Helper to escape HTML characters to prevent breaking SVG XML
@@ -247,16 +247,13 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
 
     // Ensure fonts are loaded before rendering
     await document.fonts.ready;
-    await Promise.all([
-        document.fonts.load("bold 48px 'Noto Sans SC'").catch(() => {}),
-        document.fonts.load("bold 48px 'Noto Serif SC'").catch(() => {}),
-        document.fonts.load("bold 48px 'ZCOOL KuaiLe'").catch(() => {}),
-        document.fonts.load("bold 48px 'ZCOOL XiaoWei'").catch(() => {}),
-        document.fonts.load("bold 48px 'Ma Shan Zheng'").catch(() => {}),
-        document.fonts.load("bold 48px 'Zhi Mang Xing'").catch(() => {}),
-        document.fonts.load("bold 48px 'Long Cang'").catch(() => {}),
-        document.fonts.load("bold 48px 'Liu Jian Mao Cao'").catch(() => {}),
-    ]);
+    // Preload all fonts from centralized config
+    const uniqueFonts = [...new Set(FONTS.map(f => f.googleFontName))];
+    await Promise.all(
+        uniqueFonts.map(fontName =>
+            document.fonts.load(`bold 48px '${fontName}'`).catch(() => {})
+        )
+    );
 
     const canvas = document.createElement('canvas');
     canvas.width = Math.floor(width);
@@ -305,16 +302,7 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
             const bubbleH = height * (b.height / 100);
             const fontSize = width * (b.fontSize * 0.02);
 
-            const fontStack = b.fontFamily === 'noto' ? "'Noto Sans SC', sans-serif"
-                : b.fontFamily === 'noto-bold' ? "'Noto Sans SC', sans-serif"
-                : b.fontFamily === 'serif' ? "'Noto Serif SC', serif"
-                : b.fontFamily === 'happy' ? "'ZCOOL KuaiLe', cursive"
-                : b.fontFamily === 'xiaowei' ? "'ZCOOL XiaoWei', cursive"
-                : b.fontFamily === 'mashan' ? "'Ma Shan Zheng', cursive"
-                : b.fontFamily === 'zhimang' ? "'Zhi Mang Xing', cursive"
-                : b.fontFamily === 'longcang' ? "'Long Cang', cursive"
-                : b.fontFamily === 'liujian' ? "'Liu Jian Mao Cao', cursive"
-                : "'Noto Sans SC', sans-serif";
+            const fontStack = getFontStack(b.fontFamily);
 
             const shape = b.maskShape || options?.defaultMaskShape || 'ellipse';
             const radiusVal = b.maskCornerRadius !== undefined ? b.maskCornerRadius : (options?.defaultMaskCornerRadius ?? 15);
@@ -556,16 +544,7 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
        // Calculate font size (cqw relative to image width)
        const fontSize = width * (b.fontSize * 0.02); 
        
-       const fontStack = b.fontFamily === 'noto' ? "'Noto Sans SC', sans-serif"
-                   : b.fontFamily === 'noto-bold' ? "'Noto Sans SC', sans-serif"
-                   : b.fontFamily === 'serif' ? "'Noto Serif SC', serif"
-                   : b.fontFamily === 'happy' ? "'ZCOOL KuaiLe', cursive"
-                   : b.fontFamily === 'xiaowei' ? "'ZCOOL XiaoWei', cursive"
-                   : b.fontFamily === 'mashan' ? "'Ma Shan Zheng', cursive"
-                   : b.fontFamily === 'zhimang' ? "'Zhi Mang Xing', cursive"
-                   : b.fontFamily === 'longcang' ? "'Long Cang', cursive"
-                   : b.fontFamily === 'liujian' ? "'Liu Jian Mao Cao', cursive"
-                   : "'Noto Sans SC', sans-serif";
+       const fontStack = getFontStack(b.fontFamily);
        
        // Resolve Shape with Defaults (Fixes the ellipse bug)
        const shape = b.maskShape || options?.defaultMaskShape || 'ellipse';
