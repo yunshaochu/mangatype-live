@@ -403,7 +403,7 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
             ctx.font = `bold ${fontSize}px ${fontStack}`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.strokeStyle = '#ffffff';
+            ctx.strokeStyle = b.strokeColor && b.strokeColor !== 'transparent' ? b.strokeColor : '#ffffff';
             ctx.lineWidth = Math.max(2, fontSize * 0.1);
             ctx.lineJoin = 'round';
             ctx.fillStyle = b.color;
@@ -430,7 +430,9 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                     const startY = -totalHeight / 2;
                     chars.forEach((char, charIdx) => {
                         const y = startY + charIdx * charSpacing;
-                        ctx.strokeText(char, x, y);
+                        if (b.strokeColor && b.strokeColor !== 'transparent') {
+                            ctx.strokeText(char, x, y);
+                        }
                         ctx.fillText(char, x, y);
                     });
                 });
@@ -446,7 +448,9 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 const startY = -totalHeight / 2;
                 lines.forEach((line, idx) => {
                     const y = startY + idx * lineHeight;
-                    ctx.strokeText(line, 0, y);
+                    if (b.strokeColor && b.strokeColor !== 'transparent') {
+                        ctx.strokeText(line, 0, y);
+                    }
                     ctx.fillText(line, 0, y);
                 });
                 ctx.restore();
