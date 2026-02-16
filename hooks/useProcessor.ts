@@ -53,14 +53,28 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                 });
             }
 
+            // Check for cleaned masks BEFORE color detection to avoid unnecessary work
+            const cleanedMasks = (img.maskRegions || []).filter(m => m.isCleaned);
+
             const processedBubbles = await Promise.all(finalDetected.map(async (d) => {
+                // First check if this bubble overlaps with any cleaned mask
+                const overlapsCleanedMask = cleanedMasks.some(m => {
+                    const xDiff = Math.abs(d.x - m.x);
+                    const yDiff = Math.abs(d.y - m.y);
+                    const halfW = m.width / 2;
+                    const halfH = m.height / 2;
+                    return xDiff <= halfW && yDiff <= halfH;
+                });
+
+                // If overlapping cleaned mask, skip color detection and use transparent
                 let color = '#ffffff';
-                if (aiConfig.autoDetectBackground !== false) {
+                if (!overlapsCleanedMask && aiConfig.autoDetectBackground !== false) {
                     color = await detectBubbleColor(
                         img.originalUrl || img.url || `data:image/png;base64,${img.base64}`,
                         d.x, d.y, d.width, d.height
                     );
                 }
+
                 return {
                     id: crypto.randomUUID(),
                     x: d.x, y: d.y, width: d.width, height: d.height,
@@ -69,40 +83,19 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                     fontSize: aiConfig.defaultFontSize,
                     color: d.color || '#000000',
                     strokeColor: d.strokeColor || '#ffffff',
-                    backgroundColor: color,
+                    backgroundColor: overlapsCleanedMask ? 'transparent' : color,
                     rotation: d.rotation || 0,
                     maskShape: aiConfig.defaultMaskShape,
                     maskCornerRadius: aiConfig.defaultMaskCornerRadius,
-                    maskFeather: aiConfig.defaultMaskFeather
+                    maskFeather: aiConfig.defaultMaskFeather,
+                    autoDetectBackground: false // Explicitly set to prevent later auto-detection from overriding
                 } as Bubble;
             }));
 
-            // FIXED LOGIC:
-            // Only set transparent if the SPECIFIC bubble overlaps a CLEANED mask region.
-            // Previously, this checked `if (img.inpaintedUrl)`, which turned ALL bubbles transparent
-            // if ANY cleaning had been done on the page.
-            
-            const cleanedMasks = (img.maskRegions || []).filter(m => m.isCleaned);
-            
-            const adjustedBubbles = processedBubbles.map(b => {
-                const overlaps = cleanedMasks.some(m => {
-                    const xDiff = Math.abs(b.x - m.x);
-                    const yDiff = Math.abs(b.y - m.y);
-                    const halfW = m.width / 2;
-                    const halfH = m.height / 2;
-                    return xDiff <= halfW && yDiff <= halfH;
-                });
-
-                if (overlaps) {
-                    return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
-                }
-                return b;
-            });
-
-            setImages(prev => prev.map(p => p.id === img.id ? { 
-                ...p, 
-                bubbles: useMaskedImage ? [...p.bubbles, ...adjustedBubbles] : adjustedBubbles,
-                status: 'done' 
+            setImages(prev => prev.map(p => p.id === img.id ? {
+                ...p,
+                bubbles: useMaskedImage ? [...p.bubbles, ...processedBubbles] : processedBubbles,
+                status: 'done'
             } : p));
 
         } catch (e: any) {
