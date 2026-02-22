@@ -1,9 +1,47 @@
-import React from 'react';
-import { Globe } from 'lucide-react';
+import React, { useRef } from 'react';
+import { Globe, Download, Upload, FolderArchive } from 'lucide-react';
 import { t } from '../../services/i18n';
 import { TabProps } from './types';
 
+const STORAGE_KEY = 'mangatype_live_settings_v1';
+
 export const GeneralTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = () => {
+    const data = localStorage.getItem(STORAGE_KEY);
+    if (!data) return;
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mangatype-config-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target?.result as string);
+        if (typeof parsed !== 'object' || parsed === null || !('provider' in parsed || 'language' in parsed || 'endpoints' in parsed)) {
+          alert(t('configImportError', lang));
+          return;
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        alert(t('configImported', lang));
+        window.location.reload();
+      } catch {
+        alert(t('configImportError', lang));
+      }
+    };
+    reader.readAsText(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   return (
     <div className="space-y-8 animate-fade-in-right">
       <div className="space-y-1">
@@ -32,6 +70,35 @@ export const GeneralTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Config Backup & Restore */}
+        <div className="p-5 bg-gray-800/30 rounded-xl border border-gray-800 space-y-3">
+          <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+            <FolderArchive size={16} className="text-amber-400"/> {t('configBackupRestore', lang)}
+          </label>
+          <p className="text-xs text-gray-500">{t('configBackupRestoreHint', lang)}</p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={handleExport}
+              className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium border bg-gray-900 border-gray-700 text-gray-300 hover:border-emerald-500/50 hover:text-emerald-300 hover:bg-emerald-600/10 transition-all"
+            >
+              <Download size={16} /> {t('exportConfig', lang)}
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium border bg-gray-900 border-gray-700 text-gray-300 hover:border-blue-500/50 hover:text-blue-300 hover:bg-blue-600/10 transition-all"
+            >
+              <Upload size={16} /> {t('importConfig', lang)}
+            </button>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".json"
+            onChange={handleImport}
+            className="hidden"
+          />
         </div>
       </div>
     </div>
