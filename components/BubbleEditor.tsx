@@ -1,7 +1,7 @@
 
 
 import React, { useState } from 'react';
-import { FONTS } from '../types';
+import { FONTS, mergeEndpointConfig } from '../types';
 import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, Sparkles, RotateCw, Maximize2, Palette, Minus, Plus, Pipette, Hash, Ban, Square, Circle, Box, BringToFront, SendToBack, ChevronUp, ChevronDown } from 'lucide-react';
 import { polishDialogue } from '../services/geminiService';
 import { t } from '../services/i18n';
@@ -38,7 +38,9 @@ export const BubbleEditor: React.FC = () => {
     if (!bubble.text.trim()) return;
     setIsAiLoading(true);
     try {
-      const newText = await polishDialogue(bubble.text, style, aiConfig);
+      const firstEndpoint = (aiConfig.endpoints || []).find(ep => ep.enabled);
+      const effectiveConfig = firstEndpoint ? mergeEndpointConfig(aiConfig, firstEndpoint) : aiConfig;
+      const newText = await polishDialogue(bubble.text, style, effectiveConfig);
       updateBubble(bubble.id, { text: newText });
     } catch (e) {
       console.error("AI Request Failed", e);

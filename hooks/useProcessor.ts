@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { ImageState, AIConfig, MaskRegion, Bubble } from '../types';
+import { ImageState, AIConfig, APIEndpoint, MaskRegion, Bubble, mergeEndpointConfig } from '../types';
 import { detectAndTypesetComic, fetchRawDetectedRegions } from '../services/geminiService';
 import { generateMaskedImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
@@ -16,22 +16,23 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
     const abortControllerRef = useRef<AbortController | null>(null);
 
     // --- Core Logic: Process a Single Image (Translate/Bubble) ---
-    const runDetectionForImage = async (img: ImageState, signal?: AbortSignal) => {
+    const runDetectionForImage = async (img: ImageState, signal?: AbortSignal, configOverride?: AIConfig) => {
+        const effectiveConfig = configOverride || aiConfig;
         setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing', errorMessage: undefined } : p));
-        
+
         try {
             // Always use original image for detection analysis
             let sourceBase64 = img.originalBase64 || img.base64;
-            const useMaskedImage = aiConfig.enableMaskedImageMode && img.maskRegions && img.maskRegions.length > 0;
-            
+            const useMaskedImage = effectiveConfig.enableMaskedImageMode && img.maskRegions && img.maskRegions.length > 0;
+
             if (useMaskedImage) {
                 sourceBase64 = await generateMaskedImage({ ...img, base64: sourceBase64 });
             }
 
-            const detected = await detectAndTypesetComic(sourceBase64, aiConfig, signal, img.maskRegions);
+            const detected = await detectAndTypesetComic(sourceBase64, effectiveConfig, signal, img.maskRegions);
             let finalDetected = detected;
 
-            if (aiConfig.enableDialogSnap) {
+            if (effectiveConfig.enableDialogSnap) {
                 finalDetected = detected.map(b => {
                     if (!img.maskRegions || img.maskRegions.length === 0) return b;
                     let nearestMask: MaskRegion | null = null; 
@@ -44,7 +45,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
 
                     if (nearestMask && minDistance < 15) { 
                         const updates: any = { x: (nearestMask as MaskRegion).x, y: (nearestMask as MaskRegion).y };
-                        if (aiConfig.forceSnapSize) { 
+                        if (effectiveConfig.forceSnapSize) {
                             updates.width = (nearestMask as MaskRegion).width; 
                             updates.height = (nearestMask as MaskRegion).height; 
                         }
@@ -69,7 +70,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
 
                 // If overlapping cleaned mask, skip color detection and use transparent
                 let color = '#ffffff';
-                if (!overlapsCleanedMask && aiConfig.autoDetectBackground !== false) {
+                if (!overlapsCleanedMask && effectiveConfig.autoDetectBackground !== false) {
                     color = await detectBubbleColor(
                         img.originalUrl || img.url || `data:image/png;base64,${img.base64}`,
                         d.x, d.y, d.width, d.height
@@ -82,28 +83,28 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                     text: d.text, isVertical: d.isVertical,
                     fontFamily: (d.fontFamily as any) || 'noto',
                     fontSize: (() => {
-                        if (aiConfig.allowAiFontSize !== false) {
-                            if (aiConfig.fontSizeMode === 'direct' && d.fontSize != null) {
+                        if (effectiveConfig.allowAiFontSize !== false) {
+                            if (effectiveConfig.fontSizeMode === 'direct' && d.fontSize != null) {
                                 return Math.max(0.5, Math.min(5.0, d.fontSize));
                             } else if (d.fontScale) {
-                                const entries = aiConfig.fontScaleEntries || [
+                                const entries = effectiveConfig.fontScaleEntries || [
                                     { label: 'tiny', value: 0.5 }, { label: 'small', value: 0.7 },
                                     { label: 'normal', value: 1.0 }, { label: 'large', value: 1.3 },
                                     { label: 'huge', value: 1.8 }, { label: 'extreme', value: 2.5 },
                                 ];
                                 const match = entries.find(e => e.label === d.fontScale);
-                                return match?.value ?? aiConfig.defaultFontSize;
+                                return match?.value ?? effectiveConfig.defaultFontSize;
                             }
                         }
-                        return aiConfig.defaultFontSize;
+                        return effectiveConfig.defaultFontSize;
                     })(),
                     color: d.color || '#000000',
                     strokeColor: d.strokeColor || '#ffffff',
                     backgroundColor: overlapsCleanedMask ? 'transparent' : color,
                     rotation: d.rotation || 0,
-                    maskShape: aiConfig.defaultMaskShape,
-                    maskCornerRadius: aiConfig.defaultMaskCornerRadius,
-                    maskFeather: aiConfig.defaultMaskFeather,
+                    maskShape: effectiveConfig.defaultMaskShape,
+                    maskCornerRadius: effectiveConfig.defaultMaskCornerRadius,
+                    maskFeather: effectiveConfig.defaultMaskFeather,
                     autoDetectBackground: false // Explicitly set to prevent later auto-detection from overriding
                 } as Bubble;
             }));
@@ -227,15 +228,31 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
         setProcessingType(task);
 
         try {
-            const batchSize = Math.max(1, concurrency);
-            for (let i = 0; i < queue.length; i += batchSize) {
-                if (signal.aborted) break;
-                const chunk = queue.slice(i, i + batchSize);
-                if (task === 'translate') {
-                    await Promise.all(chunk.map(img => runDetectionForImage(img, signal)));
-                } else if (task === 'inpaint') {
-                    // For batch inpaint, we force "onlyInpaintMethod: true"
-                    await Promise.all(chunk.map(img => runInpaintingForImage(img, signal, { onlyInpaintMethod: true })));
+            const enabledEndpoints = (aiConfig.endpoints || []).filter(ep => ep.enabled);
+
+            if (task === 'translate' && enabledEndpoints.length > 0) {
+                // Worker-per-endpoint round-robin for translation
+                let nextIndex = 0;
+                const worker = async (endpoint: APIEndpoint) => {
+                    while (!signal.aborted) {
+                        const idx = nextIndex++;
+                        if (idx >= queue.length) return;
+                        const mergedConfig = mergeEndpointConfig(aiConfig, endpoint);
+                        await runDetectionForImage(queue[idx], signal, mergedConfig);
+                    }
+                };
+                await Promise.all(enabledEndpoints.map(ep => worker(ep)));
+            } else {
+                // Inpaint or no endpoints: use original chunk-based concurrency
+                const batchSize = Math.max(1, concurrency);
+                for (let i = 0; i < queue.length; i += batchSize) {
+                    if (signal.aborted) break;
+                    const chunk = queue.slice(i, i + batchSize);
+                    if (task === 'translate') {
+                        await Promise.all(chunk.map(img => runDetectionForImage(img, signal)));
+                    } else if (task === 'inpaint') {
+                        await Promise.all(chunk.map(img => runInpaintingForImage(img, signal, { onlyInpaintMethod: true })));
+                    }
                 }
             }
         } catch (e) {
@@ -258,7 +275,9 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             setIsProcessingBatch(true);
             setProcessingType('translate');
             try {
-                await runDetectionForImage(currentImage, controller.signal);
+                const firstEndpoint = (aiConfig.endpoints || []).find(ep => ep.enabled);
+                const mergedConfig = firstEndpoint ? mergeEndpointConfig(aiConfig, firstEndpoint) : aiConfig;
+                await runDetectionForImage(currentImage, controller.signal, mergedConfig);
             } finally {
                 setIsProcessingBatch(false);
                 setProcessingType(null);

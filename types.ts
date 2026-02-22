@@ -126,6 +126,28 @@ export const getFontStack = (fontFamily: FontFamily): string => {
 
 export type AIProvider = 'gemini' | 'openai';
 
+export interface APIEndpoint {
+  id: string;
+  name: string;
+  enabled: boolean;
+  provider: AIProvider;
+  apiKey: string;
+  baseUrl: string;
+  model: string;
+  modelSupportsFunctionCalling?: boolean;
+  modelSupportsJsonMode?: boolean;
+}
+
+export const mergeEndpointConfig = (global: AIConfig, ep: APIEndpoint): AIConfig => ({
+  ...global,
+  provider: ep.provider,
+  apiKey: ep.apiKey,
+  baseUrl: ep.baseUrl,
+  model: ep.model,
+  modelSupportsFunctionCalling: ep.modelSupportsFunctionCalling,
+  modelSupportsJsonMode: ep.modelSupportsJsonMode,
+});
+
 export interface CustomMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -136,6 +158,7 @@ export interface AIConfig {
   apiKey: string;
   baseUrl: string;
   model: string;
+  endpoints: APIEndpoint[];
   systemPrompt?: string;
   defaultFontSize: number;
   

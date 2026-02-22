@@ -188,8 +188,8 @@ const baseOpenAIToolSchema = {
 
 // --- Helpers ---
 
-const getGeminiClient = () => {
-  return new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getGeminiClient = (apiKey?: string) => {
+  return new GoogleGenAI({ apiKey: apiKey || process.env.API_KEY || '' });
 };
 
 const cleanDetectedText = (text: string): string => {
@@ -336,7 +336,7 @@ const getCustomMessages = (config: AIConfig, provider: 'gemini' | 'openai'): { h
 export const fetchAvailableModels = async (config: AIConfig): Promise<string[]> => {
   try {
     if (config.provider === 'gemini') {
-      const apiKey = process.env.API_KEY;
+      const apiKey = config.apiKey || process.env.API_KEY;
       if (!apiKey) return ['gemini-3-flash-preview', 'gemini-3-pro-preview'];
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`);
       if (!res.ok) return ['gemini-3-flash-preview', 'gemini-3-pro-preview'];
@@ -368,9 +368,9 @@ export const polishDialogue = async (text: string, style: 'dramatic' | 'casual' 
     : `Translate to natural graphic novel English: "${text}"`;
 
   if (config.provider === 'gemini') {
-    const ai = getGeminiClient();
+    const ai = getGeminiClient(config.apiKey);
     const { history, systemInjection } = getCustomMessages(config, 'gemini');
-    
+
     const finalContents = [...history];
     const userPart = { role: 'user', parts: [{ text: (systemInjection ? `[System Note: ${systemInjection}]\n\n` : "") + prompt }] };
     finalContents.push(userPart);
@@ -562,7 +562,7 @@ export const detectAndTypesetComic = async (
   if (signal?.aborted) throw new Error("Aborted by user");
 
   if (config.provider === 'gemini') {
-    const ai = getGeminiClient();
+    const ai = getGeminiClient(config.apiKey);
     const { history, systemInjection } = getCustomMessages(config, 'gemini');
 
     if (systemInjection) systemPrompt += `\n\n[Additional Instructions]:${systemInjection}`;

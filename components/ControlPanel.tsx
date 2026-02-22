@@ -420,15 +420,9 @@ export const ControlPanel: React.FC = () => {
             >
               <Palette size={16} />
             </button>
-            <div className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 border border-gray-700" title={t('concurrency', lang)}>
+            <div className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 border border-gray-700" title={lang === 'zh' ? `并发数 = ${(aiConfig?.endpoints || []).filter((ep: any) => ep.enabled).length || 1} 个启用端点` : `Concurrency = ${(aiConfig?.endpoints || []).filter((ep: any) => ep.enabled).length || 1} active endpoint(s)`}>
               <Zap size={10} className="text-yellow-500" />
-              <input
-                type="number"
-                min="1"
-                value={concurrency}
-                onChange={(e) => setConcurrency(Math.max(1, parseInt(e.target.value) || 1))}
-                className="w-8 bg-transparent text-[10px] text-center text-gray-300 outline-none appearance-none"
-              />
+              <span className="text-[10px] text-center text-gray-300 w-8">{(aiConfig?.endpoints || []).filter((ep: any) => ep.enabled).length || 1}</span>
             </div>
           </div>
 

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
-import { ImageState, Bubble, AIConfig, ViewLayer, MaskRegion } from '../types';
+import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion } from '../types';
 import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
@@ -30,9 +30,18 @@ const runtimeConfig = getRuntimeConfig();
 
 const DEFAULT_CONFIG: AIConfig = {
   provider: 'gemini',
-  apiKey: '', 
+  apiKey: '',
   baseUrl: '',
   model: 'gemini-3-flash-preview',
+  endpoints: [{
+    id: 'default-gemini',
+    name: 'Gemini (Default)',
+    enabled: true,
+    provider: 'gemini',
+    apiKey: '',
+    baseUrl: '',
+    model: 'gemini-3-flash-preview',
+  }],
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   defaultFontSize: 1.0,
   useTextDetectionApi: false,
@@ -199,7 +208,22 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 merged.inpaintingUrl = runtime.IOPAINT_API_URL;
             }
         }
-        
+
+        // 3. Migrate old flat config to endpoints array
+        if (!parsed.endpoints || !Array.isArray(parsed.endpoints) || parsed.endpoints.length === 0) {
+            merged.endpoints = [{
+                id: crypto.randomUUID(),
+                name: parsed.provider === 'openai' ? 'OpenAI (Migrated)' : 'Gemini (Migrated)',
+                enabled: true,
+                provider: parsed.provider || 'gemini',
+                apiKey: parsed.apiKey || '',
+                baseUrl: parsed.baseUrl || '',
+                model: parsed.model || 'gemini-3-flash-preview',
+                modelSupportsFunctionCalling: parsed.modelSupportsFunctionCalling,
+                modelSupportsJsonMode: parsed.modelSupportsJsonMode,
+            }];
+        }
+
         return merged;
       }
     } catch (e) { console.warn("Failed to load settings", e); }
