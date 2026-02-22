@@ -33,18 +33,19 @@ export const DEFAULT_COLOR_SELECTION_PROMPT = `### 字色选择指南：
 - **无边框 (transparent)**：适用于清晰的对话框内文字、旁白框。
 - **注意**：选择颜色时要考虑气泡背景色，确保文字清晰可读。优先选择与背景对比度高的颜色组合。`;
 
-export const DEFAULT_FONT_SIZE_PROMPT = `### 字号选择指南：
+export const DEFAULT_FONT_SIZE_SCALE_PROMPT = `### 字号选择指南：
 
 大前提：如果漫画原图中有提供字体大小，请优先使用原图中的字体大小。
 大前提：如果漫画原图中有提供字体大小，请优先使用原图中的字体大小。
 大前提：如果漫画原图中有提供字体大小，请优先使用原图中的字体大小。
 
-根据气泡的大小、文字的情绪强度和重要性，为每个气泡选择合适的字号档位：
-- **'small'**：用于旁白、注释、低语、背景对话等次要文本。
-- **'normal'**：默认字号，适用于普通对话。
-- **'large'**：用于喊叫、强调、重要台词、标题等需要突出的文本。
+根据气泡的大小、文字的情绪强度和重要性，为每个气泡选择合适的字号档位。
+请根据原文的视觉大小和语气来判断，选择最合适的档位。`;
 
-请根据原文的视觉大小和语气来判断。`;
+export const buildFontSizeScalePrompt = (prefix: string, entries: { label: string; value: number }[]): string => {
+  const lines = entries.map(e => `- **'${e.label}'**`).join('\n');
+  return `${prefix}\n\n可用的档位（从小到大）：\n${lines}`;
+};
 
 export const DEFAULT_FONT_SIZE_DIRECT_PROMPT = `### 字号选择指南（直接模式）：
 
@@ -532,18 +533,27 @@ export const detectAndTypesetComic = async (
           const sizePrompt = config.fontSizePrompt || DEFAULT_FONT_SIZE_DIRECT_PROMPT;
           systemPrompt += `\n\n${sizePrompt}`;
       } else {
-          // Scale mode (default): AI outputs small/normal/large
+          // Scale mode (default): AI outputs dynamic scale labels
+          const defaultEntries = [
+              { label: 'tiny', value: 0.5 }, { label: 'small', value: 0.7 },
+              { label: 'normal', value: 1.0 }, { label: 'large', value: 1.3 },
+              { label: 'huge', value: 1.8 }, { label: 'extreme', value: 2.5 },
+          ];
+          const entries = config.fontScaleEntries || defaultEntries;
+          const labels = entries.map(e => e.label);
+          const desc = "Font size scale: " + labels.map(l => `'${l}'`).join(', ') + ".";
           geminiToolSchema.parameters.properties.bubbles.items.properties.fontScale = {
               type: Type.STRING,
-              description: "Font size scale: 'small'(whisper/aside), 'normal'(dialogue), 'large'(shout/emphasis).",
-              enum: ['small', 'normal', 'large']
+              description: desc,
+              enum: labels
           };
           openAIToolSchema.parameters.properties.bubbles.items.properties.fontScale = {
               type: 'string',
-              enum: ['small', 'normal', 'large'],
-              description: "Font size scale: 'small'(whisper/aside), 'normal'(dialogue), 'large'(shout/emphasis)."
+              enum: labels,
+              description: desc
           };
-          systemPrompt += `\n\n${DEFAULT_FONT_SIZE_PROMPT}`;
+          const scalePrefix = config.fontSizeScalePrompt || DEFAULT_FONT_SIZE_SCALE_PROMPT;
+          systemPrompt += `\n\n${buildFontSizeScalePrompt(scalePrefix, entries)}`;
       }
   } else {
       systemPrompt += "\n[IMPORTANT] Do NOT output 'fontScale' or 'fontSize'. Use default font size for all bubbles.";

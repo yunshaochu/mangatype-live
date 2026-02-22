@@ -1,4 +1,4 @@
-export type FontScale = 'small' | 'normal' | 'large';
+export type FontScale = string; // Dynamic scale labels defined by user
 
 export type FontFamily =
   | 'noto'      // 黑体 - 标准对话
@@ -163,9 +163,8 @@ export interface AIConfig {
   colorSelectionPrompt?: string; // Custom color selection prompt (Chinese)
   allowAiFontSize?: boolean; // Toggle AI font size control
   fontSizeMode?: 'scale' | 'direct'; // 'scale' (default) or 'direct' (beta)
-  fontScaleSmall?: number; // rem value for 'small' (default: 0.7)
-  fontScaleNormal?: number; // rem value for 'normal' (default: 1.0)
-  fontScaleLarge?: number; // rem value for 'large' (default: 1.5)
+  fontScaleEntries?: { label: string; value: number }[]; // Dynamic scale entries
+  fontSizeScalePrompt?: string; // Custom prompt prefix for scale mode
   fontSizePrompt?: string; // Custom prompt for direct mode
   customMessages?: CustomMessage[]; // Pre-request messages
   autoDetectBackground?: boolean; // New: Toggle for auto background color detection

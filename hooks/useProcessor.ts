@@ -86,12 +86,13 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                             if (aiConfig.fontSizeMode === 'direct' && d.fontSize != null) {
                                 return Math.max(0.5, Math.min(5.0, d.fontSize));
                             } else if (d.fontScale) {
-                                const scaleMap: Record<string, number> = {
-                                    small: aiConfig.fontScaleSmall ?? 0.7,
-                                    normal: aiConfig.fontScaleNormal ?? 1.0,
-                                    large: aiConfig.fontScaleLarge ?? 1.5,
-                                };
-                                return scaleMap[d.fontScale] ?? aiConfig.defaultFontSize;
+                                const entries = aiConfig.fontScaleEntries || [
+                                    { label: 'tiny', value: 0.5 }, { label: 'small', value: 0.7 },
+                                    { label: 'normal', value: 1.0 }, { label: 'large', value: 1.3 },
+                                    { label: 'huge', value: 1.8 }, { label: 'extreme', value: 2.5 },
+                                ];
+                                const match = entries.find(e => e.label === d.fontScale);
+                                return match?.value ?? aiConfig.defaultFontSize;
                             }
                         }
                         return aiConfig.defaultFontSize;
