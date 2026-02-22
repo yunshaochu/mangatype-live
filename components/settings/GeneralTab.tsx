@@ -1,5 +1,5 @@
 import React from 'react';
-import { Globe, Type } from 'lucide-react';
+import { Globe } from 'lucide-react';
 import { t } from '../../services/i18n';
 import { TabProps } from './types';
 
@@ -32,27 +32,6 @@ export const GeneralTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
               </button>
             ))}
           </div>
-        </div>
-
-        {/* Default Font Size */}
-        <div className="p-5 bg-gray-800/30 rounded-xl border border-gray-800 space-y-4">
-          <div className="flex justify-between items-center">
-            <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
-              <Type size={16} className="text-pink-400" /> {t('defaultFontSize', lang)}
-            </label>
-            <span className="text-xs font-mono bg-gray-900 px-2 py-1 rounded-md text-pink-300 border border-gray-700">
-              {config.defaultFontSize.toFixed(2)}rem
-            </span>
-          </div>
-          <input
-            type="range"
-            min="0.5"
-            max="5.0"
-            step="0.05"
-            value={config.defaultFontSize}
-            onChange={(e) => setConfig({ ...config, defaultFontSize: parseFloat(e.target.value) })}
-            className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-pink-500 hover:accent-pink-400"
-          />
         </div>
       </div>
     </div>

@@ -1,5 +1,6 @@
+export type FontScale = 'small' | 'normal' | 'large';
 
-export type FontFamily = 
+export type FontFamily =
   | 'noto'      // 黑体 - 标准对话
   | 'noto-bold' // 粗黑体 - 喊叫/强调
   | 'serif'     // 宋体 - 正式/内心独白
@@ -55,6 +56,8 @@ export interface DetectedBubble {
   fontFamily?: FontFamily; // Added font support from AI
   color?: string; // Added color support from AI
   strokeColor?: string; // Added stroke color support from AI
+  fontScale?: FontScale; // Scale mode output from AI
+  fontSize?: number; // Direct mode output from AI (beta)
 }
 
 export interface ImageState {
@@ -158,6 +161,12 @@ export interface AIConfig {
   fontSelectionPrompt?: string; // Custom font selection prompt (Chinese)
   allowAiColorSelection?: boolean; // New: Toggle AI color selection
   colorSelectionPrompt?: string; // Custom color selection prompt (Chinese)
+  allowAiFontSize?: boolean; // Toggle AI font size control
+  fontSizeMode?: 'scale' | 'direct'; // 'scale' (default) or 'direct' (beta)
+  fontScaleSmall?: number; // rem value for 'small' (default: 0.7)
+  fontScaleNormal?: number; // rem value for 'normal' (default: 1.0)
+  fontScaleLarge?: number; // rem value for 'large' (default: 1.5)
+  fontSizePrompt?: string; // Custom prompt for direct mode
   customMessages?: CustomMessage[]; // Pre-request messages
   autoDetectBackground?: boolean; // New: Toggle for auto background color detection
 

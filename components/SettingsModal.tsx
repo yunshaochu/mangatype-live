@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AIConfig } from '../types';
-import { Settings, X, CheckCircle, Layout, Server, FileText, Scan, Eraser, Paintbrush, Zap } from 'lucide-react';
+import { Settings, X, CheckCircle, Layout, Server, FileText, Scan, Eraser, Paintbrush, ALargeSmall, Zap } from 'lucide-react';
 import { t } from '../services/i18n';
 import { GeneralTab } from './settings/GeneralTab';
 import { ProviderTab } from './settings/ProviderTab';
@@ -9,6 +9,7 @@ import { DetectionTab } from './settings/DetectionTab';
 import { InpaintingTab } from './settings/InpaintingTab';
 import { StyleTab } from './settings/StyleTab';
 import { AdvancedTab } from './settings/AdvancedTab';
+import { FontSizeTab } from './settings/FontSizeTab';
 
 interface SettingsModalProps {
   config: AIConfig;
@@ -16,7 +17,7 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-type TabKey = 'general' | 'provider' | 'prompt' | 'detection' | 'inpainting' | 'style' | 'advanced';
+type TabKey = 'general' | 'provider' | 'prompt' | 'detection' | 'inpainting' | 'style' | 'fontSize' | 'advanced';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, onClose }) => {
   const [localConfig, setLocalConfig] = useState<AIConfig>(config);
@@ -31,6 +32,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
     { id: 'detection', label: 'Detection', icon: Scan },
     { id: 'inpainting', label: 'Inpainting', icon: Eraser },
     { id: 'style', label: 'Styles', icon: Paintbrush },
+    { id: 'fontSize', label: 'Font Size', icon: ALargeSmall },
     { id: 'advanced', label: 'Advanced', icon: Zap },
   ];
 
@@ -50,6 +52,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
         return <InpaintingTab {...tabProps} />;
       case 'style':
         return <StyleTab {...tabProps} />;
+      case 'fontSize':
+        return <FontSizeTab {...tabProps} />;
       case 'advanced':
         return <AdvancedTab {...tabProps} />;
       default:

@@ -81,7 +81,21 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                     x: d.x, y: d.y, width: d.width, height: d.height,
                     text: d.text, isVertical: d.isVertical,
                     fontFamily: (d.fontFamily as any) || 'noto',
-                    fontSize: aiConfig.defaultFontSize,
+                    fontSize: (() => {
+                        if (aiConfig.allowAiFontSize !== false) {
+                            if (aiConfig.fontSizeMode === 'direct' && d.fontSize != null) {
+                                return Math.max(0.5, Math.min(5.0, d.fontSize));
+                            } else if (d.fontScale) {
+                                const scaleMap: Record<string, number> = {
+                                    small: aiConfig.fontScaleSmall ?? 0.7,
+                                    normal: aiConfig.fontScaleNormal ?? 1.0,
+                                    large: aiConfig.fontScaleLarge ?? 1.5,
+                                };
+                                return scaleMap[d.fontScale] ?? aiConfig.defaultFontSize;
+                            }
+                        }
+                        return aiConfig.defaultFontSize;
+                    })(),
                     color: d.color || '#000000',
                     strokeColor: d.strokeColor || '#ffffff',
                     backgroundColor: overlapsCleanedMask ? 'transparent' : color,

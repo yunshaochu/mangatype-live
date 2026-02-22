@@ -33,6 +33,33 @@ export const DEFAULT_COLOR_SELECTION_PROMPT = `### 字色选择指南：
 - **无边框 (transparent)**：适用于清晰的对话框内文字、旁白框。
 - **注意**：选择颜色时要考虑气泡背景色，确保文字清晰可读。优先选择与背景对比度高的颜色组合。`;
 
+export const DEFAULT_FONT_SIZE_PROMPT = `### 字号选择指南：
+
+大前提：如果漫画原图中有提供字体大小，请优先使用原图中的字体大小。
+大前提：如果漫画原图中有提供字体大小，请优先使用原图中的字体大小。
+大前提：如果漫画原图中有提供字体大小，请优先使用原图中的字体大小。
+
+根据气泡的大小、文字的情绪强度和重要性，为每个气泡选择合适的字号档位：
+- **'small'**：用于旁白、注释、低语、背景对话等次要文本。
+- **'normal'**：默认字号，适用于普通对话。
+- **'large'**：用于喊叫、强调、重要台词、标题等需要突出的文本。
+
+请根据原文的视觉大小和语气来判断。`;
+
+export const DEFAULT_FONT_SIZE_DIRECT_PROMPT = `### 字号选择指南（直接模式）：
+
+大前提：如果漫画原图中有提供字体大小，请优先使用原图中的字体大小。
+大前提：如果漫画原图中有提供字体大小，请优先使用原图中的字体大小。
+大前提：如果漫画原图中有提供字体大小，请优先使用原图中的字体大小。
+
+为每个气泡输出一个 fontSize 数值（单位 rem，范围 0.5-5.0）。
+- 旁白、注释、低语：0.6-0.8
+- 普通对话：0.9-1.2
+- 强调、喊叫：1.3-2.0
+- 标题、特大文字：2.0-5.0
+
+请根据原文的视觉大小和语气来判断。`;
+
 export const DEFAULT_SYSTEM_PROMPT = `你是一位专业的漫画嵌字师和翻译师。
 你的任务是识别漫画中的对话气泡，翻译文本并提供布局坐标。
 
@@ -490,6 +517,36 @@ export const detectAndTypesetComic = async (
       // Inject color selection prompt
       const colorPrompt = config.colorSelectionPrompt || DEFAULT_COLOR_SELECTION_PROMPT;
       systemPrompt += `\n\n${colorPrompt}`;
+  }
+
+  // Handle Font Size Logic
+  if (config.allowAiFontSize !== false) {
+      if (config.fontSizeMode === 'direct') {
+          // Direct mode: AI outputs exact rem value
+          geminiToolSchema.parameters.properties.bubbles.items.properties.fontSize = {
+              type: Type.NUMBER, description: 'Font size in rem (0.5-5.0).'
+          };
+          openAIToolSchema.parameters.properties.bubbles.items.properties.fontSize = {
+              type: 'number', description: 'Font size in rem (0.5-5.0).'
+          };
+          const sizePrompt = config.fontSizePrompt || DEFAULT_FONT_SIZE_DIRECT_PROMPT;
+          systemPrompt += `\n\n${sizePrompt}`;
+      } else {
+          // Scale mode (default): AI outputs small/normal/large
+          geminiToolSchema.parameters.properties.bubbles.items.properties.fontScale = {
+              type: Type.STRING,
+              description: "Font size scale: 'small'(whisper/aside), 'normal'(dialogue), 'large'(shout/emphasis).",
+              enum: ['small', 'normal', 'large']
+          };
+          openAIToolSchema.parameters.properties.bubbles.items.properties.fontScale = {
+              type: 'string',
+              enum: ['small', 'normal', 'large'],
+              description: "Font size scale: 'small'(whisper/aside), 'normal'(dialogue), 'large'(shout/emphasis)."
+          };
+          systemPrompt += `\n\n${DEFAULT_FONT_SIZE_PROMPT}`;
+      }
+  } else {
+      systemPrompt += "\n[IMPORTANT] Do NOT output 'fontScale' or 'fontSize'. Use default font size for all bubbles.";
   }
 
   if (signal?.aborted) throw new Error("Aborted by user");
