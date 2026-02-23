@@ -46,7 +46,7 @@ export const translations = {
     toolBrush: "修补画笔 (Brush)",
     toolNone: "浏览模式",
     translateRegions: "翻译选区",
-    translateRegionsDesc: "绘制红框来辅助 AI。在设置中开启“遮罩模式”可仅发送红框内容。",
+    translateRegionsDesc: "绘制红框来辅助 AI。在设置中开启「遮罩模式」可仅发送红框内容。",
     importJson: "导入 JSON",
     merge: "合并图层",
     globalStyles: "全局样式",
@@ -240,42 +240,238 @@ export const translations = {
     loadTemplateHint: "加载示例 JSON",
     helpDocs: {
       title: "使用指南",
-      intro: "MangaType Live 是一个网页原生的漫画嵌字工具，集成了 AI 翻译和自动化排版功能。",
-      step1Title: "1. 导入图片",
-      step1Desc: "点击侧边栏的“添加图片”或直接将图片/文件夹**拖拽**到窗口中。支持粘贴剪贴板中的图片。",
-      step2Title: "2. AI 识别与翻译",
-      step2Desc: "点击侧边栏的“AI 翻译”按钮，在下拉菜单中选择处理单张或批量处理。支持全自动识别和手动红框辅助。",
-      step3Title: "3. 编辑气泡",
-      step3Desc: "点击画布上的气泡选中。拖动**8个控制点**调整大小（角点等比缩放，边点单向缩放）。在右侧面板修改文字、字体、排版方向和遮罩样式。",
-      step4Title: "4. 导出结果",
-      step4Desc: "点击 **Save Image (保存图片)** 下载当前页，或 **ZIP All (打包下载)** 下载所有处理完的图片。**Merge (合并)** 功能可将文字烧录进图片（不可逆）。",
-      advancedTitle: "进阶功能解析",
-      advancedFeatures: [
+      intro: "MangaType Live 是一个在浏览器中运行的漫画嵌字工具。它用 AI 自动识别漫画中的文字气泡，翻译内容，并将译文排版到原图上。支持批量处理整本漫画。",
+      // Tab labels
+      tabOverview: "快速上手",
+      tabTranslate: "AI 翻译",
+      tabMask: "选区与红框",
+      tabCleanup: "文字擦除",
+      tabEdit: "编辑气泡",
+      tabExport: "导出",
+      tabSettings: "设置说明",
+      tabShortcuts: "快捷键",
+      // Overview tab
+      quickStart: [
+        { title: "1. 导入图片", desc: "把图片或文件夹直接拖进窗口，或点击左侧「添加图片/文件夹」按钮。也可以用 Ctrl+V 粘贴剪贴板中的截图。" },
+        { title: "2. AI 翻译", desc: "切换到 View 模式，点击「翻译当前」处理当前页，或「翻译所有」批量处理。AI 会自动识别气泡位置、翻译文字并排版。" },
+        { title: "3. 编辑调整", desc: "点击画布上的气泡选中它，拖动移动位置，拖动 8 个控制点调整大小。右侧面板可以修改文字内容、字体、字号、颜色、排版方向等。" },
+        { title: "4. 导出保存", desc: "底部工具栏点击图片图标保存当前页，或点击压缩包图标打包下载所有图片。" }
+      ],
+      layoutTitle: "界面布局",
+      layoutDesc: "左侧是图库缩略图列表和工具栏，中间是画布工作区，右侧是选中气泡/选区的属性编辑面板。画布上方有三个图层切换按钮：「原图」「擦除后」「翻译后」。",
+      // Translate tab
+      translateSections: [
         {
-          title: "选区工具 (Mode 2)",
-          desc: "使用工具栏的“选区工具”框选图片中的特定区域。这些红框可以用来：1. 在“遮罩发送模式”下只翻译框内内容；2. 作为 AI 的位置提示；3. 作为气泡吸附的锚点。"
+          title: "基本翻译",
+          desc: "在 View 模式下，底部工具栏会显示翻译按钮。",
+          steps: [
+            "「翻译当前」— 只翻译当前选中的图片",
+            "「翻译所有」— 批量翻译图库中所有未处理的图片",
+            "处理中可以随时点击「停止」按钮中断"
+          ],
+          tip: "如果配置了多个 API 端点，批量翻译时会自动轮询分配任务，提高速度。"
         },
         {
-          title: "本地文本检测 (Local Detection)",
-          desc: "这是一个辅助功能，需在本地运行 Python 服务。开启后，可一键扫描图片中的文本区域并自动生成红框。"
+          title: "手动 JSON 导入",
+          desc: "没有 API Key？可以用手动模式：点击工具栏的 JSON 按钮，复制提示词粘贴到任意 AI 对话中（ChatGPT、Claude 等），再把 AI 返回的 JSON 粘贴回来即可。",
+          steps: [
+            "点击 JSON 图标打开导入面板",
+            "点击「复制提示词」，粘贴到外部 AI",
+            "将 AI 返回的 JSON 粘贴到输入框",
+            "点击「应用气泡」"
+          ]
         },
         {
-          title: "修补画笔 (Brush)",
-          desc: "如果自动擦除效果不完美，使用画笔工具手动涂抹修复。你可以直接在“擦除后”的图层上绘制，或者使用吸管吸取周围颜色进行覆盖。"
-        },
-        {
-          title: "合并图层 (Merge Layers)",
-          desc: "类似于 Photoshop 的“向下合并”。它会将当前所有悬浮的气泡**永久烧录**进图片的像素数据中。合并后，气泡文字变成图片的一部分，无法再被编辑。这适用于：1. 处理超多气泡防止卡顿；2. 想要在已有的文字上叠加新的效果；3. 导出前确认定稿。"
+          title: "重置状态",
+          desc: "点击翻译按钮旁边的刷新图标，可以重置所有图片的处理状态为「未处理」，方便重新翻译。"
         }
       ],
-      tipsTitle: "快捷键与技巧",
-      tipsList: [
-        "Ctrl+Z / Ctrl+Y: 撤销 / 重做",
-        "选中气泡后 + 鼠标滚轮: 调整字体大小",
-        "选中气泡后 + Alt + 鼠标滚轮: 调整气泡遮罩大小",
-        "Delete / Backspace: 删除选中气泡",
-        "按住 Ctrl 拖动: 精细调整",
-        "双击画布空白处: 取消选中"
+      // Mask tab
+      maskSections: [
+        {
+          title: "什么是选区（红框）",
+          desc: "选区是你手动画在图片上的矩形区域，用来告诉 AI「这里有文字」。切换到 Mask 工具后，在画布上拖拽即可绘制红框。红框可以拖动移动、拖动控制点调整大小。"
+        },
+        {
+          title: "红框的三种用法",
+          desc: "红框不只是标记，它有多种辅助 AI 的方式：",
+          steps: [
+            "作为提示 — 开启「使用红框作为提示」后，红框坐标会以文字形式告诉 AI 哪里有文字",
+            "画在图上 — 开启「在图片上绘制红框」后，发给 AI 的图片上会直接画出红框标注",
+            "遮罩模式 — 开启「遮罩发送模式」后，只把红框内的区域发给 AI，其余部分留白"
+          ],
+          tip: "三种方式可以组合使用。对于复杂排版的漫画，先画红框再翻译效果更好。"
+        },
+        {
+          title: "对话框吸附",
+          desc: "开启「对话框吸附」后，AI 生成的气泡会自动对齐到最近的红框中心。配合「强制匹配尺寸」可以让气泡完全继承红框的大小，实现精确定位。"
+        },
+        {
+          title: "本地文字检测（扫描）",
+          desc: "如果你运行了本地 Python 检测服务，切换到 Mask 工具后会出现「扫描当前/扫描全部」按钮。点击后会自动识别图片中的文字区域并生成红框，省去手动画框的工作。",
+          tip: "需要在设置 > 检测与辅助中开启并配置检测 API 地址。"
+        }
+      ],
+      // Cleanup tab
+      cleanupSections: [
+        {
+          title: "图层系统",
+          desc: "每张图片有三个图层：「原图」是上传的原始图片；「擦除后」是去掉原文后的干净背景；「翻译后」是最终效果（干净背景 + 译文气泡）。点击画布上方的按钮切换查看。"
+        },
+        {
+          title: "颜色填充（红框）",
+          desc: "选中一个红框后，右侧面板会出现「填充」选项。点击后用纯色覆盖该区域，适合背景简单的场景。填充是即时的，不需要调用 API。",
+          steps: [
+            "画一个红框覆盖要清理的文字",
+            "在右侧面板选择填充颜色（默认白色）",
+            "点击「填充选中框」"
+          ]
+        },
+        {
+          title: "AI 擦除（紫框）",
+          desc: "将红框的属性切换为「API 擦除」后，它会变成紫色。紫框会调用 IOPaint API 进行智能擦除，效果更好但需要本地服务。",
+          steps: [
+            "在设置中开启 Inpainting 并配置 API 地址",
+            "画一个选区，在右侧面板将属性改为「API 擦除」（变紫色）",
+            "点击「调用 API 擦除」"
+          ],
+          tip: "可以批量操作：「填充红框」一键填充所有红框，「擦除紫框」一键擦除所有紫框。"
+        },
+        {
+          title: "手动修补画笔",
+          desc: "切换到「擦除后」图层后，工具栏会出现 Paint 工具。它有两个子模式：",
+          steps: [
+            "Freehand（手绘）— 用画笔直接在擦除后的图层上涂抹修补，支持吸管取色",
+            "Box Tool（选区工具）— 在擦除后图层上画红框/紫框进行填充或擦除"
+          ],
+          tip: "手绘模式下还有「还原模式」，可以把误擦的区域恢复为原图内容。"
+        },
+        {
+          title: "修补工坊",
+          desc: "对于自动擦除效果不理想的区域，可以使用修补工坊：复制原图区域到外部工具（如 PS）处理后，再粘贴回来应用。在右侧面板选中一个选区后即可看到此功能。"
+        }
+      ],
+      // Edit tab
+      editSections: [
+        {
+          title: "选中与移动",
+          desc: "在 View 或 Bubble 模式下，点击画布上的气泡即可选中。选中后可以直接拖动移动位置。双击画布空白处取消选中。"
+        },
+        {
+          title: "调整大小",
+          desc: "选中气泡后会出现 8 个控制点。拖动四角的控制点等比缩放，拖动四边的控制点单方向拉伸。"
+        },
+        {
+          title: "右侧编辑面板",
+          desc: "选中气泡后，右侧面板显示所有可编辑属性：",
+          steps: [
+            "文字内容 — 直接编辑翻译文本",
+            "排版方向 — 横排或竖排",
+            "字体 — 9 种中文字体可选（黑体、宋体、可爱体、毛笔等）",
+            "字号 — 拖动滑块或用滚轮调整",
+            "旋转 — 调整文字倾斜角度",
+            "文字颜色与描边 — 支持预设组合和自定义颜色",
+            "遮罩背景色 — 覆盖原文的底色，支持自动取色和吸管",
+            "遮罩形状 — 直角、圆角、椭圆三种，可调圆角半径和羽化程度"
+          ]
+        },
+        {
+          title: "手动添加气泡",
+          desc: "切换到 Bubble 工具后，可以点击「点击添加」按钮在画布中央创建一个新气泡，也可以直接在画布上拖拽绘制。"
+        },
+        {
+          title: "AI 润色",
+          desc: "选中气泡后，右侧面板有「戏剧化」「口语化」「翻译」三个 AI 按钮，可以对当前气泡的文字进行风格化处理。"
+        },
+        {
+          title: "全局样式",
+          desc: "底部工具栏的调色板图标可以打开全局样式面板，批量调整当前页所有气泡的字号大小、遮罩大小和字体。"
+        },
+        {
+          title: "图层顺序",
+          desc: "右侧面板底部有上移/下移/置顶/置底按钮，控制气泡的叠放顺序。"
+        }
+      ],
+      // Export tab
+      exportSections: [
+        {
+          title: "保存单张",
+          desc: "底部工具栏的图片图标，将当前页面导出为 PNG 下载。导出时会自动将所有气泡和填充遮罩渲染到图片上。"
+        },
+        {
+          title: "打包下载",
+          desc: "底部工具栏的压缩包图标，将图库中所有图片打包为 ZIP 下载。会显示进度。"
+        },
+        {
+          title: "合并图层",
+          desc: "底部工具栏的合并图标（橙色），将当前页的所有气泡和遮罩永久烧录进图片像素中。合并后气泡消失，图片变成纯图片，无法再编辑气泡。",
+          tip: "适用于：气泡太多导致卡顿时先合并一批；想在已有文字上叠加新效果；导出前确认定稿。"
+        },
+        {
+          title: "跳过处理",
+          desc: "在图库缩略图上右键可以标记「跳过 API 处理」。被跳过的图片不会被 AI 翻译，但仍会包含在 ZIP 导出中（保留原图）。"
+        }
+      ],
+      // Settings tab
+      settingsSections: [
+        {
+          title: "AI 端点配置",
+          desc: "在设置 > 端点管理中添加 API 端点。支持 Gemini 和 OpenAI 兼容格式。可以添加多个端点，批量翻译时会自动轮询使用。每个端点可以单独设置模型、API Key 和能力标记（是否支持 Function Calling / JSON Mode）。"
+        },
+        {
+          title: "检测与辅助",
+          desc: "配置红框如何辅助 AI：「使用红框作为提示」「在图片上绘制红框」「遮罩发送模式」三个开关。还有「对话框吸附」和本地文字检测 API 的配置。"
+        },
+        {
+          title: "文字去除 (Inpainting)",
+          desc: "配置 IOPaint 服务地址和模型。需要在本地运行 IOPaint 服务（默认端口 8080）。支持 lama、manga、mat、migan 等模型。"
+        },
+        {
+          title: "提示词编辑",
+          desc: "可以自定义发送给 AI 的系统提示词，以及添加「请求前置消息」作为对话历史注入。"
+        },
+        {
+          title: "AI 能力开关",
+          desc: "在高级设置中可以开关：AI 选择字体、AI 选择颜色、AI 控制字号、AI 旋转角度。每个功能都有对应的提示词可以自定义。"
+        },
+        {
+          title: "字号控制",
+          desc: "两种模式：「档位模式」让 AI 从预设档位中选择（如 tiny/small/normal/large）；「直接模式」让 AI 输出具体的 rem 数值。档位可以自定义添加和调整。"
+        },
+        {
+          title: "遮罩样式",
+          desc: "设置全局默认的遮罩形状（直角/圆角/椭圆）、圆角半径和羽化程度。单个气泡可以在右侧面板覆盖这些默认值。"
+        },
+        {
+          title: "备份与恢复",
+          desc: "在通用设置中可以导出/导入配置文件（JSON），方便在不同浏览器间迁移设置。也可以一键恢复出厂设置。"
+        }
+      ],
+      // Shortcuts tab
+      shortcutGroups: [
+        {
+          title: "通用操作",
+          items: [
+            { key: "Ctrl+Z", desc: "撤销" },
+            { key: "Ctrl+Y", desc: "重做" },
+            { key: "Delete / Backspace", desc: "删除选中的气泡或选区" },
+            { key: "← →", desc: "切换上一张/下一张图片" }
+          ]
+        },
+        {
+          title: "气泡编辑",
+          items: [
+            { key: "鼠标滚轮", desc: "选中气泡后，调整字号大小" },
+            { key: "Alt + 鼠标滚轮", desc: "选中气泡后，调整遮罩大小" },
+            { key: "双击空白处", desc: "取消选中" }
+          ]
+        },
+        {
+          title: "画笔工具",
+          items: [
+            { key: "Alt + 点击画布", desc: "吸取画布上的颜色" }
+          ]
+        }
       ]
     }
   },
@@ -519,42 +715,229 @@ export const translations = {
     loadTemplateHint: "Load sample JSON",
     helpDocs: {
       title: "User Guide",
-      intro: "MangaType Live is a web-native comic typesetting tool with integrated AI translation and automated layout features.",
-      step1Title: "1. Import Images",
-      step1Desc: "Click 'Add Files' in the sidebar or simply **Drag & Drop** images/folders into the window. Clipboard pasting is also supported.",
-      step2Title: "2. AI Detection & Translation",
-      step2Desc: "Click the **AI Translate** button in the sidebar to reveal options for single or batch processing. Supports both auto-detection and manual mask guidance.",
-      step3Title: "3. Edit Bubbles",
-      step3Desc: "Click a bubble to select it. Drag the **8 control points** to resize (corners for proportional, edges for directional). Use the right panel to edit text, font, direction, and mask style.",
-      step4Title: "4. Export Results",
-      step4Desc: "Click **Save Image** to download the current page, or **ZIP All** for the entire batch. The **Merge** function burns the text into the image permanently (irreversible).",
-      advancedTitle: "Advanced Features",
-      advancedFeatures: [
+      intro: "MangaType Live is a browser-based manga typesetting tool. It uses AI vision models to automatically detect speech bubbles, translate text, and typeset the result onto the original image. Supports batch processing entire volumes.",
+      tabOverview: "Quick Start",
+      tabTranslate: "AI Translation",
+      tabMask: "Masks & Boxes",
+      tabCleanup: "Text Cleanup",
+      tabEdit: "Editing",
+      tabExport: "Export",
+      tabSettings: "Settings",
+      tabShortcuts: "Shortcuts",
+      quickStart: [
+        { title: "1. Import Images", desc: "Drag images or folders into the window, or click 'Add Files / Add Folder' in the left sidebar. You can also paste screenshots with Ctrl+V." },
+        { title: "2. AI Translate", desc: "Switch to View mode. Click 'Translate Current' for the active page, or 'Translate All' for batch processing. The AI will detect bubbles, translate text, and typeset automatically." },
+        { title: "3. Edit & Adjust", desc: "Click a bubble on the canvas to select it. Drag to move, drag the 8 control handles to resize. The right panel lets you edit text, font, size, color, direction, and mask style." },
+        { title: "4. Export", desc: "Use the image icon in the bottom toolbar to save the current page, or the archive icon to download all images as a ZIP." }
+      ],
+      layoutTitle: "Interface Layout",
+      layoutDesc: "Left side: image gallery thumbnails and toolbar. Center: canvas workspace. Right side: property editor for the selected bubble or mask. Above the canvas are three layer tabs: Original, Clean, and Translated.",
+      translateSections: [
         {
-          title: "Mask Tool (Mode 2)",
-          desc: "Use the Mask Tool from the toolbar to draw boxes around specific areas. These boxes can be used for: 1. Sending only masked content (Masked Mode); 2. Providing AI hints; 3. Snapping AI bubbles."
+          title: "Basic Translation",
+          desc: "In View mode, the bottom toolbar shows translation buttons.",
+          steps: [
+            "'Translate Current' — translate only the active image",
+            "'Translate All' — batch translate all unprocessed images in the gallery",
+            "You can click 'Stop' at any time to abort"
+          ],
+          tip: "If you have multiple API endpoints configured, batch translation will automatically round-robin tasks across them for faster processing."
         },
         {
-          title: "Local Text Detection (Local Detection)",
-          desc: "A helper for the AI. Requires running our Python detection service locally. When enabled, it extracts precise text coordinates and sends them as 'spatial hints' to the LLM."
+          title: "Manual JSON Import",
+          desc: "No API key? Use manual mode: click the JSON button in the toolbar, copy the prompt into any AI chat (ChatGPT, Claude, etc.), then paste the AI's JSON response back.",
+          steps: [
+            "Click the JSON icon to open the import panel",
+            "Click 'Copy AI Prompt' and paste it into an external AI",
+            "Paste the AI's JSON response into the input box",
+            "Click 'Apply Bubbles'"
+          ]
         },
         {
-          title: "Manual Brush (Paint)",
-          desc: "Manually fix artifacts on the Clean layer using the brush tool. You can pick colors from the image to cover up leftover text."
+          title: "Reset Status",
+          desc: "Click the refresh icon next to the translate buttons to reset all images back to 'unprocessed' status, allowing you to re-translate them."
+        }
+      ],
+      maskSections: [
+        {
+          title: "What Are Masks (Red Boxes)",
+          desc: "Masks are rectangular regions you draw on the image to tell the AI 'there is text here'. Switch to the Mask tool and drag on the canvas to draw a red box. Boxes can be moved and resized with control handles."
+        },
+        {
+          title: "Three Ways to Use Red Boxes",
+          desc: "Red boxes aren't just markers — they help the AI in multiple ways:",
+          steps: [
+            "As hints — Enable 'Use Masks as Hints' to send box coordinates as text hints to the AI",
+            "Drawn on image — Enable 'Draw Masks on Image' to visually annotate the image sent to AI",
+            "Masked mode — Enable 'Masked Image Mode' to send only the boxed regions to AI (rest is whitened out)"
+          ],
+          tip: "These can be combined. For manga with complex layouts, drawing boxes before translating gives better results."
+        },
+        {
+          title: "Dialog Snapping",
+          desc: "Enable 'Dialog Snapping' to automatically align AI-generated bubbles to the nearest red box center. Combined with 'Force Match Size', bubbles will fully inherit the box dimensions for precise positioning."
+        },
+        {
+          title: "Local Text Detection (Scan)",
+          desc: "If you're running the local Python detection service, switching to the Mask tool reveals 'Scan Current / Scan All' buttons. This auto-detects text regions and generates red boxes, saving you from drawing them manually.",
+          tip: "Requires enabling and configuring the detection API URL in Settings > Detection & Masks."
+        }
+      ],
+      cleanupSections: [
+        {
+          title: "Layer System",
+          desc: "Each image has three layers: 'Original' is the uploaded image; 'Clean' is the background with original text removed; 'Translated' is the final result (clean background + translated bubbles). Switch between them using the tabs above the canvas."
+        },
+        {
+          title: "Color Fill (Red Boxes)",
+          desc: "Select a red box and the right panel shows a 'Fill' option. This covers the region with a solid color — great for simple backgrounds. Filling is instant and doesn't require any API.",
+          steps: [
+            "Draw a red box over the text to clean",
+            "Choose a fill color in the right panel (default: white)",
+            "Click 'Fill Selected Box'"
+          ]
+        },
+        {
+          title: "AI Erase (Purple Boxes)",
+          desc: "Switch a red box's attribute to 'API Erase' and it turns purple. Purple boxes use the IOPaint API for intelligent removal — better quality but requires a local service.",
+          steps: [
+            "Enable Inpainting in Settings and configure the API URL",
+            "Draw a box, then change its attribute to 'API Erase' in the right panel (turns purple)",
+            "Click 'API Erase Box'"
+          ],
+          tip: "Batch operations available: 'Fill Red Boxes' fills all red boxes at once, 'Erase Purple Boxes' sends all purple boxes to the API."
+        },
+        {
+          title: "Manual Paint Brush",
+          desc: "Switch to the 'Clean' layer and the toolbar shows the Paint tool. It has two sub-modes:",
+          steps: [
+            "Freehand — paint directly on the clean layer to fix artifacts, with eyedropper color picking",
+            "Box Tool — draw red/purple boxes on the clean layer for filling or erasing"
+          ],
+          tip: "Freehand mode also has a 'Restore' brush that reverts painted areas back to the original image content."
+        },
+        {
+          title: "Inpaint Workshop",
+          desc: "For areas where auto-erase isn't perfect, use the Inpaint Workshop: copy the original region to an external tool (e.g., Photoshop), fix it, then paste the result back. Available in the right panel when a mask is selected."
+        }
+      ],
+      editSections: [
+        {
+          title: "Select & Move",
+          desc: "In View or Bubble mode, click a bubble on the canvas to select it. Drag to reposition. Double-click empty space to deselect."
+        },
+        {
+          title: "Resize",
+          desc: "Selected bubbles show 8 control handles. Drag corners for proportional scaling, drag edges for single-axis stretching."
+        },
+        {
+          title: "Right Panel Editor",
+          desc: "When a bubble is selected, the right panel shows all editable properties:",
+          steps: [
+            "Text content — edit the translated text directly",
+            "Direction — horizontal or vertical layout",
+            "Font — 9 Chinese fonts available (Gothic, Serif, Cute, Brush, etc.)",
+            "Font size — drag the slider or use mouse wheel",
+            "Rotation — adjust text angle",
+            "Text color & stroke — preset combos and custom colors",
+            "Mask background — color behind text, supports auto-detect and eyedropper",
+            "Mask shape — rectangle, rounded, or ellipse, with adjustable corner radius and feathering"
+          ]
+        },
+        {
+          title: "Add Bubbles Manually",
+          desc: "Switch to the Bubble tool, then click 'Click Add' to create a new bubble at the center, or drag on the canvas to draw one."
+        },
+        {
+          title: "AI Polish",
+          desc: "With a bubble selected, the right panel has 'Dramatic', 'Casual', and 'Translate' AI buttons to restyle the current bubble's text."
+        },
+        {
+          title: "Global Styles",
+          desc: "The palette icon in the bottom toolbar opens the global styles panel, letting you batch-adjust font size, mask size, and font family for all bubbles on the current page."
+        },
+        {
+          title: "Layer Order",
+          desc: "The bottom of the right panel has move up/down/top/bottom buttons to control bubble stacking order."
+        }
+      ],
+      exportSections: [
+        {
+          title: "Save Single Image",
+          desc: "The image icon in the bottom toolbar exports the current page as a PNG download. All bubbles and filled masks are rendered onto the image."
+        },
+        {
+          title: "Download All as ZIP",
+          desc: "The archive icon in the bottom toolbar packages all images into a ZIP download. Progress is shown during generation."
         },
         {
           title: "Merge Layers",
-          desc: "Similar to 'Merge Down' in Photoshop. It permanently 'burns' all current floating bubbles into the image pixels. Once merged, bubbles become part of the image and can no longer be edited. Use this to finalize a page or prevent lag with too many objects."
+          desc: "The orange merge icon in the bottom toolbar permanently burns all bubbles and masks into the image pixels. After merging, bubbles disappear and the image becomes a flat picture — bubbles can no longer be edited.",
+          tip: "Useful when: too many bubbles cause lag; you want to overlay new effects on existing text; finalizing before export."
+        },
+        {
+          title: "Skip Processing",
+          desc: "Right-click a gallery thumbnail to mark it as 'Skip API Processing'. Skipped images won't be AI-translated but will still be included in ZIP exports (preserving the original)."
         }
       ],
-      tipsTitle: "Shortcuts & Tips",
-      tipsList: [
-        "Ctrl+Z / Ctrl+Y: Undo / Redo",
-        "Selected + Mouse Wheel: Adjust Font Size",
-        "Selected + Alt + Mouse Wheel: Adjust Mask Size",
-        "Delete / Backspace: Delete selected bubble",
-        "Hold Ctrl while dragging: Fine precision",
-        "Double click background: Deselect"
+      settingsSections: [
+        {
+          title: "API Endpoint Configuration",
+          desc: "In Settings > Endpoints, add API endpoints. Supports Gemini and OpenAI-compatible formats. You can add multiple endpoints — batch translation will automatically round-robin across them. Each endpoint has its own model, API key, and capability flags (Function Calling / JSON Mode support)."
+        },
+        {
+          title: "Detection & Masks",
+          desc: "Configure how red boxes assist the AI: 'Use Masks as Hints', 'Draw Masks on Image', and 'Masked Image Mode' toggles. Also includes 'Dialog Snapping' and local text detection API configuration."
+        },
+        {
+          title: "Text Removal (Inpainting)",
+          desc: "Configure the IOPaint service URL and model. Requires running IOPaint locally (default port 8080). Supports lama, manga, mat, migan models."
+        },
+        {
+          title: "Prompt Editor",
+          desc: "Customize the system prompt sent to the AI, and add 'Pre-request Messages' injected as conversation history before the main request."
+        },
+        {
+          title: "AI Capability Toggles",
+          desc: "In Advanced settings, toggle: AI font selection, AI color selection, AI font size control, AI rotation detection. Each feature has a customizable prompt."
+        },
+        {
+          title: "Font Size Control",
+          desc: "Two modes: 'Scale Mode' lets AI choose from preset tiers (tiny/small/normal/large); 'Direct Mode' lets AI output exact rem values. Scale tiers can be customized."
+        },
+        {
+          title: "Mask Style",
+          desc: "Set global defaults for mask shape (rectangle/rounded/ellipse), corner radius, and feathering. Individual bubbles can override these in the right panel."
+        },
+        {
+          title: "Backup & Restore",
+          desc: "In General settings, export/import config files (JSON) for migrating settings between browsers. Factory reset is also available."
+        }
+      ],
+      shortcutGroups: [
+        {
+          title: "General",
+          items: [
+            { key: "Ctrl+Z", desc: "Undo" },
+            { key: "Ctrl+Y", desc: "Redo" },
+            { key: "Delete / Backspace", desc: "Delete selected bubble or mask" },
+            { key: "← →", desc: "Previous / next image" }
+          ]
+        },
+        {
+          title: "Bubble Editing",
+          items: [
+            { key: "Mouse Wheel", desc: "Adjust font size (with bubble selected)" },
+            { key: "Alt + Mouse Wheel", desc: "Adjust mask size (with bubble selected)" },
+            { key: "Double-click empty area", desc: "Deselect" }
+          ]
+        },
+        {
+          title: "Paint Tool",
+          items: [
+            { key: "Alt + Click canvas", desc: "Pick color from canvas" }
+          ]
+        }
       ]
     }
   }
