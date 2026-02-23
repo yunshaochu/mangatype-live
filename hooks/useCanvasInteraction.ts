@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useCallback } from 'react';
 import { ImageState, HandleType, AIConfig, Bubble } from '../types';
-import { createBubble, createMaskRegion, clamp } from '../utils/editorUtils';
+import { createBubble, createMaskRegion, clamp, isBubbleInsideMask } from '../utils/editorUtils';
 
 interface DragState {
     mode: 'move' | 'resize' | 'drawing';
@@ -205,14 +205,7 @@ export const useCanvasInteraction = ({
 
         const checkOverlap = (bubble: Bubble, maskRegions: any[]) => {
             const cleanedMasks = maskRegions.filter(m => m.isCleaned);
-            return cleanedMasks.some(m => {
-                 const xDiff = Math.abs(bubble.x - m.x);
-                 const yDiff = Math.abs(bubble.y - m.y);
-                 const halfW = m.width / 2;
-                 const halfH = m.height / 2;
-                 // Check if bubble center is within the mask box
-                 return xDiff <= halfW && yDiff <= halfH;
-            });
+            return cleanedMasks.some(m => isBubbleInsideMask(bubble.x, bubble.y, m.x, m.y, m.width, m.height));
         };
 
         if (mode === 'drawing') {

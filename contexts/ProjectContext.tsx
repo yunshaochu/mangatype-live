@@ -3,6 +3,7 @@ import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion } from
 import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
+import { isBubbleInsideMask } from '../utils/editorUtils';
 import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 
@@ -439,13 +440,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         // Update bubbles overlapping with FILLED masks
         const newBubbles = img.bubbles.map(b => {
-            const overlaps = masksToFill.some(mask => {
-                const xDiff = Math.abs(b.x - mask.x);
-                const yDiff = Math.abs(b.y - mask.y);
-                const halfW = mask.width / 2;
-                const halfH = mask.height / 2;
-                return xDiff <= halfW && yDiff <= halfH;
-            });
+            const overlaps = masksToFill.some(mask => isBubbleInsideMask(b.x, b.y, mask.x, mask.y, mask.width, mask.height));
             if (overlaps) {
                 return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
             }
@@ -585,13 +580,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             const cleanedMasks = (currentImg.maskRegions || []).filter(m => m.isCleaned);
             
             // Overlap logic: Check if bubble center is inside mask region
-            const overlaps = cleanedMasks.some(m => {
-                 const xDiff = Math.abs(tempBubble.x - m.x);
-                 const yDiff = Math.abs(tempBubble.y - m.y);
-                 const halfW = m.width / 2;
-                 const halfH = m.height / 2;
-                 return xDiff <= halfW && yDiff <= halfH;
-            });
+            const overlaps = cleanedMasks.some(m => isBubbleInsideMask(tempBubble.x, tempBubble.y, m.x, m.y, m.width, m.height));
 
             if (overlaps) {
                 finalUpdates.backgroundColor = 'transparent';

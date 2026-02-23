@@ -3,6 +3,7 @@ import { ImageState, AIConfig, APIEndpoint, MaskRegion, Bubble, mergeEndpointCon
 import { detectAndTypesetComic, fetchRawDetectedRegions } from '../services/geminiService';
 import { generateMaskedImage, generateAnnotatedImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
+import { isBubbleInsideMask } from '../utils/editorUtils';
 
 interface UseProcessorProps {
     images: ImageState[];
@@ -78,13 +79,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
 
             const processedBubbles = await Promise.all(finalDetected.map(async (d) => {
                 // First check if this bubble overlaps with any cleaned mask
-                const overlapsCleanedMask = cleanedMasks.some(m => {
-                    const xDiff = Math.abs(d.x - m.x);
-                    const yDiff = Math.abs(d.y - m.y);
-                    const halfW = m.width / 2;
-                    const halfH = m.height / 2;
-                    return xDiff <= halfW && yDiff <= halfH;
-                });
+                const overlapsCleanedMask = cleanedMasks.some(m => isBubbleInsideMask(d.x, d.y, m.x, m.y, m.width, m.height));
 
                 // If overlapping cleaned mask, skip color detection and use transparent
                 let color = '#ffffff';
@@ -190,13 +185,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                 
                 // Update bubbles overlapping with newly cleaned masks
                 const newBubbles = p.bubbles.map(b => {
-                    const overlaps = relevantMasks.some(mask => {
-                        const xDiff = Math.abs(b.x - mask.x);
-                        const yDiff = Math.abs(b.y - mask.y);
-                        const halfW = mask.width / 2;
-                        const halfH = mask.height / 2;
-                        return xDiff <= halfW && yDiff <= halfH;
-                    });
+                    const overlaps = relevantMasks.some(mask => isBubbleInsideMask(b.x, b.y, mask.x, mask.y, mask.width, mask.height));
                     if (overlaps) {
                         return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
                     }

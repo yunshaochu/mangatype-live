@@ -39,3 +39,9 @@ export const createMaskRegion = (x: number, y: number): MaskRegion => ({
     id: crypto.randomUUID(),
     x, y, width: 0, height: 0
 });
+
+/** Check if bubble center falls inside a mask region (both use % coordinate system, center-origin) */
+export const isBubbleInsideMask = (
+    bx: number, by: number,
+    mx: number, my: number, mw: number, mh: number
+): boolean => Math.abs(bx - mx) <= mw / 2 && Math.abs(by - my) <= mh / 2;
