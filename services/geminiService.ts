@@ -389,6 +389,7 @@ export const polishDialogue = async (text: string, style: 'dramatic' | 'casual' 
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
       body: JSON.stringify({
         model: config.model,
+        stream: false,
         messages: [
             ...history,
             { role: 'user', content: prompt }
@@ -674,6 +675,7 @@ export const detectAndTypesetComic = async (
               ]
             }
           ],
+          stream: false,
           tools: [{ type: 'function', function: openAIToolSchema }],
           tool_choice: 'auto',
           response_format: { type: "json_object" }

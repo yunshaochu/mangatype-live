@@ -29,18 +29,18 @@ const runtimeConfig = getRuntimeConfig();
 // ----------------------------------------
 
 const DEFAULT_CONFIG: AIConfig = {
-  provider: 'gemini',
+  provider: 'openai',
   apiKey: '',
-  baseUrl: '',
-  model: 'gemini-3-flash-preview',
+  baseUrl: 'https://api.openai.com/v1',
+  model: '',
   endpoints: [{
-    id: 'default-gemini',
-    name: 'Gemini (Default)',
+    id: 'default-openai',
+    name: 'OpenAI (Default)',
     enabled: true,
-    provider: 'gemini',
+    provider: 'openai',
     apiKey: '',
-    baseUrl: '',
-    model: 'gemini-3-flash-preview',
+    baseUrl: 'https://api.openai.com/v1',
+    model: '',
   }],
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   defaultFontSize: 1.0,

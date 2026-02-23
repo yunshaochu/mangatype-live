@@ -183,10 +183,10 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
       id: crypto.randomUUID(),
       name: `Endpoint ${endpoints.length + 1}`,
       enabled: true,
-      provider: 'gemini',
+      provider: 'openai',
       apiKey: '',
-      baseUrl: '',
-      model: 'gemini-3-flash-preview',
+      baseUrl: 'https://api.openai.com/v1',
+      model: '',
     };
     updateEndpoints([...endpoints, newEp]);
     setEditingId(newEp.id);
