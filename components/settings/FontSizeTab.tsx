@@ -5,12 +5,12 @@ import { DEFAULT_FONT_SIZE_DIRECT_PROMPT, DEFAULT_FONT_SIZE_SCALE_PROMPT } from 
 import { TabProps } from './types';
 
 const DEFAULT_SCALE_ENTRIES = [
-  { label: 'tiny', value: 0.5 },
-  { label: 'small', value: 0.7 },
-  { label: 'normal', value: 1.0 },
-  { label: 'large', value: 1.3 },
-  { label: 'huge', value: 1.8 },
-  { label: 'extreme', value: 2.5 },
+  { label: 'tiny', value: 0.7 },
+  { label: 'small', value: 1.0 },
+  { label: 'normal', value: 1.3 },
+  { label: 'large', value: 1.6 },
+  { label: 'huge', value: 2.1 },
+  { label: 'extreme', value: 2.8 },
 ];
 
 export const FontSizeTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {

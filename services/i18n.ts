@@ -232,6 +232,10 @@ export const translations = {
     configImportError: "导入失败：文件格式无效。",
     configBackupRestore: "配置备份与恢复",
     configBackupRestoreHint: "导出配置文件以备份，或从文件恢复配置。换浏览器时可用此功能迁移设置。",
+    resetToDefaults: "恢复出厂设置",
+    resetToDefaultsHint: "清除所有自定义设置，恢复到初始默认状态。此操作不可撤销。",
+    resetToDefaultsConfirm: "确定要恢复出厂设置吗？所有自定义配置将被清除，页面将刷新。",
+    resetToDefaultsBtn: "恢复出厂设置",
     copyPromptHint: "复制提示词 (用于外部 AI)",
     loadTemplateHint: "加载示例 JSON",
     helpDocs: {
@@ -507,6 +511,10 @@ export const translations = {
     configImportError: "Import failed: invalid file format.",
     configBackupRestore: "Backup & Restore",
     configBackupRestoreHint: "Export your config to back it up, or import a file to restore. Useful when switching browsers.",
+    resetToDefaults: "Reset to Factory Defaults",
+    resetToDefaultsHint: "Clear all custom settings and restore to initial defaults. This action cannot be undone.",
+    resetToDefaultsConfirm: "Are you sure you want to reset all settings to factory defaults? All custom config will be lost and the page will reload.",
+    resetToDefaultsBtn: "Reset to Defaults",
     copyPromptHint: "Copy prompt for external AI",
     loadTemplateHint: "Load sample JSON",
     helpDocs: {

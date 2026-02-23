@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Globe, Download, Upload, FolderArchive } from 'lucide-react';
+import { Globe, Download, Upload, FolderArchive, RotateCcw } from 'lucide-react';
 import { t } from '../../services/i18n';
 import { TabProps } from './types';
 
@@ -7,6 +7,12 @@ const STORAGE_KEY = 'mangatype_live_settings_v1';
 
 export const GeneralTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleResetToDefaults = () => {
+    if (!confirm(t('resetToDefaultsConfirm', lang))) return;
+    localStorage.removeItem(STORAGE_KEY);
+    window.location.reload();
+  };
 
   const handleExport = () => {
     const data = localStorage.getItem(STORAGE_KEY);
@@ -99,6 +105,20 @@ export const GeneralTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
             onChange={handleImport}
             className="hidden"
           />
+        </div>
+
+        {/* Reset to Factory Defaults */}
+        <div className="p-5 bg-gray-800/30 rounded-xl border border-red-900/30 space-y-3">
+          <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+            <RotateCcw size={16} className="text-red-400"/> {t('resetToDefaults', lang)}
+          </label>
+          <p className="text-xs text-gray-500">{t('resetToDefaultsHint', lang)}</p>
+          <button
+            onClick={handleResetToDefaults}
+            className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg text-sm font-medium border bg-gray-900 border-red-900/50 text-red-400 hover:border-red-500/50 hover:text-red-300 hover:bg-red-600/10 transition-all"
+          >
+            <RotateCcw size={16} /> {t('resetToDefaultsBtn', lang)}
+          </button>
         </div>
       </div>
     </div>
