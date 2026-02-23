@@ -56,7 +56,22 @@ export const DetectionTab: React.FC<TabProps> = ({ config, setConfig, lang }) =>
           </div>
 
           {config.useMasksAsHints && (
-            <div className="pl-11 pt-2 border-t border-gray-700/50 animate-fade-in-down">
+            <div className="pl-11 pt-2 border-t border-gray-700/50 animate-fade-in-down space-y-3">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h5 className="text-xs font-medium text-gray-300">{t('drawMasksOnImage', lang)}</h5>
+                  <p className="text-[10px] text-gray-500 mt-0.5">{t('drawMasksOnImageHint', lang)}</p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={config.drawMasksOnImage || false}
+                    onChange={(e) => setConfig({...config, drawMasksOnImage: e.target.checked})}
+                  />
+                  <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-red-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-red-600"></div>
+                </label>
+              </div>
               <div className="flex justify-between items-center">
                 <div>
                   <h5 className="text-xs font-medium text-gray-300">{t('appendMasksToManualJson', lang)}</h5>

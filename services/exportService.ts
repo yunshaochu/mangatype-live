@@ -122,6 +122,33 @@ export const detectBubbleColor = async (
 };
 
 /**
+ * Generates an image with red boxes drawn on it to visually indicate mask regions.
+ */
+export const generateAnnotatedImage = async (image: ImageState): Promise<string> => {
+    const img = await loadImage(image.originalUrl || image.url);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.width;
+    canvas.height = img.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return image.base64;
+
+    ctx.drawImage(img, 0, 0);
+
+    if (image.maskRegions && image.maskRegions.length > 0) {
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = Math.max(2, Math.round(Math.min(img.width, img.height) / 200));
+        image.maskRegions.forEach(m => {
+            const x = (m.x / 100) * canvas.width;
+            const y = (m.y / 100) * canvas.height;
+            const w = (m.width / 100) * canvas.width;
+            const h = (m.height / 100) * canvas.height;
+            ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+        });
+    }
+    return canvas.toDataURL('image/jpeg', 0.9);
+};
+
+/**
  * Generates an image where only the content inside mask regions is visible.
  */
 export const generateMaskedImage = async (image: ImageState): Promise<string> => {

@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { ImageState, AIConfig, APIEndpoint, MaskRegion, Bubble, mergeEndpointConfig } from '../types';
 import { detectAndTypesetComic, fetchRawDetectedRegions } from '../services/geminiService';
-import { generateMaskedImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
+import { generateMaskedImage, generateAnnotatedImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 
 interface UseProcessorProps {
@@ -24,9 +24,12 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             // Always use original image for detection analysis
             let sourceBase64 = img.originalBase64 || img.base64;
             const useMaskedImage = effectiveConfig.enableMaskedImageMode && img.maskRegions && img.maskRegions.length > 0;
+            const useAnnotatedImage = effectiveConfig.useMasksAsHints && effectiveConfig.drawMasksOnImage && img.maskRegions && img.maskRegions.length > 0;
 
             if (useMaskedImage) {
                 sourceBase64 = await generateMaskedImage({ ...img, base64: sourceBase64 });
+            } else if (useAnnotatedImage) {
+                sourceBase64 = await generateAnnotatedImage({ ...img, base64: sourceBase64 });
             }
 
             const detected = await detectAndTypesetComic(sourceBase64, effectiveConfig, signal, img.maskRegions);
