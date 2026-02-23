@@ -461,7 +461,7 @@ export const translations = {
         {
           title: "气泡编辑",
           items: [
-            { key: "鼠标滚轮", desc: "选中气泡后，调整字号大小" },
+            { key: "ctrl + 鼠标滚轮", desc: "选中气泡后，调整字号大小" },
             { key: "Alt + 鼠标滚轮", desc: "选中气泡后，调整遮罩大小" },
             { key: "双击空白处", desc: "取消选中" }
           ]
