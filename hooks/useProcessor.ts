@@ -36,26 +36,41 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             let finalDetected = detected;
 
             if (effectiveConfig.enableDialogSnap) {
-                finalDetected = detected.map(b => {
-                    if (!img.maskRegions || img.maskRegions.length === 0) return b;
-                    let nearestMask: MaskRegion | null = null; 
-                    let minDistance = Infinity;
-                    
-                    img.maskRegions.forEach(mask => {
-                        const dist = Math.sqrt(Math.pow(b.x - mask.x, 2) + Math.pow(b.y - mask.y, 2));
-                        if (dist < minDistance) { minDistance = dist; nearestMask = mask; }
+                if (img.maskRegions && img.maskRegions.length > 0) {
+                    // Build all (bubble, mask, distance) pairs within threshold
+                    const pairs: { bi: number; mi: number; dist: number }[] = [];
+                    detected.forEach((b, bi) => {
+                        img.maskRegions!.forEach((mask, mi) => {
+                            const dist = Math.sqrt(Math.pow(b.x - mask.x, 2) + Math.pow(b.y - mask.y, 2));
+                            if (dist < 15) pairs.push({ bi, mi, dist });
+                        });
                     });
+                    // Sort by distance so closest pairs match first
+                    pairs.sort((a, b) => a.dist - b.dist);
 
-                    if (nearestMask && minDistance < 15) { 
-                        const updates: any = { x: (nearestMask as MaskRegion).x, y: (nearestMask as MaskRegion).y };
+                    // Greedy one-to-one matching: each bubble and each mask used at most once
+                    const usedBubbles = new Set<number>();
+                    const usedMasks = new Set<number>();
+                    const bubbleUpdates = new Map<number, MaskRegion>();
+
+                    for (const p of pairs) {
+                        if (usedBubbles.has(p.bi) || usedMasks.has(p.mi)) continue;
+                        usedBubbles.add(p.bi);
+                        usedMasks.add(p.mi);
+                        bubbleUpdates.set(p.bi, img.maskRegions![p.mi]);
+                    }
+
+                    finalDetected = detected.map((b, i) => {
+                        const mask = bubbleUpdates.get(i);
+                        if (!mask) return b;
+                        const updates: any = { x: mask.x, y: mask.y };
                         if (effectiveConfig.forceSnapSize) {
-                            updates.width = (nearestMask as MaskRegion).width; 
-                            updates.height = (nearestMask as MaskRegion).height; 
+                            updates.width = mask.width;
+                            updates.height = mask.height;
                         }
                         return { ...b, ...updates };
-                    }
-                    return b;
-                });
+                    });
+                }
             }
 
             // Check for cleaned masks BEFORE color detection to avoid unnecessary work
