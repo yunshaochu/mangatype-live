@@ -927,7 +927,7 @@ export const translations = {
         {
           title: "Bubble Editing",
           items: [
-            { key: "Mouse Wheel", desc: "Adjust font size (with bubble selected)" },
+            { key: "ctrl + Mouse Wheel", desc: "Adjust font size (with bubble selected)" },
             { key: "Alt + Mouse Wheel", desc: "Adjust mask size (with bubble selected)" },
             { key: "Double-click empty area", desc: "Deselect" }
           ]
