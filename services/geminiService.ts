@@ -299,6 +299,75 @@ const validateBubblesArray = (data: any): any[] => {
     return data.bubbles;
 };
 
+/**
+ * Handle OpenAI-compatible responses that may be streaming despite stream:false.
+ * Detects SSE/ndjson responses and reassembles them into a single JSON object.
+ */
+const parseOpenAIResponse = async (response: Response): Promise<any> => {
+  const contentType = response.headers.get('content-type') || '';
+
+  // Normal JSON response
+  if (contentType.includes('application/json')) {
+    return response.json();
+  }
+
+  // Streaming response (text/event-stream or ndjson) — reassemble chunks
+  const text = await response.text();
+
+  // SSE format: lines starting with "data: "
+  if (text.includes('data: ')) {
+    let result: any = null;
+    const lines = text.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data: ')) continue;
+      const payload = trimmed.slice(6);
+      if (payload === '[DONE]') break;
+      try {
+        const chunk = JSON.parse(payload);
+        if (!result) {
+          // Initialize from first chunk
+          result = { ...chunk };
+          if (result.choices) {
+            result.choices = result.choices.map((c: any) => ({
+              ...c,
+              message: {
+                role: c.delta?.role || 'assistant',
+                content: c.delta?.content || '',
+                tool_calls: c.delta?.tool_calls ? JSON.parse(JSON.stringify(c.delta.tool_calls)) : undefined,
+              }
+            }));
+          }
+        } else if (result.choices && chunk.choices) {
+          // Merge subsequent chunks
+          for (let i = 0; i < chunk.choices.length; i++) {
+            const delta = chunk.choices[i]?.delta;
+            if (!delta) continue;
+            const msg = result.choices[i]?.message;
+            if (!msg) continue;
+            if (delta.content) msg.content += delta.content;
+            if (delta.tool_calls) {
+              for (const tc of delta.tool_calls) {
+                if (!msg.tool_calls) msg.tool_calls = [];
+                const existing = msg.tool_calls[tc.index];
+                if (existing) {
+                  if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
+                } else {
+                  msg.tool_calls[tc.index] = { ...tc, function: { ...tc.function } };
+                }
+              }
+            }
+          }
+        }
+      } catch (_) { /* skip unparseable lines */ }
+    }
+    if (result) return result;
+  }
+
+  // Last resort: try parsing the whole text as JSON
+  return JSON.parse(text);
+};
+
 const getOpenAiBaseUrl = (baseUrl: string): string => {
   const cleaned = baseUrl.replace(/\/+$/, '');
   if (cleaned.endsWith('/v1')) return cleaned;
@@ -396,7 +465,7 @@ export const polishDialogue = async (text: string, style: 'dramatic' | 'casual' 
         ]
       })
     });
-    const data = await response.json();
+    const data = await parseOpenAIResponse(response);
     return cleanDetectedText(data.choices?.[0]?.message?.content?.trim() || text);
   }
 };
@@ -682,7 +751,7 @@ export const detectAndTypesetComic = async (
         })
       });
 
-      const resData = await response.json();
+      const resData = await parseOpenAIResponse(response);
       if (resData.error) throw new Error("OpenAI API Error: " + resData.error.message);
 
       const toolCalls = resData.choices?.[0]?.message?.tool_calls;
