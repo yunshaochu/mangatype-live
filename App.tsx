@@ -8,10 +8,11 @@ import { Gallery } from './components/Gallery';
 import { ControlPanel } from './components/ControlPanel';
 import { Workspace } from './components/Workspace';
 import { Bubble } from './types';
-import { Settings, Undo2, Redo2, CircleHelp, Scan, MessageSquareDashed, Eraser, Loader2, RotateCcw, PaintBucket, Pipette, Palette, Hash, Square, Layers, Sparkles, ChevronRight, Check } from 'lucide-react';
+import { Settings, Undo2, Redo2, CircleHelp, Scan, MessageSquareDashed, Eraser, Loader2, RotateCcw, PaintBucket, Pipette, Palette, Hash, Square, Layers, Sparkles, ChevronRight, Check, Copy, ArrowRight, ClipboardPaste } from 'lucide-react';
 import { t } from './services/i18n';
 import { useCanvasInteraction } from './hooks/useCanvasInteraction';
 import { useProjectContext } from './contexts/ProjectContext';
+import { cropRegionFromImage } from './services/exportService';
 
 const PRESET_FILL_COLORS = ['#ffffff', '#000000', '#f3f4f6', '#d1d5db', '#e5e7eb', '#9ca3af'];
 
@@ -38,6 +39,7 @@ const App: React.FC = () => {
 
     // Inpainting
     handleInpaint,
+    handleApplyWorkshopResult,
     isInpainting,
     handleRestoreRegion,
     handleBoxFill,
@@ -61,6 +63,12 @@ const App: React.FC = () => {
   // Batch Scope State
   const [batchScope, setBatchScope] = useState<'current' | 'all'>('all');
 
+  // Inpaint Workshop State
+  const [workshopResult, setWorkshopResult] = useState<string | null>(null);
+  const [originalCropUrl, setOriginalCropUrl] = useState<string | null>(null);
+  const [workshopFocused, setWorkshopFocused] = useState(false);
+  const workshopRef = useRef<HTMLDivElement>(null);
+
   // Refs for file inputs (still local to App as they are DOM elements)
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
@@ -81,6 +89,79 @@ const App: React.FC = () => {
       drawTool,
       paintMode
   });
+
+  // 4. Inpaint Workshop Effects
+  // Reset workshop when selected mask changes
+  useEffect(() => {
+    setWorkshopResult(null);
+    setOriginalCropUrl(null);
+  }, [selectedMaskId]);
+
+  // Compute original crop for selected purple mask
+  useEffect(() => {
+    if (!selectedMask || !currentImage || selectedMask.method !== 'inpaint') {
+      setOriginalCropUrl(null);
+      return;
+    }
+    const sourceUrl = currentImage.originalUrl || currentImage.url;
+    cropRegionFromImage(sourceUrl, selectedMask, currentImage.width, currentImage.height)
+      .then(setOriginalCropUrl)
+      .catch(() => setOriginalCropUrl(null));
+  }, [selectedMask?.id, selectedMask?.method, currentImage?.id, currentImage?.originalUrl]);
+
+  // Auto-populate result preview after API inpaint completes
+  const prevInpaintedUrlRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const curUrl = currentImage?.inpaintedUrl;
+    if (curUrl && curUrl !== prevInpaintedUrlRef.current && selectedMask?.isCleaned && selectedMask?.method === 'inpaint') {
+      cropRegionFromImage(curUrl, selectedMask, currentImage!.width, currentImage!.height)
+        .then(setWorkshopResult)
+        .catch(() => {});
+    }
+    prevInpaintedUrlRef.current = curUrl;
+  }, [currentImage?.inpaintedUrl, selectedMask?.isCleaned]);
+
+  // Workshop paste handler (capture phase to intercept before global handler)
+  useEffect(() => {
+    if (!workshopFocused) return;
+    const handleWorkshopPaste = (e: ClipboardEvent) => {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      for (const item of Array.from(items)) {
+        if (item.type.startsWith('image/')) {
+          e.preventDefault();
+          e.stopPropagation();
+          const blob = item.getAsFile();
+          if (!blob) return;
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const dataUrl = reader.result as string;
+            setWorkshopResult(dataUrl);
+            // Auto-apply pasted result to image
+            if (currentId && selectedMaskId) {
+              handleApplyWorkshopResult(currentId, selectedMaskId, dataUrl);
+            }
+          };
+          reader.readAsDataURL(blob);
+          return;
+        }
+      }
+    };
+    window.addEventListener('paste', handleWorkshopPaste, true);
+    return () => window.removeEventListener('paste', handleWorkshopPaste, true);
+  }, [workshopFocused, currentId, selectedMaskId, handleApplyWorkshopResult]);
+
+  // Copy original crop to clipboard
+  const handleCopyOriginalCrop = async () => {
+    if (!originalCropUrl) return;
+    try {
+      const res = await fetch(originalCropUrl);
+      const blob = await res.blob();
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+    } catch (e) {
+      console.warn('Copy to clipboard failed', e);
+    }
+  };
 
   // 3. Keyboard Shortcuts
   useEffect(() => {
@@ -210,23 +291,78 @@ const App: React.FC = () => {
                      <div className="space-y-4">
                          
                          {isSelectedMaskErase ? (
-                             // PURPLE STATE: API ERASE
+                             // PURPLE STATE: INPAINT WORKSHOP
                              <div className="space-y-3 animate-fade-in">
                                  <div className="flex justify-between items-center">
                                      <label className="text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
-                                         <Eraser size={10} /> {t('inpaintSelected', lang)}
+                                         <Eraser size={10} /> {t('inpaintWorkshop', lang)}
                                      </label>
                                      <span className="text-[10px] text-gray-500 bg-gray-800 px-2 py-0.5 rounded border border-gray-700">
                                          Model: {aiConfig.inpaintingModel || 'lama'}
                                      </span>
                                  </div>
+
+                                 {/* Left-Arrow-Right Preview Layout */}
+                                 <div className="flex items-center gap-2">
+                                     {/* LEFT: Original crop */}
+                                     <div className="flex-1 flex flex-col items-center gap-1.5">
+                                         <div className="w-full aspect-square bg-gray-800 rounded-lg border border-gray-700 overflow-hidden flex items-center justify-center">
+                                             {originalCropUrl ? (
+                                                 <img src={originalCropUrl} className="max-w-full max-h-full object-contain" alt="original" />
+                                             ) : (
+                                                 <Loader2 size={16} className="text-gray-600 animate-spin" />
+                                             )}
+                                         </div>
+                                         <button
+                                             onClick={handleCopyOriginalCrop}
+                                             className="w-full py-1 text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-400 rounded border border-gray-700 flex items-center justify-center gap-1"
+                                         >
+                                             <Copy size={10} /> {t('copyOriginal', lang)}
+                                         </button>
+                                     </div>
+
+                                     {/* MIDDLE: Arrow */}
+                                     <ArrowRight size={16} className="text-gray-600 shrink-0" />
+
+                                     {/* RIGHT: Result preview (paste target) */}
+                                     <div
+                                         ref={workshopRef}
+                                         className="flex-1 flex flex-col items-center gap-1.5"
+                                         tabIndex={0}
+                                         onFocus={() => setWorkshopFocused(true)}
+                                         onBlur={() => setWorkshopFocused(false)}
+                                     >
+                                         <div className={`w-full aspect-square bg-gray-800 rounded-lg border overflow-hidden flex items-center justify-center cursor-pointer transition-colors ${
+                                             workshopFocused ? 'border-purple-500 ring-1 ring-purple-500/30' : 'border-gray-700 border-dashed'
+                                         }`}>
+                                             {workshopResult ? (
+                                                 <img src={workshopResult} className="max-w-full max-h-full object-contain" alt="result" />
+                                             ) : (
+                                                 <div className="text-center p-2">
+                                                     <ClipboardPaste size={16} className="text-gray-600 mx-auto mb-1" />
+                                                     <span className="text-[9px] text-gray-600 whitespace-pre-line">{t('pasteResultHint', lang)}</span>
+                                                 </div>
+                                             )}
+                                         </div>
+                                         {workshopResult && (
+                                             <button
+                                                 onClick={() => setWorkshopResult(null)}
+                                                 className="w-full py-1 text-[10px] bg-gray-800 hover:bg-gray-700 text-gray-400 rounded border border-gray-700 flex items-center justify-center gap-1"
+                                             >
+                                                 <RotateCcw size={10} /> {t('clearResult', lang)}
+                                             </button>
+                                         )}
+                                     </div>
+                                 </div>
+
+                                 {/* Action Buttons */}
                                  {aiConfig.enableInpainting ? (
-                                     <button 
+                                     <button
                                          onClick={() => handleInpaint(currentId, selectedMaskId)}
                                          disabled={isInpainting}
-                                         className="w-full py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-purple-900/20 flex items-center justify-center gap-2 transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                         className="w-full py-2.5 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-purple-900/20 flex items-center justify-center gap-2 transition-all transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                                      >
-                                         {isInpainting ? <Loader2 size={16} className="animate-spin" /> : <Eraser size={16} />}
+                                         {isInpainting ? <Loader2 size={14} className="animate-spin" /> : <Eraser size={14} />}
                                          {t('inpaintSelectedHint', lang)}
                                      </button>
                                  ) : (

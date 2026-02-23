@@ -266,6 +266,65 @@ export const restoreImageRegion = async (image: ImageState, regionId: string): P
 };
 
 /**
+ * Crops a rectangular region from a full image, returning a data URL of just that region.
+ */
+export const cropRegionFromImage = async (
+    imageDataUrl: string,
+    mask: { x: number; y: number; width: number; height: number },
+    imgWidth: number,
+    imgHeight: number
+): Promise<string> => {
+    const img = await loadImage(imageDataUrl);
+    const px = (mask.x / 100) * imgWidth;
+    const py = (mask.y / 100) * imgHeight;
+    const pw = (mask.width / 100) * imgWidth;
+    const ph = (mask.height / 100) * imgHeight;
+    const left = Math.max(0, Math.floor(px - pw / 2));
+    const top = Math.max(0, Math.floor(py - ph / 2));
+    const cropW = Math.min(Math.ceil(pw), imgWidth - left);
+    const cropH = Math.min(Math.ceil(ph), imgHeight - top);
+    const canvas = document.createElement('canvas');
+    canvas.width = cropW;
+    canvas.height = cropH;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas context failed');
+    ctx.drawImage(img, left, top, cropW, cropH, 0, 0, cropW, cropH);
+    return canvas.toDataURL('image/png');
+};
+
+/**
+ * Composites a cropped region result back into a full image at the correct position.
+ */
+export const compositeRegionIntoImage = async (
+    fullImageDataUrl: string,
+    regionDataUrl: string,
+    mask: { x: number; y: number; width: number; height: number },
+    imgWidth: number,
+    imgHeight: number
+): Promise<string> => {
+    const [imgFull, imgRegion] = await Promise.all([
+        loadImage(fullImageDataUrl),
+        loadImage(regionDataUrl)
+    ]);
+    const canvas = document.createElement('canvas');
+    canvas.width = imgWidth;
+    canvas.height = imgHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Canvas context failed');
+    ctx.drawImage(imgFull, 0, 0, imgWidth, imgHeight);
+    const px = (mask.x / 100) * imgWidth;
+    const py = (mask.y / 100) * imgHeight;
+    const pw = (mask.width / 100) * imgWidth;
+    const ph = (mask.height / 100) * imgHeight;
+    const left = Math.max(0, Math.floor(px - pw / 2));
+    const top = Math.max(0, Math.floor(py - ph / 2));
+    const cropW = Math.min(Math.ceil(pw), imgWidth - left);
+    const cropH = Math.min(Math.ceil(ph), imgHeight - top);
+    ctx.drawImage(imgRegion, 0, 0, imgRegion.width, imgRegion.height, left, top, cropW, cropH);
+    return canvas.toDataURL('image/png');
+};
+
+/**
  * Composites the image and bubbles using pure Canvas API with DOM measurement.
  * Uses DOM to measure exact text positions for WYSIWYG accuracy.
  */

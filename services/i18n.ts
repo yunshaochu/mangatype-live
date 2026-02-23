@@ -189,6 +189,11 @@ export const translations = {
     maskTypeLabel: "选区属性",
     maskTypeFill: "普通填充",
     maskTypeErase: "API 擦除",
+    inpaintWorkshop: "修补工坊",
+    copyOriginal: "复制原图",
+    pasteResultHint: "点击聚焦后\nCtrl+V 粘贴",
+    clearResult: "清除结果",
+    applyResult: "应用到图片",
     // Workspace Layers
     layerOriginal: "原图",
     layerClean: "擦除后",
@@ -459,6 +464,11 @@ export const translations = {
     maskTypeLabel: "Mask Attribute",
     maskTypeFill: "Manual Fill",
     maskTypeErase: "API Erase",
+    inpaintWorkshop: "Inpaint Workshop",
+    copyOriginal: "Copy Original",
+    pasteResultHint: "Click to focus\nCtrl+V to paste",
+    clearResult: "Clear Result",
+    applyResult: "Apply to Image",
     // Workspace Layers
     layerOriginal: "Original",
     layerClean: "Clean",

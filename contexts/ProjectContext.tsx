@@ -3,7 +3,7 @@ import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion } from
 import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
-import { detectBubbleColor, generateInpaintMask, restoreImageRegion } from '../services/exportService';
+import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 
 const STORAGE_KEY = 'mangatype_live_settings_v1';
@@ -109,6 +109,7 @@ interface ProjectContextType {
 
   // Inpainting Actions (Single specific mask)
   handleInpaint: (imageId: string, specificMaskId?: string) => Promise<void>;
+  handleApplyWorkshopResult: (imageId: string, maskId: string, regionDataUrl: string) => Promise<void>;
   isInpainting: boolean;
   handleRestoreRegion: (imageId: string, regionId: string) => Promise<void>;
   handlePaintSave: (imageId: string, newBase64: string) => void;
@@ -337,6 +338,45 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setIsInpainting(false);
     }
   }, [aiConfig, setImages, historyRef, setActiveLayer]);
+
+  // Apply Workshop Result (manual paste or external edit)
+  const handleApplyWorkshopResult = useCallback(async (imageId: string, maskId: string, regionDataUrl: string) => {
+    const img = historyRef.current.present.find(i => i.id === imageId);
+    if (!img) return;
+    const mask = img.maskRegions?.find(m => m.id === maskId);
+    if (!mask) return;
+    try {
+        const sourceUrl = img.inpaintedUrl || img.url || `data:image/png;base64,${img.base64}`;
+        const composited = await compositeRegionIntoImage(sourceUrl, regionDataUrl, mask, img.width, img.height);
+        setImages(prev => prev.map(p => {
+            if (p.id !== imageId) return p;
+            const newMasks = (p.maskRegions || []).map(m =>
+                m.id === maskId ? { ...m, isCleaned: true, method: 'inpaint' as const } : m
+            );
+            const targetMask = (p.maskRegions || []).find(m => m.id === maskId);
+            let newBubbles = p.bubbles;
+            if (targetMask) {
+                newBubbles = p.bubbles.map(b => {
+                    const overlaps = Math.abs(b.x - targetMask.x) <= targetMask.width / 2 && Math.abs(b.y - targetMask.y) <= targetMask.height / 2;
+                    return overlaps ? { ...b, backgroundColor: 'transparent', autoDetectBackground: false } : b;
+                });
+            }
+            return {
+                ...p,
+                base64: composited.replace(/^data:image\/\w+;base64,/, ""),
+                url: composited,
+                inpaintedUrl: composited,
+                inpaintedBase64: composited.replace(/^data:image\/\w+;base64,/, ""),
+                inpaintingStatus: 'done' as const,
+                maskRegions: newMasks,
+                bubbles: newBubbles
+            };
+        }));
+        setActiveLayer('clean');
+    } catch (e: any) {
+        console.error("Apply workshop result failed", e);
+    }
+  }, [setImages, historyRef, setActiveLayer]);
 
   // Handle Box Fill (OPTIMIZED: Metadata Update Only)
   const handleBoxFill = useCallback(async (imageId: string, maskId: string, color: string) => {
@@ -638,6 +678,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     handleBatchInpaint: processor.handleBatchInpaint,
     // inpainting & fill
     handleInpaint,
+    handleApplyWorkshopResult,
     isInpainting,
     handleRestoreRegion,
     handlePaintSave,
