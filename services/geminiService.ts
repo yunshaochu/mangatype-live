@@ -429,47 +429,6 @@ export const fetchAvailableModels = async (config: AIConfig): Promise<string[]> 
   }
 };
 
-export const polishDialogue = async (text: string, style: 'dramatic' | 'casual' | 'english', config: AIConfig): Promise<string> => {
-  const prompt = style === 'dramatic' 
-    ? `Rewrite the following comic book dialogue to be more dramatic: "${text}"`
-    : style === 'casual'
-    ? `Rewrite the following comic book dialogue to be casual: "${text}"`
-    : `Translate to natural graphic novel English: "${text}"`;
-
-  if (config.provider === 'gemini') {
-    const ai = getGeminiClient(config.apiKey);
-    const { history, systemInjection } = getCustomMessages(config, 'gemini');
-
-    const finalContents = [...history];
-    const userPart = { role: 'user', parts: [{ text: (systemInjection ? `[System Note: ${systemInjection}]\n\n` : "") + prompt }] };
-    finalContents.push(userPart);
-
-    const response = await ai.models.generateContent({
-      model: config.model || 'gemini-3-flash-preview',
-      contents: finalContents as any,
-    });
-    return cleanDetectedText(response.text?.trim() || text);
-  } else {
-    const baseUrl = getOpenAiBaseUrl(config.baseUrl);
-    const { history } = getCustomMessages(config, 'openai');
-    
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
-      body: JSON.stringify({
-        model: config.model,
-        stream: false,
-        messages: [
-            ...history,
-            { role: 'user', content: prompt }
-        ]
-      })
-    });
-    const data = await parseOpenAIResponse(response);
-    return cleanDetectedText(data.choices?.[0]?.message?.content?.trim() || text);
-  }
-};
-
 // --- Detection API Helper ---
 
 export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: string): Promise<{
