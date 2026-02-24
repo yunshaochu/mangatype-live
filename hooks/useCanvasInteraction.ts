@@ -56,6 +56,7 @@ export const useCanvasInteraction = ({
 
     const handleCanvasMouseDown = (e: React.MouseEvent) => {
         if (!currentId || !containerRef.current) return;
+        e.preventDefault(); // Prevent native drag behavior
         const rect = containerRef.current.getBoundingClientRect();
         const startXPct = clamp((e.clientX - rect.left) / rect.width * 100, 0, 100);
         const startYPct = clamp((e.clientY - rect.top) / rect.height * 100, 0, 100);
@@ -195,7 +196,7 @@ export const useCanvasInteraction = ({
         const dxPx = e.clientX - startX;
         const dyPx = e.clientY - startY;
         
-        if (Math.abs(dxPx) > 3 || Math.abs(dyPx) > 3) dragRef.current.hasMoved = true;
+        if (Math.abs(dxPx) > 1 || Math.abs(dyPx) > 1) dragRef.current.hasMoved = true;
 
         const checkOverlap = (bubble: Bubble, maskRegions: any[]) => {
             const cleanedMasks = maskRegions.filter(m => m.isCleaned);
