@@ -1,6 +1,6 @@
 
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { FONTS, mergeEndpointConfig } from '../types';
 import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, Sparkles, RotateCw, Maximize2, Palette, Minus, Plus, Pipette, Hash, Ban, Square, Circle, Box, BringToFront, SendToBack, ChevronUp, ChevronDown } from 'lucide-react';
 import { polishDialogue } from '../services/geminiService';
@@ -26,9 +26,45 @@ const TEXT_COLOR_PRESETS = [
 ];
 
 export const BubbleEditor: React.FC = () => {
-  const { currentImage, selectedBubbleId, updateBubble, deleteCurrentSelection, aiConfig, reorderBubble } = useProjectContext();
+  const { currentImage, selectedBubbleId, updateBubble, deleteCurrentSelection, aiConfig, reorderBubble, setHistory, historyRef } = useProjectContext();
   const [isAiLoading, setIsAiLoading] = useState(false);
   const lang = aiConfig.language || 'zh';
+
+  // Debounced history commit for text editing
+  const textTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const snapshotRef = useRef<typeof historyRef.current.present | null>(null);
+
+  const commitTextHistory = useCallback(() => {
+    if (snapshotRef.current) {
+      const snapshot = snapshotRef.current;
+      snapshotRef.current = null;
+      setHistory(curr => ({
+        past: [...curr.past, snapshot].slice(-20),
+        present: curr.present,
+        future: []
+      }));
+    }
+  }, [setHistory]);
+
+  const handleTextChange = useCallback((bubbleId: string, text: string) => {
+    // Save snapshot before first change in this burst
+    if (!snapshotRef.current) {
+      snapshotRef.current = historyRef.current.present;
+    }
+    updateBubble(bubbleId, { text }, true); // skipHistory
+    if (textTimerRef.current) clearTimeout(textTimerRef.current);
+    textTimerRef.current = setTimeout(commitTextHistory, 500);
+  }, [updateBubble, commitTextHistory, historyRef]);
+
+  // Flush pending text history on unmount or bubble switch
+  useEffect(() => {
+    return () => {
+      if (textTimerRef.current) {
+        clearTimeout(textTimerRef.current);
+        commitTextHistory();
+      }
+    };
+  }, [selectedBubbleId, commitTextHistory]);
 
   const bubble = currentImage?.bubbles.find(b => b.id === selectedBubbleId);
 
@@ -162,7 +198,7 @@ export const BubbleEditor: React.FC = () => {
           <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">{t('content', lang)}</label>
           <textarea
             value={bubble.text}
-            onChange={(e) => updateBubble(bubble.id, { text: e.target.value })}
+            onChange={(e) => handleTextChange(bubble.id, e.target.value)}
             className="w-full bg-gray-800 border border-gray-700 rounded p-3 text-sm focus:border-blue-500 outline-none resize-none font-sans transition-colors"
             rows={5}
             placeholder={t('enterText', lang)}

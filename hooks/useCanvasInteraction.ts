@@ -68,13 +68,7 @@ export const useCanvasInteraction = ({
             
             // Check immediate overlap for new bubble (point overlap)
             const cleanedMasks = (currentImg.maskRegions || []).filter(m => m.isCleaned);
-            const overlaps = cleanedMasks.some(m => {
-                 const xDiff = Math.abs(newBubble.x - m.x);
-                 const yDiff = Math.abs(newBubble.y - m.y);
-                 const halfW = m.width / 2;
-                 const halfH = m.height / 2;
-                 return xDiff <= halfW && yDiff <= halfH;
-            });
+            const overlaps = cleanedMasks.some(m => isBubbleInsideMask(newBubble.x, newBubble.y, m.x, m.y, m.width, m.height));
             if (overlaps) {
                 newBubble.backgroundColor = 'transparent';
                 newBubble.autoDetectBackground = false;
@@ -352,11 +346,7 @@ export const useCanvasInteraction = ({
                 if (!bubble) return prev;
 
                 const cleanedMasks = (img.maskRegions || []).filter(m => m.isCleaned);
-                const overlaps = cleanedMasks.some(m => {
-                    const xDiff = Math.abs(bubble.x - m.x);
-                    const yDiff = Math.abs(bubble.y - m.y);
-                    return xDiff <= m.width / 2 && yDiff <= m.height / 2;
-                });
+                const overlaps = cleanedMasks.some(m => isBubbleInsideMask(bubble.x, bubble.y, m.x, m.y, m.width, m.height));
 
                 if (overlaps && bubble.backgroundColor !== 'transparent') {
                     const newBubbles = img.bubbles.map(b => b.id === id ? { ...b, backgroundColor: 'transparent', autoDetectBackground: false } : b);
@@ -366,8 +356,8 @@ export const useCanvasInteraction = ({
             }, true);
         }
 
-        // Commit history if changed
-        if (hasMoved || mode === 'drawing') {
+        // Commit history if changed (skip if no actual movement occurred)
+        if (hasMoved) {
             setHistory(curr => ({
                 past: [...curr.past, initialSnapshot].slice(-20),
                 present: curr.present,

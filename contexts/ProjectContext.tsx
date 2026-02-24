@@ -151,7 +151,7 @@ interface ProjectContextType {
   setBrushType: (t: 'paint' | 'restore') => void;
 
   // Actions
-  updateBubble: (bubbleId: string, updates: Partial<Bubble>) => void;
+  updateBubble: (bubbleId: string, updates: Partial<Bubble>, skipHistory?: boolean) => void;
   updateImageBubbles: (imgId: string, newBubbles: Bubble[]) => void;
   updateMaskRegion: (maskId: string, updates: Partial<MaskRegion>) => void; // New helper
   triggerAutoColorDetection: (bubbleId: string) => void;
@@ -556,7 +556,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }, 300);
   }, [currentId, setImages, historyRef]);
 
-  const updateBubble = useCallback((bubbleId: string, updates: Partial<Bubble>) => {
+  const updateBubble = useCallback((bubbleId: string, updates: Partial<Bubble>, skipHistory: boolean = false) => {
     if (!currentId) return;
     const currentImg = historyRef.current.present.find(i => i.id === currentId);
     if (!currentImg) return;
@@ -589,10 +589,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
     }
     
-    setImages(prev => prev.map(img => img.id === currentId ? { 
-        ...img, 
-        bubbles: img.bubbles.map(b => b.id === bubbleId ? { ...b, ...finalUpdates } : b) 
-    } : img));
+    setImages(prev => prev.map(img => img.id === currentId ? {
+        ...img,
+        bubbles: img.bubbles.map(b => b.id === bubbleId ? { ...b, ...finalUpdates } : b)
+    } : img), skipHistory);
 
     if (finalUpdates.autoDetectBackground === true) triggerAutoColorDetection(bubbleId);
   }, [currentId, setImages, triggerAutoColorDetection, historyRef]);
