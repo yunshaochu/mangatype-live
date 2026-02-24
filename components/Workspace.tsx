@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BubbleLayer } from './BubbleLayer';
 import { RegionLayer } from './RegionLayer';
 import { HandleType } from '../types';
@@ -35,6 +35,20 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   const originalImageRef = useRef<HTMLImageElement | null>(null); // Store original image for restoring
   const [isPainting, setIsPainting] = useState(false);
   const lastPos = useRef<{x: number, y: number} | null>(null);
+
+  // --- Zoom / Pan State ---
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const [panX, setPanX] = useState(0);
+  const [panY, setPanY] = useState(0);
+  const spaceHeld = useRef(false);
+  const [isPanMode, setIsPanMode] = useState(false);
+  const isPanningRef = useRef(false);
+  const panStart = useRef<{x: number, y: number, panX: number, panY: number} | null>(null);
+  const panRef = useRef({ x: 0, y: 0 });
+
+  // Keep panRef in sync
+  panRef.current = { x: panX, y: panY };
 
   const lang = aiConfig.language;
   const bubbles = currentImage?.bubbles || [];
@@ -218,6 +232,123 @@ export const Workspace: React.FC<WorkspaceProps> = ({
 
   // --- End Painting Logic ---
 
+  // --- Zoom / Pan Logic ---
+
+  // Reset zoom/pan when switching images
+  useEffect(() => {
+    setZoom(1);
+    setPanX(0);
+    setPanY(0);
+  }, [currentId]);
+
+  // Wheel zoom (anchor to mouse position)
+  useEffect(() => {
+    const handleWheel = (e: WheelEvent) => {
+      // Space + Wheel = canvas zoom
+      if (!spaceHeld.current) return;
+
+      const wrapper = wrapperRef.current;
+      if (!wrapper) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      const rect = wrapper.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      const mouseY = e.clientY - rect.top;
+
+      setZoom(prevZoom => {
+        const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+        const newZoom = Math.min(5, Math.max(0.25, prevZoom * factor));
+
+        // Adjust pan so the point under the mouse stays fixed
+        const { x: curPanX, y: curPanY } = panRef.current;
+        const imgX = (mouseX - curPanX) / prevZoom;
+        const imgY = (mouseY - curPanY) / prevZoom;
+        setPanX(mouseX - imgX * newZoom);
+        setPanY(mouseY - imgY * newZoom);
+
+        return newZoom;
+      });
+    };
+
+    window.addEventListener('wheel', handleWheel, { passive: false });
+    return () => window.removeEventListener('wheel', handleWheel);
+  }, []);
+
+  // Space key for panning mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+        e.preventDefault();
+        if (!e.repeat) {
+          spaceHeld.current = true;
+          setIsPanMode(true);
+        }
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        spaceHeld.current = false;
+        setIsPanMode(false);
+        isPanningRef.current = false;
+        panStart.current = null;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // Pan mouse handlers
+  const handlePanMouseDown = useCallback((e: MouseEvent) => {
+    if (!spaceHeld.current) return;
+    if (!wrapperRef.current?.contains(e.target as Node)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    isPanningRef.current = true;
+    panStart.current = { x: e.clientX, y: e.clientY, panX: panRef.current.x, panY: panRef.current.y };
+  }, []);
+
+  const handlePanMouseMove = useCallback((e: MouseEvent) => {
+    if (!isPanningRef.current || !panStart.current) return;
+    setPanX(panStart.current.panX + (e.clientX - panStart.current.x));
+    setPanY(panStart.current.panY + (e.clientY - panStart.current.y));
+  }, []);
+
+  const handlePanMouseUp = useCallback(() => {
+    isPanningRef.current = false;
+    panStart.current = null;
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('mousedown', handlePanMouseDown, true);
+    window.addEventListener('mousemove', handlePanMouseMove);
+    window.addEventListener('mouseup', handlePanMouseUp);
+    return () => {
+      window.removeEventListener('mousedown', handlePanMouseDown, true);
+      window.removeEventListener('mousemove', handlePanMouseMove);
+      window.removeEventListener('mouseup', handlePanMouseUp);
+    };
+  }, [handlePanMouseDown, handlePanMouseMove, handlePanMouseUp]);
+
+  const resetZoom = () => {
+    setZoom(1);
+    setPanX(0);
+    setPanY(0);
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    // Only reset if clicking the wrapper background, not a child element
+    if (e.target === wrapperRef.current) {
+      resetZoom();
+    }
+  };
+
+  // --- End Zoom / Pan Logic ---
+
   if (!currentImage) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center opacity-30 select-none">
@@ -279,7 +410,11 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   return (
-    <div className="flex-1 overflow-auto flex items-center justify-center p-8 relative bg-[#1a1a1a]">
+    <div
+      ref={wrapperRef}
+      className={`flex-1 overflow-hidden flex items-center justify-center p-8 relative bg-[#1a1a1a] ${isPanMode ? 'cursor-grab' : ''}`}
+      onDoubleClick={handleDoubleClick}
+    >
       
       {/* Layer Tabs */}
       <div className="absolute top-4 left-4 z-50 flex flex-col gap-2">
@@ -319,13 +454,17 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           )}
       </div>
 
-      <div className="relative shadow-2xl inline-block" ref={containerRef} style={{ maxWidth: '100%' }}>
+      <div className="relative shadow-2xl inline-block" ref={containerRef} style={{
+        maxWidth: '100%',
+        transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
+        transformOrigin: '0 0',
+      }}>
         
         {/* Render Logic: Canvas (if Painting AND on Clean layer) OR Image */}
         {showPaintCanvas ? (
             <canvas 
                 ref={paintCanvasRef}
-                className={`max-h-[90vh] max-w-full block select-none relative z-20 cursor-crosshair`} 
+                className={`max-w-full block select-none relative z-20 cursor-crosshair`}
                 onMouseDown={handlePaintStart}
                 onMouseMove={handlePaintMove}
                 onMouseUp={handlePaintEnd}
@@ -335,7 +474,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
             <img
             src={displayUrl}
             alt="Workspace"
-            className="max-h-[90vh] max-w-full block select-none pointer-events-none transition-opacity duration-300"
+            className="max-w-full block select-none pointer-events-none transition-opacity duration-300"
             />
         )}
 
@@ -366,8 +505,8 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           {/* Main Interaction Layer */}
           {!showPaintCanvas && (
               <div
-                className={`absolute inset-0 z-0 pointer-events-auto ${drawTool !== 'none' ? 'cursor-crosshair' : 'cursor-default'}`}
-                onMouseDown={onCanvasMouseDown}
+                className={`absolute inset-0 z-0 pointer-events-auto ${isPanMode ? 'cursor-grab' : drawTool !== 'none' ? 'cursor-crosshair' : 'cursor-default'}`}
+                onMouseDown={(e) => { if (!spaceHeld.current) onCanvasMouseDown(e); }}
               />
           )}
 
@@ -402,6 +541,17 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Zoom Indicator */}
+      {zoom !== 1 && (
+        <button
+          onClick={resetZoom}
+          className="absolute bottom-4 right-4 z-50 px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-gray-900/80 backdrop-blur border border-gray-700 text-gray-300 hover:text-white hover:bg-gray-800 transition-colors cursor-pointer"
+          title={t('zoomReset', lang)}
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+      )}
     </div>
   );
 };

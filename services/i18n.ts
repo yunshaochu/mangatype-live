@@ -196,6 +196,7 @@ export const translations = {
     layerClean: "擦除后",
     layerFinal: "翻译后",
     deleteInpaint: "删除擦除层",
+    zoomReset: "重置缩放",
     // Paint Tool
     brushSize: "画笔大小",
     brushColor: "画笔颜色",
@@ -255,7 +256,7 @@ export const translations = {
         { title: "4. 导出保存", desc: "底部工具栏点击图片图标保存当前页，或点击压缩包图标打包下载所有图片。" }
       ],
       layoutTitle: "界面布局",
-      layoutDesc: "左侧是图库缩略图列表和工具栏，中间是画布工作区，右侧是选中气泡/选区的属性编辑面板。画布上方有三个图层切换按钮：「原图」「擦除后」「翻译后」。",
+      layoutDesc: "左侧是图库缩略图列表和工具栏，中间是画布工作区，右侧是选中气泡/选区的属性编辑面板。画布上方有三个图层切换按钮：「原图」「擦除后」「翻译后」。按住空格键后可滚轮缩放、拖拽平移画布，方便精细调整。",
       // Translate tab
       translateSections: [
         {
@@ -455,14 +456,21 @@ export const translations = {
           title: "气泡编辑",
           items: [
             { key: "ctrl + 鼠标滚轮", desc: "选中气泡后，调整字号大小" },
-            { key: "Alt + 鼠标滚轮", desc: "选中气泡后，调整遮罩大小" },
-            { key: "双击空白处", desc: "取消选中" }
+            { key: "Alt + 鼠标滚轮", desc: "选中气泡后，调整遮罩大小" }
           ]
         },
         {
           title: "画笔工具",
           items: [
             { key: "Alt + 点击画布", desc: "吸取画布上的颜色" }
+          ]
+        },
+        {
+          title: "画布导航",
+          items: [
+            { key: "空格 + 鼠标滚轮", desc: "以鼠标位置为中心缩放画布" },
+            { key: "空格 + 拖拽", desc: "平移画布" },
+            { key: "双击空白处", desc: "重置缩放和平移" }
           ]
         }
       ]
@@ -664,6 +672,7 @@ export const translations = {
     layerClean: "Clean",
     layerFinal: "Translated",
     deleteInpaint: "Delete Inpaint Layer",
+    zoomReset: "Reset Zoom",
     // Paint Tool
     brushSize: "Brush Size",
     brushColor: "Brush Color",
@@ -721,7 +730,7 @@ export const translations = {
         { title: "4. Export", desc: "Use the image icon in the bottom toolbar to save the current page, or the archive icon to download all images as a ZIP." }
       ],
       layoutTitle: "Interface Layout",
-      layoutDesc: "Left side: image gallery thumbnails and toolbar. Center: canvas workspace. Right side: property editor for the selected bubble or mask. Above the canvas are three layer tabs: Original, Clean, and Translated.",
+      layoutDesc: "Left side: image gallery thumbnails and toolbar. Center: canvas workspace. Right side: property editor for the selected bubble or mask. Above the canvas are three layer tabs: Original, Clean, and Translated. Hold Space to scroll-zoom and drag-pan the canvas for precise editing.",
       translateSections: [
         {
           title: "Basic Translation",
@@ -918,14 +927,21 @@ export const translations = {
           title: "Bubble Editing",
           items: [
             { key: "ctrl + Mouse Wheel", desc: "Adjust font size (with bubble selected)" },
-            { key: "Alt + Mouse Wheel", desc: "Adjust mask size (with bubble selected)" },
-            { key: "Double-click empty area", desc: "Deselect" }
+            { key: "Alt + Mouse Wheel", desc: "Adjust mask size (with bubble selected)" }
           ]
         },
         {
           title: "Paint Tool",
           items: [
             { key: "Alt + Click canvas", desc: "Pick color from canvas" }
+          ]
+        },
+        {
+          title: "Canvas Navigation",
+          items: [
+            { key: "Space + Mouse Wheel", desc: "Zoom in/out centered on cursor" },
+            { key: "Space + Drag", desc: "Pan the canvas" },
+            { key: "Double-click empty area", desc: "Reset zoom and pan" }
           ]
         }
       ]
