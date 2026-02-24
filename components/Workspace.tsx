@@ -459,12 +459,12 @@ export const Workspace: React.FC<WorkspaceProps> = ({
         transform: `translate(${panX}px, ${panY}px) scale(${zoom})`,
         transformOrigin: '0 0',
       }}>
-        
+
         {/* Render Logic: Canvas (if Painting AND on Clean layer) OR Image */}
         {showPaintCanvas ? (
-            <canvas 
+            <canvas
                 ref={paintCanvasRef}
-                className={`max-w-full block select-none relative z-20 cursor-crosshair`}
+                className={`max-h-[90vh] max-w-full block select-none relative z-20 cursor-crosshair`}
                 onMouseDown={handlePaintStart}
                 onMouseMove={handlePaintMove}
                 onMouseUp={handlePaintEnd}
@@ -474,7 +474,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
             <img
             src={displayUrl}
             alt="Workspace"
-            className="max-w-full block select-none pointer-events-none transition-opacity duration-300"
+            className="max-h-[90vh] max-w-full block select-none pointer-events-none transition-opacity duration-300"
             />
         )}
 

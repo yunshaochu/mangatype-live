@@ -264,7 +264,7 @@ export const translations = {
         { title: "4. 导出保存", desc: "底部工具栏点击图片图标保存当前页，或点击压缩包图标打包下载所有图片。" }
       ],
       layoutTitle: "界面布局",
-      layoutDesc: "左侧是图库缩略图列表和工具栏，中间是画布工作区，右侧是选中气泡/选区的属性编辑面板。画布上方有三个图层切换按钮：「原图」「擦除后」「翻译后」。按住空格键后可滚轮缩放、拖拽平移画布，方便精细调整。",
+      layoutDesc: "左侧是图库缩略图列表和工具栏，中间是画布工作区，右侧是选中气泡/选区的属性编辑面板。画布上方有三个图层切换按钮：「原图」「擦除后」「翻译后」。按住空格键后可滚轮缩放、拖拽平移画布，方便精细调整。左右侧栏边缘可拖拽调整宽度。",
       // Translate tab
       translateSections: [
         {
@@ -369,7 +369,7 @@ export const translations = {
         },
         {
           title: "右侧编辑面板",
-          desc: "选中气泡后，右侧面板显示所有可编辑属性：",
+          desc: "选中气泡后，右侧面板显示所有可编辑属性，按分组折叠显示：",
           steps: [
             "文字内容 — 直接编辑翻译文本",
             "排版方向 — 横排或竖排",
@@ -379,7 +379,8 @@ export const translations = {
             "文字颜色与描边 — 支持预设组合和自定义颜色",
             "遮罩背景色 — 覆盖原文的底色，支持自动取色和吸管",
             "遮罩形状 — 直角、圆角、椭圆三种，可调圆角半径和羽化程度"
-          ]
+          ],
+          tip: "每个属性分组可以点击标题折叠/展开，方便聚焦当前需要调整的属性。"
         },
         {
           title: "手动添加气泡",
@@ -411,7 +412,11 @@ export const translations = {
         },
         {
           title: "跳过处理",
-          desc: "在图库缩略图上右键可以标记「跳过 API 处理」。被跳过的图片不会被 AI 翻译，但仍会包含在 ZIP 导出中（保留原图）。"
+          desc: "在图库缩略图左上角点击禁止图标可以标记「跳过 API 处理」。被跳过的图片不会被 AI 翻译，但仍会包含在 ZIP 导出中（保留原图）。"
+        },
+        {
+          title: "批量选择",
+          desc: "图库顶栏的勾选图标可进入批量选择模式，也可以用 Ctrl+点击 或 Shift+点击 进入。进入后直接点击缩略图即可勾选/取消勾选，顶部操作栏提供批量删除、批量跳过、批量导出 ZIP 和批量重置状态功能。点击 X 退出批量模式。"
         }
       ],
       // Settings tab
@@ -479,6 +484,13 @@ export const translations = {
             { key: "空格 + 鼠标滚轮", desc: "以鼠标位置为中心缩放画布" },
             { key: "空格 + 拖拽", desc: "平移画布" },
             { key: "双击空白处", desc: "重置缩放和平移" }
+          ]
+        },
+        {
+          title: "图库批量操作",
+          items: [
+            { key: "Ctrl + 点击缩略图", desc: "进入批量模式，切换单张选中" },
+            { key: "Shift + 点击缩略图", desc: "进入批量模式，范围选择" }
           ]
         }
       ]
@@ -746,7 +758,7 @@ export const translations = {
         { title: "4. Export", desc: "Use the image icon in the bottom toolbar to save the current page, or the archive icon to download all images as a ZIP." }
       ],
       layoutTitle: "Interface Layout",
-      layoutDesc: "Left side: image gallery thumbnails and toolbar. Center: canvas workspace. Right side: property editor for the selected bubble or mask. Above the canvas are three layer tabs: Original, Clean, and Translated. Hold Space to scroll-zoom and drag-pan the canvas for precise editing.",
+      layoutDesc: "Left side: image gallery thumbnails and toolbar. Center: canvas workspace. Right side: property editor for the selected bubble or mask. Above the canvas are three layer tabs: Original, Clean, and Translated. Hold Space to scroll-zoom and drag-pan the canvas for precise editing. Sidebar edges can be dragged to resize.",
       translateSections: [
         {
           title: "Basic Translation",
@@ -847,7 +859,7 @@ export const translations = {
         },
         {
           title: "Right Panel Editor",
-          desc: "When a bubble is selected, the right panel shows all editable properties:",
+          desc: "When a bubble is selected, the right panel shows all editable properties in collapsible groups:",
           steps: [
             "Text content — edit the translated text directly",
             "Direction — horizontal or vertical layout",
@@ -857,15 +869,12 @@ export const translations = {
             "Text color & stroke — preset combos and custom colors",
             "Mask background — color behind text, supports auto-detect and eyedropper",
             "Mask shape — rectangle, rounded, or ellipse, with adjustable corner radius and feathering"
-          ]
+          ],
+          tip: "Each property group can be collapsed/expanded by clicking its header, helping you focus on the property you're adjusting."
         },
         {
           title: "Add Bubbles Manually",
           desc: "Switch to the Bubble tool, then click 'Click Add' to create a new bubble at the center, or drag on the canvas to draw one."
-        },
-        {
-          title: "AI Polish",
-          desc: "With a bubble selected, the right panel has 'Dramatic', 'Casual', and 'Translate' AI buttons to restyle the current bubble's text."
         },
         {
           title: "Global Styles",
@@ -892,7 +901,11 @@ export const translations = {
         },
         {
           title: "Skip Processing",
-          desc: "Right-click a gallery thumbnail to mark it as 'Skip API Processing'. Skipped images won't be AI-translated but will still be included in ZIP exports (preserving the original)."
+          desc: "Click the ban icon on a gallery thumbnail's top-left corner to mark it as 'Skip API Processing'. Skipped images won't be AI-translated but will still be included in ZIP exports (preserving the original)."
+        },
+        {
+          title: "Batch Selection",
+          desc: "Click the checkbox icon in the gallery header to enter batch selection mode, or use Ctrl+Click / Shift+Click. In batch mode, simply click thumbnails to check/uncheck them. The top action bar provides batch delete, batch skip, batch export ZIP, and batch reset status. Click X to exit batch mode."
         }
       ],
       settingsSections: [
@@ -958,6 +971,13 @@ export const translations = {
             { key: "Space + Mouse Wheel", desc: "Zoom in/out centered on cursor" },
             { key: "Space + Drag", desc: "Pan the canvas" },
             { key: "Double-click empty area", desc: "Reset zoom and pan" }
+          ]
+        },
+        {
+          title: "Gallery Batch",
+          items: [
+            { key: "Ctrl + Click thumbnail", desc: "Enter batch mode, toggle selection" },
+            { key: "Shift + Click thumbnail", desc: "Enter batch mode, range select" }
           ]
         }
       ]
