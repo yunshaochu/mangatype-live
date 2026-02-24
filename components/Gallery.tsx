@@ -21,6 +21,7 @@ export const Gallery: React.FC<GalleryProps> = ({ onAddFile, onAddFolder }) => {
 
   const [clearStage, setClearStage] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const lang = aiConfig.language || 'zh';
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -151,6 +152,13 @@ export const Gallery: React.FC<GalleryProps> = ({ onAddFile, onAddFolder }) => {
     };
   }, []);
 
+  // Auto-scroll to current thumbnail when currentId changes (e.g. arrow key navigation)
+  useEffect(() => {
+    if (!currentId || !scrollRef.current) return;
+    const el = scrollRef.current.querySelector(`[data-gallery-id="${currentId}"]`) as HTMLElement | null;
+    if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [currentId]);
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Batch action bar */}
@@ -229,11 +237,12 @@ export const Gallery: React.FC<GalleryProps> = ({ onAddFile, onAddFolder }) => {
              </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto p-2 space-y-2 styled-scrollbar">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-2 space-y-2 styled-scrollbar">
             <div className="grid grid-cols-2 gap-2">
             {images.map(img => (
                 <div
                 key={img.id}
+                data-gallery-id={img.id}
                 onClick={(e) => handleThumbnailClick(e, img.id)}
                 className={`relative aspect-[2/3] group rounded overflow-hidden border-2 cursor-pointer transition-all ${
                     selectedIds.has(img.id) ? 'border-blue-500 ring-2 ring-blue-500/30' :
