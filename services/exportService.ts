@@ -410,6 +410,7 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 font-weight: bold;
                 color: ${b.color};
                 writing-mode: ${b.isVertical ? 'vertical-rl' : 'horizontal-tb'};
+                text-orientation: ${b.isVertical ? 'mixed' : 'auto'};
                 white-space: pre;
                 line-height: 1.5;
                 text-align: ${b.isVertical ? 'left' : 'center'};
@@ -417,7 +418,22 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 paint-order: stroke fill;
                 transform: rotate(${b.rotation}deg);
             `;
-            textMeasureEl.textContent = b.text;
+            // For vertical text, wrap each char in a span for per-character measurement
+            const charSpans: HTMLSpanElement[] = [];
+            if (b.isVertical) {
+                b.text.split('').forEach(char => {
+                    if (char === '\n') {
+                        textMeasureEl.appendChild(document.createTextNode('\n'));
+                    } else {
+                        const span = document.createElement('span');
+                        span.textContent = char;
+                        textMeasureEl.appendChild(span);
+                        charSpans.push(span);
+                    }
+                });
+            } else {
+                textMeasureEl.textContent = b.text;
+            }
             measureContainer.appendChild(textMeasureEl);
 
             // Wait for layout
@@ -501,66 +517,33 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
             const lineHeight = fontSize * 1.5;
 
             if (b.isVertical) {
-                // Vertical text
-                const charSpacing = fontSize;
-                const columnSpacing = lineHeight;
-                const maxChars = Math.max(...lines.map(l => l.length));
-                const totalHeight = maxChars > 0 ? (maxChars - 1) * charSpacing : 0;
-                const totalWidth = lines.length > 1 ? (lines.length - 1) * columnSpacing : 0;
+                // Vertical text: use DOM-measured character positions for pixel-perfect rendering
+                // Each char's position was already laid out by CSS (writing-mode + text-orientation: mixed)
 
-                // Draw at measured center position
-                ctx.save();
-                ctx.translate(textCenterX, textCenterY);
-                ctx.rotate((b.rotation * Math.PI) / 180);
+                charSpans.forEach(span => {
+                    const char = span.textContent || '';
+                    const rect = span.getBoundingClientRect();
+                    // Character center in image coordinates
+                    const charCX = rect.left - containerRect.left + rect.width / 2;
+                    const charCY = rect.top - containerRect.top + rect.height / 2;
 
-                // Helper: 省略号和破折号需要旋转90度（变成横点/竖线）
-                const needsRotation = (char: string) => {
-                    return /[…—]/.test(char);
-                };
+                    ctx.save();
+                    ctx.translate(charCX, charCY);
 
-                // Helper: 感叹号和问号需要居中（但不旋转）
-                const needsCentering = (char: string) => {
-                    return /[！？]/.test(char);
-                };
+                    // CSS text-orientation: mixed rotates horizontal scripts 90° CW.
+                    // The DOM layout already positions chars correctly, but Canvas fillText
+                    // always draws upright, so we must rotate for horizontal-script chars.
+                    const isHorizontalScript = /[A-Za-z0-9…—!?@#$%^&*()_+=\[\]{}<>\/\\|~`'";:,.\-]/.test(char);
+                    if (isHorizontalScript) {
+                        ctx.rotate(Math.PI / 2);
+                    }
 
-                lines.forEach((line, lineIdx) => {
-                    const chars = line.split('');
-                    const x = totalWidth / 2 - lineIdx * columnSpacing;
-                    const startY = -totalHeight / 2;
-                    chars.forEach((char, charIdx) => {
-                        const y = startY + charIdx * charSpacing;
-
-                        ctx.save();
-
-                        if (needsRotation(char)) {
-                            // 旋转90度：省略号变横点，破折号变竖线
-                            ctx.translate(x, y);
-                            ctx.rotate(Math.PI / 2);
-
-                            if (b.strokeColor && b.strokeColor !== 'transparent') {
-                                ctx.strokeText(char, 0, 0);
-                            }
-                            ctx.fillText(char, 0, 0);
-                        } else if (needsCentering(char)) {
-                            // 感叹号和问号：不旋转，但居中
-                            const offsetX = fontSize * 0.25; // 增加居中偏移
-
-                            if (b.strokeColor && b.strokeColor !== 'transparent') {
-                                ctx.strokeText(char, x + offsetX, y);
-                            }
-                            ctx.fillText(char, x + offsetX, y);
-                        } else {
-                            // 普通字符
-                            if (b.strokeColor && b.strokeColor !== 'transparent') {
-                                ctx.strokeText(char, x, y);
-                            }
-                            ctx.fillText(char, x, y);
-                        }
-
-                        ctx.restore();
-                    });
+                    if (b.strokeColor && b.strokeColor !== 'transparent') {
+                        ctx.strokeText(char, 0, 0);
+                    }
+                    ctx.fillText(char, 0, 0);
+                    ctx.restore();
                 });
-                ctx.restore();
             } else {
                 // Horizontal text
                 const totalHeight = (lines.length - 1) * lineHeight;
