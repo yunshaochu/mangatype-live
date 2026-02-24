@@ -1,5 +1,5 @@
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { BubbleEditor } from './components/BubbleEditor';
 import { SettingsModal } from './components/SettingsModal';
 import { ManualJsonModal } from './components/ManualJsonModal';
@@ -72,6 +72,37 @@ const App: React.FC = () => {
   // Refs for file inputs (still local to App as they are DOM elements)
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
+
+  // --- Resizable Sidebars ---
+  const [leftWidth, setLeftWidth] = useState(320);
+  const [rightWidth, setRightWidth] = useState(320);
+  const dragSide = useRef<'left' | 'right' | null>(null);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
+
+  const handleDragStart = useCallback((e: React.MouseEvent, side: 'left' | 'right') => {
+    e.preventDefault();
+    dragSide.current = side;
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = side === 'left' ? leftWidth : rightWidth;
+  }, [leftWidth, rightWidth]);
+
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragSide.current) return;
+      const dx = e.clientX - dragStartX.current;
+      const newWidth = Math.min(600, Math.max(200, dragStartWidth.current + (dragSide.current === 'left' ? dx : -dx)));
+      if (dragSide.current === 'left') setLeftWidth(newWidth);
+      else setRightWidth(newWidth);
+    };
+    const handleMouseUp = () => { dragSide.current = null; };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
 
   // 2. Canvas Interaction Hook 
   const { 
@@ -207,7 +238,7 @@ const App: React.FC = () => {
 
   return (
     <div className="flex h-screen bg-gray-900 overflow-hidden">
-      <aside className="w-80 bg-gray-900 border-r border-gray-800 flex flex-col z-20 shadow-2xl shrink-0">
+      <aside className="bg-gray-900 border-r border-gray-800 flex flex-col z-20 shadow-2xl shrink-0" style={{ width: leftWidth }}>
         <div className="p-3 border-b border-gray-800 flex justify-between items-center shrink-0">
           <div><h1 className="text-lg font-bold bg-gradient-to-r from-pink-500 to-purple-500 bg-clip-text text-transparent">{t('appName', lang)}</h1></div>
           <div className="flex items-center gap-1">
@@ -231,6 +262,12 @@ const App: React.FC = () => {
         )}
       </aside>
 
+      {/* Left resize handle */}
+      <div
+        className="w-1 hover:w-1.5 bg-transparent hover:bg-blue-500/50 cursor-col-resize shrink-0 transition-all z-30"
+        onMouseDown={(e) => handleDragStart(e, 'left')}
+      />
+
       <main className="flex-1 relative bg-[#1a1a1a] overflow-hidden flex flex-col">
           <Workspace 
             containerRef={containerRef}
@@ -241,7 +278,13 @@ const App: React.FC = () => {
           />
       </main>
 
-      <aside className="w-80 bg-gray-900 border-l border-gray-800 flex flex-col z-20 shadow-2xl shrink-0 overflow-y-auto custom-scrollbar">
+      {/* Right resize handle */}
+      <div
+        className="w-1 hover:w-1.5 bg-transparent hover:bg-blue-500/50 cursor-col-resize shrink-0 transition-all z-30"
+        onMouseDown={(e) => handleDragStart(e, 'right')}
+      />
+
+      <aside className="bg-gray-900 border-l border-gray-800 flex flex-col z-20 shadow-2xl shrink-0 overflow-y-auto custom-scrollbar" style={{ width: rightWidth }}>
          {selectedBubble && currentId ? (
              <BubbleEditor />
          ) : selectedMaskId && currentId ? (
