@@ -533,8 +533,11 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                     // CSS text-orientation: mixed rotates horizontal scripts 90° CW.
                     // The DOM layout already positions chars correctly, but Canvas fillText
                     // always draws upright, so we must rotate for horizontal-script chars.
+                    // CJK punctuation that has vertical variants (，。、：；！？) also needs
+                    // special handling — CSS uses vertical glyph variants but Canvas doesn't.
                     const isHorizontalScript = /[A-Za-z0-9…—!?@#$%^&*()_+=\[\]{}<>\/\\|~`'";:,.\-]/.test(char);
-                    if (isHorizontalScript) {
+                    const isCJKPunctuation = /[，。、：；「」『』（）【】〈〉《》〔〕｛｝～·]/.test(char);
+                    if (isHorizontalScript || isCJKPunctuation) {
                         ctx.rotate(Math.PI / 2);
                     }
 
