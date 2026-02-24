@@ -4,7 +4,7 @@ import { ImageState, HandleType, AIConfig, Bubble } from '../types';
 import { createBubble, createMaskRegion, clamp, isBubbleInsideMask } from '../utils/editorUtils';
 
 interface DragState {
-    mode: 'move' | 'resize' | 'drawing';
+    mode: 'move' | 'resize' | 'drawing' | 'pending';
     targetType: 'bubble' | 'mask';
     id: string;
     handle?: HandleType;
@@ -65,23 +65,12 @@ export const useCanvasInteraction = ({
         if (!currentImg) return;
 
         if (drawTool === 'bubble') {
-            const newBubble = createBubble(startXPct, startYPct, aiConfig.defaultFontSize, 0, 0);
-            
-            // Check immediate overlap for new bubble (point overlap)
-            const cleanedMasks = (currentImg.maskRegions || []).filter(m => m.isCleaned);
-            const overlaps = cleanedMasks.some(m => isBubbleInsideMask(newBubble.x, newBubble.y, m.x, m.y, m.width, m.height));
-            if (overlaps) {
-                newBubble.backgroundColor = 'transparent';
-                newBubble.autoDetectBackground = false;
-            }
-
-            updateImageBubbles(currentId, [...currentImg.bubbles, newBubble]);
-            setSelectedBubbleId(newBubble.id);
+            setSelectedBubbleId(null);
             setSelectedMaskId(null);
             dragRef.current = {
-                mode: 'drawing',
+                mode: 'pending',
                 targetType: 'bubble',
-                id: newBubble.id,
+                id: '', // Will be assigned when object is created
                 startX: e.clientX, startY: e.clientY,
                 startBx: startXPct, startBy: startYPct,
                 startBw: 0, startBh: 0,
@@ -90,15 +79,12 @@ export const useCanvasInteraction = ({
                 hasMoved: false
             };
         } else if (drawTool === 'mask' || (drawTool === 'brush' && paintMode === 'box')) {
-            // Allow mask creation in Mask mode OR Paint mode (Box sub-mode)
-            const newMask = createMaskRegion(startXPct, startYPct);
-            setImages(prev => prev.map(img => img.id === currentId ? { ...img, maskRegions: [...(img.maskRegions || []), newMask] } : img), true);
-            setSelectedMaskId(newMask.id);
             setSelectedBubbleId(null);
+            setSelectedMaskId(null);
             dragRef.current = {
-                mode: 'drawing',
+                mode: 'pending',
                 targetType: 'mask',
-                id: newMask.id,
+                id: '',
                 startX: e.clientX, startY: e.clientY,
                 startBx: startXPct, startBy: startYPct,
                 startBw: 0, startBh: 0,
@@ -197,6 +183,33 @@ export const useCanvasInteraction = ({
         const dyPx = e.clientY - startY;
         
         if (Math.abs(dxPx) > 1 || Math.abs(dyPx) > 1) dragRef.current.hasMoved = true;
+
+        // Pending → Drawing: create the object on first real drag
+        if (mode === 'pending' && dragRef.current.hasMoved) {
+            if (targetType === 'bubble') {
+                const newBubble = createBubble(startBx, startBy, aiConfig.defaultFontSize, 0, 0);
+                setImages(prev => {
+                    const img = prev.find(i => i.id === currentId);
+                    if (!img) return prev;
+                    const cleanedMasks = (img.maskRegions || []).filter(m => m.isCleaned);
+                    if (cleanedMasks.some(m => isBubbleInsideMask(newBubble.x, newBubble.y, m.x, m.y, m.width, m.height))) {
+                        newBubble.backgroundColor = 'transparent';
+                        newBubble.autoDetectBackground = false;
+                    }
+                    return prev.map(p => p.id === currentId ? { ...p, bubbles: [...p.bubbles, newBubble] } : p);
+                }, true);
+                setSelectedBubbleId(newBubble.id);
+                dragRef.current.mode = 'drawing';
+                dragRef.current.id = newBubble.id;
+            } else {
+                const newMask = createMaskRegion(startBx, startBy);
+                setImages(prev => prev.map(img => img.id === currentId ? { ...img, maskRegions: [...(img.maskRegions || []), newMask] } : img), true);
+                setSelectedMaskId(newMask.id);
+                dragRef.current.mode = 'drawing';
+                dragRef.current.id = newMask.id;
+            }
+            return; // Process drawing on next frame
+        }
 
         const checkOverlap = (bubble: Bubble, maskRegions: any[]) => {
             const cleanedMasks = maskRegions.filter(m => m.isCleaned);
@@ -317,6 +330,9 @@ export const useCanvasInteraction = ({
         dragRef.current = null;
 
         const { id, mode, targetType, initialSnapshot, hasMoved } = dragData;
+
+        // Pending mode: click without drag, nothing to do
+        if (mode === 'pending') return;
 
         // Cleanup empty drawn items
         if (mode === 'drawing') {
