@@ -23,11 +23,6 @@ export const translations = {
     deleteBubble: "删除气泡",
     content: "内容",
     enterText: "输入文本...",
-    aiAssistant: "AI 助手",
-    aiThinking: "AI 思考中...",
-    dramatic: "戏剧化",
-    casual: "口语化",
-    translate: "翻译",
     maskGeometry: "遮罩形状",
     width: "宽",
     height: "高",
@@ -380,10 +375,6 @@ export const translations = {
           desc: "切换到 Bubble 工具后，可以点击「点击添加」按钮在画布中央创建一个新气泡，也可以直接在画布上拖拽绘制。"
         },
         {
-          title: "AI 润色",
-          desc: "选中气泡后，右侧面板有「戏剧化」「口语化」「翻译」三个 AI 按钮，可以对当前气泡的文字进行风格化处理。"
-        },
-        {
           title: "全局样式",
           desc: "底部工具栏的调色板图标可以打开全局样式面板，批量调整当前页所有气泡的字号大小、遮罩大小和字体。"
         },
@@ -498,11 +489,6 @@ export const translations = {
     deleteBubble: "Delete Bubble",
     content: "Content",
     enterText: "Enter text...",
-    aiAssistant: "AI Assistant",
-    aiThinking: "AI thinking...",
-    dramatic: "Dramatic",
-    casual: "Casual",
-    translate: "Translate",
     maskGeometry: "Mask Geometry",
     width: "Width",
     height: "Height",

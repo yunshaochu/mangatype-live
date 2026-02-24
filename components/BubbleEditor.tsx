@@ -1,9 +1,8 @@
 
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { FONTS, mergeEndpointConfig } from '../types';
-import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, Sparkles, RotateCw, Maximize2, Palette, Minus, Plus, Pipette, Hash, Ban, Square, Circle, Box, BringToFront, SendToBack, ChevronUp, ChevronDown } from 'lucide-react';
-import { polishDialogue } from '../services/geminiService';
+import React, { useRef, useEffect, useCallback } from 'react';
+import { FONTS } from '../types';
+import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, RotateCw, Maximize2, Palette, Minus, Plus, Pipette, Hash, Ban, Square, Circle, Box, BringToFront, SendToBack, ChevronUp, ChevronDown } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 
@@ -27,7 +26,6 @@ const TEXT_COLOR_PRESETS = [
 
 export const BubbleEditor: React.FC = () => {
   const { currentImage, selectedBubbleId, updateBubble, deleteCurrentSelection, aiConfig, reorderBubble, setHistory, historyRef } = useProjectContext();
-  const [isAiLoading, setIsAiLoading] = useState(false);
   const lang = aiConfig.language || 'zh';
 
   // Debounced history commit for text editing
@@ -70,21 +68,6 @@ export const BubbleEditor: React.FC = () => {
 
   if (!bubble) return null;
 
-  const handleAiPolish = async (style: 'dramatic' | 'casual' | 'english') => {
-    if (!bubble.text.trim()) return;
-    setIsAiLoading(true);
-    try {
-      const firstEndpoint = (aiConfig.endpoints || []).find(ep => ep.enabled);
-      const effectiveConfig = firstEndpoint ? mergeEndpointConfig(aiConfig, firstEndpoint) : aiConfig;
-      const newText = await polishDialogue(bubble.text, style, effectiveConfig);
-      updateBubble(bubble.id, { text: newText });
-    } catch (e) {
-      console.error("AI Request Failed", e);
-    } finally {
-      setIsAiLoading(false);
-    }
-  };
-  
   const isAutoDetectEnabled = bubble.autoDetectBackground ?? aiConfig.autoDetectBackground ?? false;
 
   const currentShape = bubble.maskShape || aiConfig.defaultMaskShape || 'ellipse';
@@ -203,37 +186,6 @@ export const BubbleEditor: React.FC = () => {
             rows={5}
             placeholder={t('enterText', lang)}
           />
-        </div>
-
-        {/* AI Tools */}
-        <div className="space-y-2">
-          <label className="text-xs text-gray-500 font-medium uppercase tracking-wide flex items-center gap-1">
-            <Sparkles size={12} className="text-purple-400" /> {t('aiAssistant', lang)}
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            <button 
-              disabled={isAiLoading}
-              onClick={() => handleAiPolish('dramatic')}
-              className="px-2 py-2 bg-purple-900/20 border border-purple-800/50 hover:bg-purple-800/40 text-xs rounded text-purple-200 transition-colors"
-            >
-              {t('dramatic', lang)}
-            </button>
-            <button 
-               disabled={isAiLoading}
-              onClick={() => handleAiPolish('casual')}
-              className="px-2 py-2 bg-blue-900/20 border border-blue-800/50 hover:bg-blue-800/40 text-xs rounded text-blue-200 transition-colors"
-            >
-              {t('casual', lang)}
-            </button>
-            <button 
-               disabled={isAiLoading}
-              onClick={() => handleAiPolish('english')}
-              className="px-2 py-2 bg-green-900/20 border border-green-800/50 hover:bg-green-800/40 text-xs rounded text-green-200 transition-colors"
-            >
-              {t('translate', lang)}
-            </button>
-          </div>
-          {isAiLoading && <div className="text-xs text-center text-gray-500 animate-pulse mt-1">{t('aiThinking', lang)}</div>}
         </div>
 
         <div className="h-px bg-gray-800"></div>
