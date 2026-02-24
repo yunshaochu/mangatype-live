@@ -51,7 +51,7 @@ export const useCanvasInteraction = ({
     const getCurrentImage = () => images.find(img => img.id === currentId);
 
     const updateImageBubbles = (imgId: string, newBubbles: Bubble[]) => {
-        setImages(prev => prev.map(img => img.id === imgId ? { ...img, bubbles: newBubbles } : img));
+        setImages(prev => prev.map(img => img.id === imgId ? { ...img, bubbles: newBubbles } : img), true);
     };
 
     const handleCanvasMouseDown = (e: React.MouseEvent) => {
@@ -91,7 +91,7 @@ export const useCanvasInteraction = ({
         } else if (drawTool === 'mask' || (drawTool === 'brush' && paintMode === 'box')) {
             // Allow mask creation in Mask mode OR Paint mode (Box sub-mode)
             const newMask = createMaskRegion(startXPct, startYPct);
-            setImages(prev => prev.map(img => img.id === currentId ? { ...img, maskRegions: [...(img.maskRegions || []), newMask] } : img));
+            setImages(prev => prev.map(img => img.id === currentId ? { ...img, maskRegions: [...(img.maskRegions || []), newMask] } : img), true);
             setSelectedMaskId(newMask.id);
             setSelectedBubbleId(null);
             dragRef.current = {
@@ -195,7 +195,7 @@ export const useCanvasInteraction = ({
         const dxPx = e.clientX - startX;
         const dyPx = e.clientY - startY;
         
-        if (Math.abs(dxPx) > 1 || Math.abs(dyPx) > 1) dragRef.current.hasMoved = true;
+        if (Math.abs(dxPx) > 3 || Math.abs(dyPx) > 3) dragRef.current.hasMoved = true;
 
         const checkOverlap = (bubble: Bubble, maskRegions: any[]) => {
             const cleanedMasks = maskRegions.filter(m => m.isCleaned);
