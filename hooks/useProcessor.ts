@@ -16,12 +16,18 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
     const [processingType, setProcessingType] = useState<'translate' | 'scan' | 'inpaint' | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
 
+    const maxRetries = aiConfig.maxRetries || 0;
+
     // --- Core Logic: Process a Single Image (Translate/Bubble) ---
     const runDetectionForImage = async (img: ImageState, signal?: AbortSignal, configOverride?: AIConfig) => {
         const effectiveConfig = configOverride || aiConfig;
-        setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing', errorMessage: undefined } : p));
+        const retries = effectiveConfig.maxRetries || maxRetries;
 
-        try {
+        for (let attempt = 0; attempt <= retries; attempt++) {
+            if (signal?.aborted) return;
+            setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing', errorMessage: attempt > 0 ? `Retry ${attempt}/${retries}...` : undefined } : p));
+
+            try {
             // Always use original image for detection analysis
             let sourceBase64 = img.originalBase64 || img.base64;
             const useMaskedImage = effectiveConfig.enableMaskedImageMode && img.maskRegions && img.maskRegions.length > 0;
@@ -127,91 +133,104 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                 bubbles: useMaskedImage ? [...p.bubbles, ...processedBubbles] : processedBubbles,
                 status: 'done'
             } : p));
+            return; // Success, exit retry loop
 
         } catch (e: any) {
-            if (e.message && e.message.includes('Aborted')) { 
-                setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'idle', errorMessage: undefined } : p)); 
-                return; 
+            if (e.message && e.message.includes('Aborted')) {
+                setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'idle', errorMessage: undefined } : p));
+                return;
             }
-            console.error("AI Error for " + img.name, e);
+            console.error(`AI Error for ${img.name} (attempt ${attempt + 1}/${retries + 1})`, e);
+            if (attempt < retries) {
+                // Wait before retry (exponential backoff: 1s, 2s, 4s...)
+                await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+                continue;
+            }
             setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'error', errorMessage: e.message || 'Unknown error occurred' } : p));
         }
+        } // end retry loop
     };
 
     // --- Core Logic: Inpaint a Single Image ---
     // Updated: Supports filtering mask generation by method='inpaint'
     const runInpaintingForImage = async (img: ImageState, signal?: AbortSignal, options: { onlyInpaintMethod?: boolean } = {}) => {
         if (!aiConfig.enableInpainting || !aiConfig.inpaintingUrl) return;
-        
+
         const onlyInpaintMethod = options.onlyInpaintMethod || false;
-        
+
         // Check availability of masks (Filtered if necessary)
-        const relevantMasks = onlyInpaintMethod 
+        const relevantMasks = onlyInpaintMethod
             ? (img.maskRegions || []).filter(m => m.method === 'inpaint')
             : (img.maskRegions || []);
 
         if (relevantMasks.length === 0) return;
 
-        setImages(prev => prev.map(p => p.id === img.id ? { ...p, inpaintingStatus: 'processing' } : p));
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            if (signal?.aborted) return;
+            setImages(prev => prev.map(p => p.id === img.id ? { ...p, inpaintingStatus: 'processing' } : p));
 
-        try {
-            // Iterative Inpaint: Use existing inpainted image as source if available, otherwise original
-            const sourceBase64 = img.inpaintedBase64 || img.originalBase64 || img.base64;
-            
-            // Generate mask: Pass the onlyInpaintMethod flag
-            const maskBase64 = await generateInpaintMask(img, { useRefinedMask: false, onlyInpaintMethod });
-            
-            const cleanedBase64Raw = await inpaintImage(
-                aiConfig.inpaintingUrl,
-                sourceBase64,
-                maskBase64,
-                aiConfig.inpaintingModel
-            );
+            try {
+                // Iterative Inpaint: Use existing inpainted image as source if available, otherwise original
+                const sourceBase64 = img.inpaintedBase64 || img.originalBase64 || img.base64;
 
-            if (signal?.aborted) throw new Error("Aborted");
+                // Generate mask: Pass the onlyInpaintMethod flag
+                const maskBase64 = await generateInpaintMask(img, { useRefinedMask: false, onlyInpaintMethod });
 
-            const cleanedBase64 = cleanedBase64Raw.startsWith('data:') 
-                ? cleanedBase64Raw 
-                : `data:image/png;base64,${cleanedBase64Raw}`;
+                const cleanedBase64Raw = await inpaintImage(
+                    aiConfig.inpaintingUrl,
+                    sourceBase64,
+                    maskBase64,
+                    aiConfig.inpaintingModel
+                );
 
-            // We need to mark only the relevant masks as cleaned
-            const affectedMaskIds = new Set(relevantMasks.map(m => m.id));
+                if (signal?.aborted) throw new Error("Aborted");
 
-            setImages(prev => prev.map(p => {
-                if (p.id !== img.id) return p;
-                
-                // Update specific masks to clean
-                const newMasks = (p.maskRegions || []).map(m => affectedMaskIds.has(m.id) ? { ...m, isCleaned: true } : m);
-                
-                // Update bubbles overlapping with newly cleaned masks
-                const newBubbles = p.bubbles.map(b => {
-                    const overlaps = relevantMasks.some(mask => isBubbleInsideMask(b.x, b.y, mask.x, mask.y, mask.width, mask.height));
-                    if (overlaps) {
-                        return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
-                    }
-                    return b;
-                });
+                const cleanedBase64 = cleanedBase64Raw.startsWith('data:')
+                    ? cleanedBase64Raw
+                    : `data:image/png;base64,${cleanedBase64Raw}`;
 
-                return {
-                    ...p,
-                    inpaintedBase64: cleanedBase64.replace(/^data:image\/\w+;base64,/, ""),
-                    inpaintedUrl: cleanedBase64,
-                    // If view was on "Final" (using url/base64), update them to point to new clean version?
-                    // For now, let the Workspace logic handle "which to show", but update bubbles
-                    bubbles: newBubbles,
-                    maskRegions: newMasks,
-                    inpaintingStatus: 'done'
-                };
-            }));
+                // We need to mark only the relevant masks as cleaned
+                const affectedMaskIds = new Set(relevantMasks.map(m => m.id));
 
-        } catch (e: any) {
-            if (e.message?.includes('Aborted')) {
-                setImages(prev => prev.map(p => p.id === img.id ? { ...p, inpaintingStatus: 'idle' } : p));
-                return;
+                setImages(prev => prev.map(p => {
+                    if (p.id !== img.id) return p;
+
+                    // Update specific masks to clean
+                    const newMasks = (p.maskRegions || []).map(m => affectedMaskIds.has(m.id) ? { ...m, isCleaned: true } : m);
+
+                    // Update bubbles overlapping with newly cleaned masks
+                    const newBubbles = p.bubbles.map(b => {
+                        const overlaps = relevantMasks.some(mask => isBubbleInsideMask(b.x, b.y, mask.x, mask.y, mask.width, mask.height));
+                        if (overlaps) {
+                            return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
+                        }
+                        return b;
+                    });
+
+                    return {
+                        ...p,
+                        inpaintedBase64: cleanedBase64.replace(/^data:image\/\w+;base64,/, ""),
+                        inpaintedUrl: cleanedBase64,
+                        bubbles: newBubbles,
+                        maskRegions: newMasks,
+                        inpaintingStatus: 'done'
+                    };
+                }));
+                return; // Success, exit retry loop
+
+            } catch (e: any) {
+                if (e.message?.includes('Aborted')) {
+                    setImages(prev => prev.map(p => p.id === img.id ? { ...p, inpaintingStatus: 'idle' } : p));
+                    return;
+                }
+                console.error(`Inpaint Error for ${img.name} (attempt ${attempt + 1}/${maxRetries + 1})`, e);
+                if (attempt < maxRetries) {
+                    await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+                    continue;
+                }
+                setImages(prev => prev.map(p => p.id === img.id ? { ...p, inpaintingStatus: 'error' } : p));
             }
-            console.error("Inpaint Error for " + img.name, e);
-            setImages(prev => prev.map(p => p.id === img.id ? { ...p, inpaintingStatus: 'error' } : p));
-        }
+        } // end retry loop
     };
 
     // --- Batch Managers ---
@@ -388,36 +407,44 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                 const chunk = targets.slice(i, i + batchSize);
 
                 await Promise.all(chunk.map(async (img) => {
-                    setImages(prev => prev.map(p => p.id === img.id ? { ...p, detectionStatus: 'processing' } : p));
-                    try {
-                        const data = await fetchRawDetectedRegions(img.originalBase64 || img.base64, aiConfig.textDetectionApiUrl!);
+                    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+                        if (controller.signal.aborted) return;
+                        setImages(prev => prev.map(p => p.id === img.id ? { ...p, detectionStatus: 'processing' } : p));
+                        try {
+                            const data = await fetchRawDetectedRegions(img.originalBase64 || img.base64, aiConfig.textDetectionApiUrl!);
 
-                        // Process Rects (Expansion Logic)
-                        const expansion = aiConfig.detectionExpansionRatio || 0;
-                        const expandedRegions = data.rects.map(r => {
-                            const w = r.width * (1 + expansion);
-                            const h = r.height * (1 + expansion);
-                            return { ...r, width: w, height: h };
-                        });
+                            // Process Rects (Expansion Logic)
+                            const expansion = aiConfig.detectionExpansionRatio || 0;
+                            const expandedRegions = data.rects.map(r => {
+                                const w = r.width * (1 + expansion);
+                                const h = r.height * (1 + expansion);
+                                return { ...r, width: w, height: h };
+                            });
 
-                        const maskRegions: MaskRegion[] = expandedRegions.map(r => ({
-                            id: crypto.randomUUID(),
-                            x: r.x, y: r.y, width: r.width, height: r.height,
-                            method: 'fill' // Default local detection to fill
-                        }));
+                            const maskRegions: MaskRegion[] = expandedRegions.map(r => ({
+                                id: crypto.randomUUID(),
+                                x: r.x, y: r.y, width: r.width, height: r.height,
+                                method: 'fill' // Default local detection to fill
+                            }));
 
-                        // Process Mask (Refined Pixel Mask) - We store it but don't use it for auto-inpaint anymore
-                        const maskRefinedBase64 = data.maskBase64;
+                            // Process Mask (Refined Pixel Mask) - We store it but don't use it for auto-inpaint anymore
+                            const maskRefinedBase64 = data.maskBase64;
 
-                        setImages(prev => prev.map(p => p.id === img.id ? {
-                            ...p,
-                            maskRegions: [...(p.maskRegions || []), ...maskRegions],
-                            maskRefinedBase64: maskRefinedBase64,
-                            detectionStatus: 'done'
-                        } : p));
-                    } catch (e) {
-                        console.error(e);
-                        setImages(prev => prev.map(p => p.id === img.id ? { ...p, detectionStatus: 'error' } : p));
+                            setImages(prev => prev.map(p => p.id === img.id ? {
+                                ...p,
+                                maskRegions: [...(p.maskRegions || []), ...maskRegions],
+                                maskRefinedBase64: maskRefinedBase64,
+                                detectionStatus: 'done'
+                            } : p));
+                            return; // Success
+                        } catch (e) {
+                            console.error(`Scan error for ${img.name} (attempt ${attempt + 1}/${maxRetries + 1})`, e);
+                            if (attempt < maxRetries) {
+                                await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+                                continue;
+                            }
+                            setImages(prev => prev.map(p => p.id === img.id ? { ...p, detectionStatus: 'error' } : p));
+                        }
                     }
                 }));
             }

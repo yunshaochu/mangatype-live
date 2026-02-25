@@ -201,6 +201,10 @@ export interface AIConfig {
   defaultMaskShape: 'rectangle' | 'rounded' | 'ellipse';
   defaultMaskCornerRadius: number;
   defaultMaskFeather: number;
+
+  // Processing
+  concurrency?: number; // User-configurable concurrency for non-translation tasks (default 1)
+  maxRetries?: number; // Auto-retry count on failure (default 0)
 }
 
 // Add EyeDropper API type definition

@@ -12,7 +12,7 @@ export const ControlPanel: React.FC = () => {
   const {
     currentImage, images, setImages,
     currentId, setSelectedBubbleId, setSelectedMaskId, updateImageBubbles,
-    aiConfig,
+    aiConfig, setAiConfig,
     // Processing state
     isProcessingBatch, processingType, handleBatchProcess, handleResetStatus, stopProcessing, handleLocalDetectionScan, handleBatchInpaint,
     // UI state
@@ -420,9 +420,33 @@ export const ControlPanel: React.FC = () => {
             >
               <Palette size={16} />
             </button>
-            <div className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 border border-gray-700" title={lang === 'zh' ? `并发数 = ${(aiConfig?.endpoints || []).filter((ep: any) => ep.enabled).length || 1} 个启用端点` : `Concurrency = ${(aiConfig?.endpoints || []).filter((ep: any) => ep.enabled).length || 1} active endpoint(s)`}>
+            <div className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 border border-gray-700" title={lang === 'zh' ? `并发数（翻译按端点数，其他任务按此值）` : `Concurrency (translation uses endpoint count, other tasks use this value)`}>
               <Zap size={10} className="text-yellow-500" />
-              <span className="text-[10px] text-center text-gray-300 w-8">{(aiConfig?.endpoints || []).filter((ep: any) => ep.enabled).length || 1}</span>
+              <input
+                type="number"
+                min={1}
+                max={20}
+                value={concurrency}
+                onChange={(e) => {
+                  const v = Math.max(1, Math.min(20, parseInt(e.target.value) || 1));
+                  setConcurrency(v);
+                }}
+                className="w-8 bg-transparent text-[10px] text-center text-gray-300 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+            </div>
+            <div className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 border border-gray-700" title={lang === 'zh' ? `失败自动重试次数` : `Auto-retry count on failure`}>
+              <RefreshCw size={10} className="text-blue-400" />
+              <input
+                type="number"
+                min={0}
+                max={10}
+                value={aiConfig.maxRetries || 0}
+                onChange={(e) => {
+                  const v = Math.max(0, Math.min(10, parseInt(e.target.value) || 0));
+                  setAiConfig({ ...aiConfig, maxRetries: v });
+                }}
+                className="w-8 bg-transparent text-[10px] text-center text-gray-300 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
             </div>
           </div>
 

@@ -244,7 +244,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [showSettings, setShowSettings] = useState(false);
   const [showManualJson, setShowManualJson] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [concurrency, setConcurrency] = useState(1);
+  const [concurrency, setConcurrency] = useState(aiConfig.concurrency || 1);
+
+  // Sync concurrency to aiConfig for persistence
+  const handleSetConcurrency = (n: number) => {
+    setConcurrency(n);
+    setAiConfig({ ...aiConfig, concurrency: n });
+  };
   const [isMerging, setIsMerging] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
   const [zipProgress, setZipProgress] = useState({ current: 0, total: 0 });
@@ -648,7 +654,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     showSettings, setShowSettings,
     showManualJson, setShowManualJson,
     showHelp, setShowHelp,
-    concurrency, setConcurrency,
+    concurrency, setConcurrency: handleSetConcurrency,
     isMerging, setIsMerging,
     isZipping, setIsZipping,
     zipProgress, setZipProgress,
