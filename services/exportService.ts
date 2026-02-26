@@ -13,6 +13,103 @@ const escapeHtml = (unsafe: string) => {
          .replace(/'/g, "&#039;");
 };
 
+// Google Fonts CSS URL (same as index.html)
+const GOOGLE_FONTS_CSS_URL = 'https://fonts.googleapis.com/css2?family=Zhi+Mang+Xing&family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@400;700;900&family=Noto+Serif+SC:wght@400;700&family=ZCOOL+KuaiLe&family=ZCOOL+XiaoWei&family=Long+Cang&family=Liu+Jian+Mao+Cao&display=swap';
+
+// Cache: parsed @font-face blocks keyed by font-family name
+let _fontFaceBlocksCache: Map<string, string[]> | null = null;
+// Cache: already-fetched woff2 URLs → base64 data URLs
+const _woff2DataUrlCache = new Map<string, string>();
+
+/** Parse Google Fonts CSS into a map of font-family → [@font-face blocks] */
+const getFontFaceBlocks = async (): Promise<Map<string, string[]>> => {
+    if (_fontFaceBlocksCache) return _fontFaceBlocksCache;
+
+    const cssResponse = await fetch(GOOGLE_FONTS_CSS_URL).catch(() => null);
+    if (!cssResponse || !cssResponse.ok) {
+        console.warn('Failed to fetch Google Fonts CSS for inlining');
+        return new Map();
+    }
+
+    const cssText = await cssResponse.text();
+    const blockRegex = /@font-face\s*\{[^}]+\}/g;
+    const familyRegex = /font-family:\s*'([^']+)'/;
+    const map = new Map<string, string[]>();
+
+    let m;
+    while ((m = blockRegex.exec(cssText)) !== null) {
+        const block = m[0];
+        const familyMatch = familyRegex.exec(block);
+        if (familyMatch) {
+            const family = familyMatch[1];
+            if (!map.has(family)) map.set(family, []);
+            map.get(family)!.push(block);
+        }
+    }
+
+    _fontFaceBlocksCache = map;
+    return map;
+};
+
+/** Fetch a woff2 URL and return base64 data URL (with caching) */
+const fetchWoff2AsDataUrl = async (url: string): Promise<string | null> => {
+    if (_woff2DataUrlCache.has(url)) return _woff2DataUrlCache.get(url)!;
+    try {
+        const resp = await fetch(url);
+        if (!resp.ok) return null;
+        const blob = await resp.blob();
+        const dataUrl = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+        });
+        _woff2DataUrlCache.set(url, dataUrl);
+        return dataUrl;
+    } catch {
+        return null;
+    }
+};
+
+/**
+ * Build inlined @font-face CSS for only the given font families.
+ * Fetches and base64-encodes only the woff2 files actually needed.
+ */
+const getInlinedFontCSS = async (usedFamilies: Set<string>): Promise<string> => {
+    const blocks = await getFontFaceBlocks();
+    if (blocks.size === 0) return '';
+
+    const neededBlocks: string[] = [];
+    for (const family of usedFamilies) {
+        const familyBlocks = blocks.get(family);
+        if (familyBlocks) neededBlocks.push(...familyBlocks);
+    }
+    if (neededBlocks.length === 0) return '';
+
+    // Collect all woff2 URLs from needed blocks
+    const urlRegex = /url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/g;
+    const urlsToFetch = new Set<string>();
+    for (const block of neededBlocks) {
+        let m;
+        while ((m = urlRegex.exec(block)) !== null) {
+            urlsToFetch.add(m[1]);
+        }
+    }
+
+    // Fetch all needed woff2 files in parallel
+    await Promise.all([...urlsToFetch].map(fetchWoff2AsDataUrl));
+
+    // Replace URLs with cached base64 data URLs
+    let css = neededBlocks.join('\n');
+    for (const url of urlsToFetch) {
+        const dataUrl = _woff2DataUrlCache.get(url);
+        if (dataUrl) {
+            css = css.replaceAll(`url(${url})`, `url(${dataUrl})`);
+        }
+    }
+
+    return css;
+};
+
 // Helper to load image object from URL
 const loadImage = (url: string): Promise<HTMLImageElement> => {
     return new Promise((resolve, reject) => {
@@ -825,14 +922,15 @@ export const downloadAllAsZip = async (
 export const compositeImageWithScreenshot = async (imageState: ImageState, options?: ExportOptions): Promise<Blob | null> => {
     const { width, height, bubbles } = imageState;
 
-    // Ensure fonts are loaded before rendering
-    await document.fonts.ready;
-    const uniqueFonts = [...new Set(FONTS.map(f => f.googleFontName))];
-    await Promise.all(
-        uniqueFonts.map(fontName =>
-            document.fonts.load(`bold 48px '${fontName}'`).catch(() => {})
-        )
-    );
+    // Collect font families actually used by this image's bubbles
+    const usedFamilies = new Set<string>();
+    for (const b of bubbles) {
+        const font = FONTS.find(f => f.id === b.fontFamily);
+        if (font) usedFamilies.add(font.googleFontName);
+    }
+
+    // Inline only the needed @font-face as base64 for domToPng compatibility
+    const inlinedFontCSS = await getInlinedFontCSS(usedFamilies);
 
     // 1. Create hidden wrapper (off-screen) and inner container (relative for overlay positioning)
     const wrapper = document.createElement('div');
@@ -851,6 +949,12 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
     wrapper.appendChild(container);
 
     try {
+        // Inject inlined font CSS into the container
+        if (inlinedFontCSS) {
+            const styleEl = document.createElement('style');
+            styleEl.textContent = inlinedFontCSS;
+            container.appendChild(styleEl);
+        }
         // 2. Background image — convert to base64 data URL for modern-screenshot compatibility
         const bgSrc = imageState.inpaintedUrl || imageState.originalUrl || imageState.url || `data:image/png;base64,${imageState.base64}`;
         let bgDataUrl: string;
