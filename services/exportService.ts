@@ -421,16 +421,21 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
             // For vertical text, wrap each char in a span for per-character measurement
             const charSpans: HTMLSpanElement[] = [];
             if (b.isVertical) {
+                // Use an inner block container so that \n (with white-space:pre)
+                // actually creates column breaks inside the flex parent
+                const innerBlock = document.createElement('div');
+                innerBlock.style.cssText = 'white-space: pre; writing-mode: vertical-rl; text-orientation: mixed; line-height: 1.5;';
                 b.text.split('').forEach(char => {
                     if (char === '\n') {
-                        textMeasureEl.appendChild(document.createTextNode('\n'));
+                        innerBlock.appendChild(document.createTextNode('\n'));
                     } else {
                         const span = document.createElement('span');
                         span.textContent = char;
-                        textMeasureEl.appendChild(span);
+                        innerBlock.appendChild(span);
                         charSpans.push(span);
                     }
                 });
+                textMeasureEl.appendChild(innerBlock);
             } else {
                 textMeasureEl.textContent = b.text;
             }
