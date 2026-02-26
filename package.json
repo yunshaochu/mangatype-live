@@ -9,11 +9,12 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "lucide-react": "^0.563.0",
-    "react-dom": "^19.2.3",
     "@google/genai": "^1.38.0",
+    "jszip": "^3.10.1",
+    "lucide-react": "^0.563.0",
+    "modern-screenshot": "^4.6.8",
     "react": "^19.2.3",
-    "jszip": "^3.10.1"
+    "react-dom": "^19.2.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

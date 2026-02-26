@@ -6,7 +6,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { X, Trash2, CheckCircle, Loader2, XCircle, Ban, FilePlus, FolderPlus, ScanText, AlertTriangle, Eraser, Check, Download, RefreshCw, CheckSquare } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
-import { downloadAllAsZip } from '../services/exportService';
+import { downloadAllAsZip, ExportOptions } from '../services/exportService';
 
 interface GalleryProps {
   onAddFile: () => void;
@@ -114,7 +114,12 @@ export const Gallery: React.FC<GalleryProps> = ({ onAddFile, onAddFolder }) => {
   const handleBatchExport = async () => {
     const selectedImages = images.filter(i => selectedIds.has(i.id));
     if (selectedImages.length === 0) return;
-    await downloadAllAsZip(selectedImages);
+    await downloadAllAsZip(selectedImages, undefined, {
+        defaultMaskShape: aiConfig.defaultMaskShape,
+        defaultMaskCornerRadius: aiConfig.defaultMaskCornerRadius,
+        defaultMaskFeather: aiConfig.defaultMaskFeather,
+        exportMethod: aiConfig.exportMethod || 'canvas',
+    });
   };
 
   const handleBatchResetStatus = () => {

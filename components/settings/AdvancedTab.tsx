@@ -1,5 +1,5 @@
 import React from 'react';
-import { Pipette, RotateCw, PenTool, RotateCcw, Palette } from 'lucide-react';
+import { Pipette, RotateCw, PenTool, RotateCcw, Palette, Camera } from 'lucide-react';
 import { t } from '../../services/i18n';
 import { DEFAULT_FONT_SELECTION_PROMPT, DEFAULT_COLOR_SELECTION_PROMPT } from '../../services/geminiService';
 import { TabProps } from './types';
@@ -13,6 +13,41 @@ export const AdvancedTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
       </div>
 
       <div className="grid gap-4">
+        {/* Export Method */}
+        <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-green-500/30 rounded-xl transition-colors group">
+          <div className="flex justify-between items-start">
+            <div className="flex gap-3">
+              <div className="mt-1 p-1.5 bg-green-500/10 rounded text-green-400"><Camera size={18}/></div>
+              <div>
+                <h4 className="text-sm font-medium text-white mb-1">{t('exportMethod', lang)}</h4>
+                <p className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors leading-relaxed">{t('exportMethodHint', lang)}</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button
+              onClick={() => setConfig({...config, exportMethod: 'canvas'})}
+              className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
+                (config.exportMethod || 'canvas') === 'canvas'
+                  ? 'bg-green-600 text-white shadow'
+                  : 'bg-gray-700 text-gray-400 hover:text-white'
+              }`}
+            >
+              {t('exportMethodCanvas', lang)}
+            </button>
+            <button
+              onClick={() => setConfig({...config, exportMethod: 'screenshot'})}
+              className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${
+                config.exportMethod === 'screenshot'
+                  ? 'bg-green-600 text-white shadow'
+                  : 'bg-gray-700 text-gray-400 hover:text-white'
+              }`}
+            >
+              {t('exportMethodScreenshot', lang)}
+            </button>
+          </div>
+        </div>
+
         {/* Auto Detect Background */}
         <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-cyan-500/30 rounded-xl transition-colors group">
           <div className="flex justify-between items-start">

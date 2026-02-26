@@ -1,6 +1,7 @@
 
 import { ImageState, Bubble, MaskRegion, FONTS, getFontStack } from '../types';
 import JSZip from 'jszip';
+import { domToPng } from 'modern-screenshot';
 
 // Helper to escape HTML characters to prevent breaking SVG XML
 const escapeHtml = (unsafe: string) => {
@@ -32,6 +33,7 @@ export interface ExportOptions {
     defaultMaskShape?: 'rectangle' | 'rounded' | 'ellipse';
     defaultMaskCornerRadius?: number;
     defaultMaskFeather?: number;
+    exportMethod?: 'canvas' | 'screenshot';
 }
 
 /**
@@ -756,8 +758,8 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
 
 export const downloadSingleImage = async (imageState: ImageState, options?: ExportOptions) => {
   try {
-      // Use pure Canvas method for reliable font rendering
-      const blob = await compositeImageWithCanvas(imageState, options);
+      // Dispatch to canvas or screenshot method based on options
+      const blob = await compositeDispatch(imageState, options);
       if (!blob) return;
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
@@ -788,8 +790,8 @@ export const downloadAllAsZip = async (
     if (onProgress) onProgress(i + 1, total);
 
     try {
-        // Use pure Canvas method for reliable font rendering
-        const blob = await compositeImageWithCanvas(img, options);
+        // Dispatch to canvas or screenshot method based on options
+        const blob = await compositeDispatch(img, options);
         if (blob && folder) {
             folder.file(`${img.name.replace(/\.[^/.]+$/, "")}.png`, blob);
             successCount++;
@@ -813,4 +815,180 @@ export const downloadAllAsZip = async (
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+};
+
+/**
+ * Screenshot-based export: builds a hidden DOM at original image resolution,
+ * replicates the exact same CSS rendering as BubbleLayer.tsx, then captures it.
+ * Guarantees WYSIWYG output.
+ */
+export const compositeImageWithScreenshot = async (imageState: ImageState, options?: ExportOptions): Promise<Blob | null> => {
+    const { width, height, bubbles } = imageState;
+
+    // Ensure fonts are loaded before rendering
+    await document.fonts.ready;
+    const uniqueFonts = [...new Set(FONTS.map(f => f.googleFontName))];
+    await Promise.all(
+        uniqueFonts.map(fontName =>
+            document.fonts.load(`bold 48px '${fontName}'`).catch(() => {})
+        )
+    );
+
+    // 1. Create hidden wrapper (off-screen) and inner container (relative for overlay positioning)
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = `
+        position: fixed; top: -99999px; left: -99999px;
+        overflow: hidden;
+    `;
+    document.body.appendChild(wrapper);
+
+    const container = document.createElement('div');
+    container.style.cssText = `
+        position: relative;
+        width: ${Math.floor(width)}px; height: ${Math.floor(height)}px;
+        overflow: hidden;
+    `;
+    wrapper.appendChild(container);
+
+    try {
+        // 2. Background image — convert to base64 data URL for modern-screenshot compatibility
+        const bgSrc = imageState.inpaintedUrl || imageState.originalUrl || imageState.url || `data:image/png;base64,${imageState.base64}`;
+        let bgDataUrl: string;
+        if (bgSrc.startsWith('data:')) {
+            bgDataUrl = bgSrc;
+        } else {
+            // Convert blob/object URL to base64 via canvas
+            const tmpImg = await loadImage(bgSrc);
+            const tmpCanvas = document.createElement('canvas');
+            tmpCanvas.width = Math.floor(width);
+            tmpCanvas.height = Math.floor(height);
+            const tmpCtx = tmpCanvas.getContext('2d')!;
+            tmpCtx.drawImage(tmpImg, 0, 0, tmpCanvas.width, tmpCanvas.height);
+            bgDataUrl = tmpCanvas.toDataURL('image/png');
+        }
+
+        const bgDiv = document.createElement('div');
+        bgDiv.style.cssText = `
+            width: 100%; height: 100%;
+            background-image: url("${bgDataUrl}");
+            background-size: 100% 100%;
+        `;
+        container.appendChild(bgDiv);
+
+        // 3. Overlay container with container-type for cqw units
+        const overlay = document.createElement('div');
+        overlay.style.cssText = `
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            container-type: inline-size;
+        `;
+        container.appendChild(overlay);
+
+        // 4. Filled masks
+        if (imageState.maskRegions) {
+            imageState.maskRegions.forEach(m => {
+                if (m.isCleaned && m.method === 'fill') {
+                    const maskDiv = document.createElement('div');
+                    maskDiv.style.cssText = `
+                        position: absolute; z-index: 1;
+                        top: ${m.y}%; left: ${m.x}%;
+                        width: ${m.width}%; height: ${m.height}%;
+                        transform: translate(-50%, -50%);
+                        background-color: ${m.fillColor || '#ffffff'};
+                    `;
+                    overlay.appendChild(maskDiv);
+                }
+            });
+        }
+
+        // 5. Bubbles — replicate BubbleLayer.tsx CSS exactly
+        // PLACEHOLDER_BUBBLE_RENDERING
+        bubbles.forEach(b => {
+            const shape = b.maskShape || options?.defaultMaskShape || 'ellipse';
+            const radiusVal = b.maskCornerRadius !== undefined ? b.maskCornerRadius : (options?.defaultMaskCornerRadius || 15);
+            const featherVal = b.maskFeather !== undefined ? b.maskFeather : (options?.defaultMaskFeather || 10);
+
+            let borderRadius = '0%';
+            if (shape === 'ellipse') borderRadius = '50%';
+            else if (shape === 'rounded') borderRadius = `${radiusVal}%`;
+
+            const blur = `calc(${featherVal * 0.15}cqw)`;
+            const spread = `calc(${featherVal * 0.08}cqw)`;
+            const boxShadow = (b.backgroundColor !== 'transparent' && featherVal > 0)
+                ? `0 0 ${blur} ${spread} ${b.backgroundColor}`
+                : 'none';
+
+            const strokeColor = b.strokeColor && b.strokeColor !== 'transparent' ? b.strokeColor : '#ffffff';
+
+            // Outer container
+            const outer = document.createElement('div');
+            outer.style.cssText = `
+                position: absolute; z-index: 10;
+                top: ${b.y}%; left: ${b.x}%;
+                width: ${b.width}%; height: ${b.height}%;
+                transform: translate(-50%, -50%) rotate(${b.rotation}deg);
+            `;
+
+            // Background div
+            const bgDiv = document.createElement('div');
+            bgDiv.style.cssText = `
+                position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+                background-color: ${b.backgroundColor};
+                border-radius: ${borderRadius};
+                box-shadow: ${boxShadow};
+            `;
+            outer.appendChild(bgDiv);
+
+            // Text div
+            const textDiv = document.createElement('div');
+            textDiv.style.cssText = `
+                position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+                display: flex; align-items: center; justify-content: center;
+                font-size: ${b.fontSize * 2}cqw;
+                font-weight: ${b.fontFamily === 'noto-bold' ? '900' : 'bold'};
+                font-family: ${getFontStack(b.fontFamily)};
+                color: ${b.color};
+                writing-mode: ${b.isVertical ? 'vertical-rl' : 'horizontal-tb'};
+                ${b.isVertical ? 'text-orientation: mixed;' : ''}
+                white-space: pre;
+                line-height: 1.5;
+                text-align: ${b.isVertical ? 'start' : 'center'};
+                -webkit-text-stroke: 3px ${strokeColor};
+                paint-order: stroke fill;
+                overflow: visible;
+            `;
+            textDiv.textContent = b.text;
+            outer.appendChild(textDiv);
+
+            overlay.appendChild(outer);
+        });
+
+        // 6. Capture with modern-screenshot
+        const dataUrl = await domToPng(container, {
+            width: Math.floor(width),
+            height: Math.floor(height),
+            scale: 1,
+        });
+
+        if (!dataUrl) return null;
+
+        // 7. Convert data URL to Blob
+        const response = await fetch(dataUrl);
+        const blob = await response.blob();
+        return blob;
+
+    } finally {
+        // 8. Cleanup
+        document.body.removeChild(wrapper);
+    }
+};
+
+/**
+ * Dispatcher: routes to canvas or screenshot export based on options.
+ */
+export const compositeDispatch = async (imageState: ImageState, options?: ExportOptions): Promise<Blob | null> => {
+    if (options?.exportMethod === 'screenshot') {
+        return compositeImageWithScreenshot(imageState, options);
+    }
+    return compositeImageWithCanvas(imageState, options);
 };

@@ -4,7 +4,7 @@ import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, Ref
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { createBubble } from '../utils/editorUtils';
-import { compositeImageWithCanvas, downloadAllAsZip, downloadSingleImage, ExportOptions } from '../services/exportService';
+import { compositeImageWithCanvas, downloadAllAsZip, downloadSingleImage, compositeDispatch, ExportOptions } from '../services/exportService';
 
 const PRESET_BRUSH_COLORS = ['#ffffff', '#000000', '#f3f4f6', '#d1d5db'];
 
@@ -79,7 +79,8 @@ export const ControlPanel: React.FC = () => {
   const getExportOptions = (): ExportOptions => ({
       defaultMaskShape: aiConfig.defaultMaskShape,
       defaultMaskCornerRadius: aiConfig.defaultMaskCornerRadius,
-      defaultMaskFeather: aiConfig.defaultMaskFeather
+      defaultMaskFeather: aiConfig.defaultMaskFeather,
+      exportMethod: aiConfig.exportMethod || 'canvas',
   });
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -95,7 +96,7 @@ export const ControlPanel: React.FC = () => {
     if (!currentImage || currentImage.bubbles.length === 0) return;
     setIsMerging(true);
     try {
-        const blob = await compositeImageWithCanvas(currentImage, getExportOptions());
+        const blob = await compositeDispatch(currentImage, getExportOptions());
         if (blob) {
             const newUrl = URL.createObjectURL(blob);
             const newBase64 = await blobToBase64(blob);
