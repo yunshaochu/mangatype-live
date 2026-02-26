@@ -34,7 +34,7 @@ export interface ExportOptions {
     defaultMaskCornerRadius?: number;
     defaultMaskFeather?: number;
     exportMethod?: 'canvas' | 'screenshot';
-    screenshotPunctuationOffsets?: { char: string; offset: number }[];
+    screenshotPunctuationOffsets?: { char: string; offsetX: number; offsetY?: number; rotate?: number; scale?: number }[];
 }
 
 /**
@@ -959,13 +959,19 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
                 overflow: visible;
             `;
             const punctOffsets = options?.screenshotPunctuationOffsets ?? [];
-            const punctMap = new Map(punctOffsets.map(o => [o.char, o.offset]));
+            const punctMap = new Map(punctOffsets.map(o => [o.char, o]));
 
             if (b.isVertical && punctMap.size > 0) {
                 textDiv.innerHTML = b.text.split('').map(char => {
-                    const off = punctMap.get(char);
-                    return off !== undefined
-                        ? `<span style="display:inline-block;transform:translateX(${off}em)">${char}</span>`
+                    const entry = punctMap.get(char);
+                    if (!entry) return char;
+                    const transforms: string[] = [];
+                    if (entry.offsetX) transforms.push(`translateX(${entry.offsetX}em)`);
+                    if (entry.offsetY) transforms.push(`translateY(${entry.offsetY}em)`);
+                    if (entry.rotate) transforms.push(`rotate(${entry.rotate}deg)`);
+                    if (entry.scale && entry.scale !== 1) transforms.push(`scale(${entry.scale})`);
+                    return transforms.length > 0
+                        ? `<span style="display:inline-block;transform:${transforms.join(' ')}">${char}</span>`
                         : char;
                 }).join('');
             } else {

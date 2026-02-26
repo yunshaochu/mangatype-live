@@ -1,6 +1,6 @@
 
 import React, { useRef, useEffect } from 'react';
-import { Bubble, AIConfig, HandleType } from '../types';
+import { Bubble, AIConfig, HandleType, PunctuationOffset } from '../types';
 import { X } from 'lucide-react';
 import { handleStyle, HANDLE_OFFSET, clamp } from '../utils/editorUtils';
 
@@ -140,11 +140,17 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
       >
         {bubble.isVertical && config.editorPunctuationOffsets && config.editorPunctuationOffsets.length > 0
           ? (() => {
-              const offsetMap = new Map(config.editorPunctuationOffsets!.map(o => [o.char, o.offset]));
+              const offsetMap = new Map<string, PunctuationOffset>(config.editorPunctuationOffsets!.map(o => [o.char, o]));
               return bubble.text.split('').map((char, i) => {
-                const off = offsetMap.get(char);
-                return off !== undefined
-                  ? <span key={i} style={{ display: 'inline-block', transform: `translateX(${off}em)` }}>{char}</span>
+                const entry = offsetMap.get(char);
+                if (!entry) return char;
+                const transforms: string[] = [];
+                if (entry.offsetX) transforms.push(`translateX(${entry.offsetX}em)`);
+                if (entry.offsetY) transforms.push(`translateY(${entry.offsetY}em)`);
+                if (entry.rotate) transforms.push(`rotate(${entry.rotate}deg)`);
+                if (entry.scale && entry.scale !== 1) transforms.push(`scale(${entry.scale})`);
+                return transforms.length > 0
+                  ? <span key={i} style={{ display: 'inline-block', transform: transforms.join(' ') }}>{char}</span>
                   : char;
               });
             })()

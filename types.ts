@@ -148,6 +148,14 @@ export const mergeEndpointConfig = (global: AIConfig, ep: APIEndpoint): AIConfig
   modelSupportsJsonMode: ep.modelSupportsJsonMode,
 });
 
+export interface PunctuationOffset {
+  char: string;
+  offsetX: number;
+  offsetY?: number;
+  rotate?: number;
+  scale?: number;
+}
+
 export interface CustomMessage {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -208,8 +216,8 @@ export interface AIConfig {
 
   // Export
   exportMethod?: 'canvas' | 'screenshot'; // Default: 'canvas'
-  screenshotPunctuationOffsets?: { char: string; offset: number }[]; // Vertical punctuation offset fix for screenshot export (em units)
-  editorPunctuationOffsets?: { char: string; offset: number }[]; // Vertical punctuation offset fix for editor display (em units)
+  screenshotPunctuationOffsets?: PunctuationOffset[]; // Vertical punctuation offset fix for screenshot export
+  editorPunctuationOffsets?: PunctuationOffset[]; // Vertical punctuation offset fix for editor display
 }
 
 // Add EyeDropper API type definition

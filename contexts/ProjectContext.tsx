@@ -77,13 +77,13 @@ const DEFAULT_CONFIG: AIConfig = {
   inpaintingUrl: runtimeConfig.IOPAINT_API_URL || 'http://localhost:8080',
   inpaintingModel: 'lama',
   screenshotPunctuationOffsets: [
-    { char: '！', offset: -0.25 },
-    { char: '？', offset: -0.25 },
-    { char: '…', offset: 0.25 },
+    { char: '！', offsetX: -0.25 },
+    { char: '？', offsetX: -0.25 },
+    { char: '…', offsetX: 0.25 },
   ],
   editorPunctuationOffsets: [
-    { char: '！', offset: -0.25 },
-    { char: '？', offset: -0.25 },
+    { char: '！', offsetX: -0.25 },
+    { char: '？', offsetX: -0.25 },
   ],
 };
 
@@ -198,7 +198,18 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (saved) {
         const parsed = JSON.parse(saved);
         if (!parsed.customMessages) parsed.customMessages = DEFAULT_CONFIG.customMessages;
-        
+
+        // Migrate old punctuation offset format { char, offset } → { char, offsetX }
+        const migratePunctuation = (arr: any[]) => arr.map((o: any) =>
+          'offset' in o && !('offsetX' in o) ? { char: o.char, offsetX: o.offset } : o
+        );
+        if (parsed.screenshotPunctuationOffsets) {
+          parsed.screenshotPunctuationOffsets = migratePunctuation(parsed.screenshotPunctuationOffsets);
+        }
+        if (parsed.editorPunctuationOffsets) {
+          parsed.editorPunctuationOffsets = migratePunctuation(parsed.editorPunctuationOffsets);
+        }
+
         // Merge with defaults
         const merged = { ...DEFAULT_CONFIG, ...parsed };
         
