@@ -150,7 +150,22 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
                 if (entry.rotate) transforms.push(`rotate(${entry.rotate}deg)`);
                 if (entry.scale && entry.scale !== 100) transforms.push(`scale(${entry.scale / 100})`);
                 return transforms.length > 0
-                  ? <span key={i} style={{ display: 'inline-block', transform: transforms.join(' ') }}>{char}</span>
+                  ? (
+                      <span
+                        key={i}
+                        style={{
+                          display: 'inline-flex',
+                          width: '1em',
+                          height: '1em',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          transformOrigin: 'center',
+                          transform: transforms.join(' '),
+                        }}
+                      >
+                        {char}
+                      </span>
+                    )
                   : char;
               });
             })()
