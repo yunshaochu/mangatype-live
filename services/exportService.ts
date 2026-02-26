@@ -957,7 +957,16 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
                 paint-order: stroke fill;
                 overflow: visible;
             `;
-            textDiv.textContent = b.text;
+            if (b.isVertical) {
+                // Match BubbleLayer.tsx exactly: only wrap punctuation that needs offset fix
+                textDiv.innerHTML = b.text.split('').map(char =>
+                    /[！？]/.test(char)
+                        ? `<span style="display:inline-block;transform:translateX(-0.25em)">${char}</span>`
+                        : char
+                ).join('');
+            } else {
+                textDiv.textContent = b.text;
+            }
             outer.appendChild(textDiv);
 
             overlay.appendChild(outer);
