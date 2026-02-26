@@ -140,19 +140,9 @@ const arrayBufferToBase64 = async (buffer: ArrayBuffer): Promise<string> => {
     return parts.join('');
 };
 
-/** Fetch a woff2 URL and return base64 data URL (memory → IndexedDB → network) */
+/** Fetch a woff2 URL and return base64 data URL (with in-memory caching) */
 const fetchWoff2AsDataUrl = async (url: string): Promise<string | null> => {
-    // 1. In-memory cache
     if (_woff2DataUrlCache.has(url)) return _woff2DataUrlCache.get(url)!;
-
-    // 2. IndexedDB persistent cache
-    const cached = await idbGet(url);
-    if (cached) {
-        _woff2DataUrlCache.set(url, cached);
-        return cached;
-    }
-
-    // 3. Network fetch + base64 convert
     try {
         const resp = await fetch(url);
         if (!resp.ok) return null;
@@ -160,8 +150,6 @@ const fetchWoff2AsDataUrl = async (url: string): Promise<string | null> => {
         const base64 = await arrayBufferToBase64(buffer);
         const dataUrl = `data:font/woff2;base64,${base64}`;
         _woff2DataUrlCache.set(url, dataUrl);
-        // Persist to IndexedDB (fire-and-forget)
-        idbPut(url, dataUrl);
         return dataUrl;
     } catch {
         return null;
@@ -1047,14 +1035,25 @@ export const clearFontCache = async (): Promise<void> => {
  * Pre-fetches and inlines ALL font @font-face as base64.
  * Call this when user switches to screenshot export mode.
  */
+const IDB_ALL_FONTS_KEY = 'all_fonts_css';
+
 export const initScreenshotContainer = (): Promise<void> => {
     if (_screenshotWrapper) return Promise.resolve();
     if (_screenshotInitPromise) return _screenshotInitPromise;
 
     _screenshotInitPromise = (async () => {
-        // Pre-fetch all fonts
-        const allFamilies = new Set(FONTS.map(f => f.googleFontName));
-        const fontCSS = await getInlinedFontCSS(allFamilies);
+        // Try to load pre-built CSS from IndexedDB first
+        let fontCSS = await idbGet(IDB_ALL_FONTS_KEY);
+
+        if (!fontCSS) {
+            // No cache — fetch all fonts and build CSS
+            const allFamilies = new Set(FONTS.map(f => f.googleFontName));
+            fontCSS = await getInlinedFontCSS(allFamilies);
+            // Persist to IndexedDB for next time
+            if (fontCSS) {
+                await idbPut(IDB_ALL_FONTS_KEY, fontCSS);
+            }
+        }
 
         const wrapper = document.createElement('div');
         wrapper.style.cssText = `position: fixed; top: -99999px; left: -99999px; overflow: hidden;`;
@@ -1064,7 +1063,6 @@ export const initScreenshotContainer = (): Promise<void> => {
         container.style.cssText = `position: relative; overflow: hidden;`;
         wrapper.appendChild(container);
 
-        // Inject font CSS once — persists across exports
         if (fontCSS) {
             const styleEl = document.createElement('style');
             styleEl.textContent = fontCSS;
