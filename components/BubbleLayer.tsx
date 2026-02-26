@@ -138,7 +138,11 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
           paintOrder: 'stroke fill',
         }}
       >
-        {bubble.text}
+        {bubble.isVertical ? bubble.text.split('').map((char, i) => (
+          /[！？]/.test(char) ? (
+            <span key={i} style={{ display: 'inline-block', transform: 'translateX(-0.25em)' }}>{char}</span>
+          ) : char
+        )) : bubble.text}
       </div>
     </div>
   );
