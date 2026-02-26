@@ -7,8 +7,8 @@ import { PunctuationOffset } from '../../types';
 const DEFAULT_SCREENSHOT_OFFSETS: PunctuationOffset[] = [
   { char: '！', offsetX: -0.35 },
   { char: '？', offsetX: -0.25 },
-  { char: '…', offsetX: 0.25, scale: 0.9 },
-  { char: '—', offsetX: 0, scale: 0.7 },
+  { char: '…', offsetX: 0.25, scale: 90 },
+  { char: '—', offsetX: 0, scale: 70 },
 ];
 
 const DEFAULT_EDITOR_OFFSETS: PunctuationOffset[] = [
@@ -89,10 +89,11 @@ const OffsetList: React.FC<{
               />
               <label className="text-[10px] text-gray-500">{t('punctuationScale', lang)}</label>
               <input
-                type="number" step={0.05} value={entry.scale ?? 1}
-                onChange={(e) => update(idx, { scale: parseFloat(e.target.value) || 1 })}
+                type="number" step={5} value={entry.scale ?? 100}
+                onChange={(e) => update(idx, { scale: parseInt(e.target.value) || 100 })}
                 className={`w-20 bg-gray-900/50 border border-gray-700 rounded px-2 py-1 text-sm text-white focus:border-${color}-500 outline-none`}
               />
+              <span className="text-[10px] text-gray-500">%</span>
             </div>
           )}
         </div>

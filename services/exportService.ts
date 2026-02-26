@@ -969,7 +969,7 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
                     if (entry.offsetX) transforms.push(`translateX(${entry.offsetX}em)`);
                     if (entry.offsetY) transforms.push(`translateY(${entry.offsetY}em)`);
                     if (entry.rotate) transforms.push(`rotate(${entry.rotate}deg)`);
-                    if (entry.scale && entry.scale !== 1) transforms.push(`scale(${entry.scale})`);
+                    if (entry.scale && entry.scale !== 100) transforms.push(`scale(${entry.scale / 100})`);
                     return transforms.length > 0
                         ? `<span style="display:inline-block;transform:${transforms.join(' ')}">${char}</span>`
                         : char;
