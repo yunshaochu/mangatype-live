@@ -18,8 +18,63 @@ const GOOGLE_FONTS_CSS_URL = 'https://fonts.googleapis.com/css2?family=Zhi+Mang+
 
 // Cache: parsed @font-face blocks keyed by font-family name
 let _fontFaceBlocksCache: Map<string, string[]> | null = null;
-// Cache: already-fetched woff2 URLs → base64 data URLs
+// In-memory cache: already-fetched woff2 URLs → base64 data URLs
 const _woff2DataUrlCache = new Map<string, string>();
+
+// ── IndexedDB persistent font cache ──
+const IDB_NAME = 'mangatype_font_cache';
+const IDB_STORE = 'fonts';
+const IDB_VERSION = 1;
+
+const openFontDB = (): Promise<IDBDatabase | null> => {
+    return new Promise((resolve) => {
+        try {
+            const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+            req.onupgradeneeded = () => {
+                const db = req.result;
+                if (!db.objectStoreNames.contains(IDB_STORE)) {
+                    db.createObjectStore(IDB_STORE);
+                }
+            };
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => resolve(null);
+        } catch {
+            resolve(null);
+        }
+    });
+};
+
+const idbGet = async (key: string): Promise<string | null> => {
+    const db = await openFontDB();
+    if (!db) return null;
+    return new Promise((resolve) => {
+        try {
+            const tx = db.transaction(IDB_STORE, 'readonly');
+            const store = tx.objectStore(IDB_STORE);
+            const req = store.get(key);
+            req.onsuccess = () => resolve(req.result ?? null);
+            req.onerror = () => resolve(null);
+        } catch {
+            resolve(null);
+        }
+    });
+};
+
+const idbPut = async (key: string, value: string): Promise<void> => {
+    const db = await openFontDB();
+    if (!db) return;
+    return new Promise((resolve) => {
+        try {
+            const tx = db.transaction(IDB_STORE, 'readwrite');
+            const store = tx.objectStore(IDB_STORE);
+            store.put(value, key);
+            tx.oncomplete = () => resolve();
+            tx.onerror = () => resolve();
+        } catch {
+            resolve();
+        }
+    });
+};
 
 /** Parse Google Fonts CSS into a map of font-family → [@font-face blocks] */
 const getFontFaceBlocks = async (): Promise<Map<string, string[]>> => {
@@ -54,24 +109,50 @@ const getFontFaceBlocks = async (): Promise<Map<string, string[]>> => {
 /** Convert ArrayBuffer to base64 string in chunks, yielding to main thread between chunks */
 const arrayBufferToBase64 = async (buffer: ArrayBuffer): Promise<string> => {
     const bytes = new Uint8Array(buffer);
-    const CHUNK = 64 * 1024; // 64KB per chunk
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i += CHUNK) {
-        const end = Math.min(i + CHUNK, bytes.byteLength);
-        for (let j = i; j < end; j++) {
-            binary += String.fromCharCode(bytes[j]);
+    const CHUNK = 32 * 1024; // 32KB per chunk
+    const lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+    const parts: string[] = [];
+
+    // Process in 3-byte aligned chunks for clean base64 boundaries
+    const totalTriplets = Math.ceil(bytes.byteLength / 3);
+    const tripletsPerChunk = Math.ceil(CHUNK / 3);
+
+    for (let t = 0; t < totalTriplets; t += tripletsPerChunk) {
+        let chunk = '';
+        const endTriplet = Math.min(t + tripletsPerChunk, totalTriplets);
+        for (let i = t; i < endTriplet; i++) {
+            const idx = i * 3;
+            const a = bytes[idx] || 0;
+            const b = idx + 1 < bytes.byteLength ? bytes[idx + 1] : 0;
+            const c = idx + 2 < bytes.byteLength ? bytes[idx + 2] : 0;
+            const triplet = (a << 16) | (b << 8) | c;
+            chunk += lookup[(triplet >> 18) & 0x3f];
+            chunk += lookup[(triplet >> 12) & 0x3f];
+            chunk += idx + 1 < bytes.byteLength ? lookup[(triplet >> 6) & 0x3f] : '=';
+            chunk += idx + 2 < bytes.byteLength ? lookup[triplet & 0x3f] : '=';
         }
+        parts.push(chunk);
         // Yield to main thread between chunks
-        if (end < bytes.byteLength) {
+        if (endTriplet < totalTriplets) {
             await new Promise(r => setTimeout(r, 0));
         }
     }
-    return btoa(binary);
+    return parts.join('');
 };
 
-/** Fetch a woff2 URL and return base64 data URL (with caching) */
+/** Fetch a woff2 URL and return base64 data URL (memory → IndexedDB → network) */
 const fetchWoff2AsDataUrl = async (url: string): Promise<string | null> => {
+    // 1. In-memory cache
     if (_woff2DataUrlCache.has(url)) return _woff2DataUrlCache.get(url)!;
+
+    // 2. IndexedDB persistent cache
+    const cached = await idbGet(url);
+    if (cached) {
+        _woff2DataUrlCache.set(url, cached);
+        return cached;
+    }
+
+    // 3. Network fetch + base64 convert
     try {
         const resp = await fetch(url);
         if (!resp.ok) return null;
@@ -79,6 +160,8 @@ const fetchWoff2AsDataUrl = async (url: string): Promise<string | null> => {
         const base64 = await arrayBufferToBase64(buffer);
         const dataUrl = `data:font/woff2;base64,${base64}`;
         _woff2DataUrlCache.set(url, dataUrl);
+        // Persist to IndexedDB (fire-and-forget)
+        idbPut(url, dataUrl);
         return dataUrl;
     } catch {
         return null;
@@ -939,6 +1022,25 @@ let _screenshotInitPromise: Promise<void> | null = null;
 
 /** Check if the persistent screenshot container is ready (fonts loaded) */
 export const isScreenshotReady = (): boolean => _screenshotWrapper !== null && _screenshotInitPromise === null;
+
+/** Clear all cached font data (IndexedDB + in-memory) */
+export const clearFontCache = async (): Promise<void> => {
+    // Clear in-memory caches
+    _woff2DataUrlCache.clear();
+    _fontFaceBlocksCache = null;
+    // Destroy persistent DOM container
+    destroyScreenshotContainer();
+    // Delete IndexedDB database
+    return new Promise((resolve) => {
+        try {
+            const req = indexedDB.deleteDatabase(IDB_NAME);
+            req.onsuccess = () => resolve();
+            req.onerror = () => resolve();
+        } catch {
+            resolve();
+        }
+    });
+};
 
 /**
  * Initialize the persistent hidden DOM container for screenshot export.

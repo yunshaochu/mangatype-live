@@ -1,13 +1,22 @@
-import React from 'react';
-import { Pipette, RotateCw, PenTool, RotateCcw, Palette, Camera, Loader2, CheckCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Pipette, RotateCw, PenTool, RotateCcw, Palette, Camera, Loader2, CheckCircle, Download } from 'lucide-react';
 import { t } from '../../services/i18n';
 import { DEFAULT_FONT_SELECTION_PROMPT, DEFAULT_COLOR_SELECTION_PROMPT } from '../../services/geminiService';
-import { useProjectContext } from '../../contexts/ProjectContext';
+import { initScreenshotContainer, isScreenshotReady } from '../../services/exportService';
 import { TabProps } from './types';
 
 export const AdvancedTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
-  const { screenshotReady } = useProjectContext();
   const isScreenshotMode = config.exportMethod === 'screenshot';
+  const [fontStatus, setFontStatus] = useState<'idle' | 'loading' | 'ready'>(isScreenshotReady() ? 'ready' : 'idle');
+
+  const handlePreloadFonts = async () => {
+    if (fontStatus === 'loading' || fontStatus === 'ready') return;
+    setFontStatus('loading');
+    // Let the UI update before starting the blocking work
+    await new Promise(r => setTimeout(r, 50));
+    await initScreenshotContainer();
+    setFontStatus('ready');
+  };
 
   return (
     <div className="space-y-8 animate-fade-in-right">
@@ -51,11 +60,27 @@ export const AdvancedTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
             </button>
           </div>
           {isScreenshotMode && (
-            <div className={`mt-2 flex items-center gap-1.5 text-xs ${screenshotReady ? 'text-green-400' : 'text-yellow-400'}`}>
-              {screenshotReady
-                ? <><CheckCircle size={12}/> {lang === 'zh' ? '字体已就绪，可以导出' : 'Fonts ready, export available'}</>
-                : <><Loader2 size={12} className="animate-spin"/> {lang === 'zh' ? '正在预加载字体…' : 'Preloading fonts…'}</>
-              }
+            <div className="mt-3">
+              {fontStatus === 'ready' ? (
+                <div className="flex items-center gap-1.5 text-xs text-green-400">
+                  <CheckCircle size={12}/> {lang === 'zh' ? '字体已就绪，可以保存设置' : 'Fonts ready, you can save settings'}
+                </div>
+              ) : (
+                <button
+                  onClick={handlePreloadFonts}
+                  disabled={fontStatus === 'loading'}
+                  className={`w-full py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 ${
+                    fontStatus === 'loading'
+                      ? 'bg-yellow-600/20 text-yellow-400 cursor-wait'
+                      : 'bg-blue-600/20 text-blue-400 hover:bg-blue-600/30'
+                  }`}
+                >
+                  {fontStatus === 'loading'
+                    ? <><Loader2 size={12} className="animate-spin"/> {lang === 'zh' ? '正在加载字体，请等待约10秒…' : 'Loading fonts, please wait ~10s…'}</>
+                    : <><Download size={12}/> {lang === 'zh' ? '预加载字体（首次需要下载）' : 'Preload fonts (download required first time)'}</>
+                  }
+                </button>
+              )}
             </div>
           )}
         </div>

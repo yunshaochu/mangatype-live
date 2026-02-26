@@ -2,15 +2,17 @@ import React, { useRef } from 'react';
 import { Globe, Download, Upload, FolderArchive, RotateCcw } from 'lucide-react';
 import { t } from '../../services/i18n';
 import { TabProps } from './types';
+import { clearFontCache } from '../../services/exportService';
 
 const STORAGE_KEY = 'mangatype_live_settings_v1';
 
 export const GeneralTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleResetToDefaults = () => {
+  const handleResetToDefaults = async () => {
     if (!confirm(t('resetToDefaultsConfirm', lang))) return;
     localStorage.removeItem(STORAGE_KEY);
+    await clearFontCache();
     window.location.reload();
   };
 
