@@ -34,6 +34,7 @@ export interface ExportOptions {
     defaultMaskCornerRadius?: number;
     defaultMaskFeather?: number;
     exportMethod?: 'canvas' | 'screenshot';
+    screenshotPunctuationOffsets?: { char: string; offset: number }[];
 }
 
 /**
@@ -957,13 +958,16 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
                 paint-order: stroke fill;
                 overflow: visible;
             `;
-            if (b.isVertical) {
-                // Match BubbleLayer.tsx exactly: only wrap punctuation that needs offset fix
-                textDiv.innerHTML = b.text.split('').map(char =>
-                    /[！？]/.test(char)
-                        ? `<span style="display:inline-block;transform:translateX(-0.25em)">${char}</span>`
-                        : char
-                ).join('');
+            const punctOffsets = options?.screenshotPunctuationOffsets ?? [];
+            const punctMap = new Map(punctOffsets.map(o => [o.char, o.offset]));
+
+            if (b.isVertical && punctMap.size > 0) {
+                textDiv.innerHTML = b.text.split('').map(char => {
+                    const off = punctMap.get(char);
+                    return off !== undefined
+                        ? `<span style="display:inline-block;transform:translateX(${off}em)">${char}</span>`
+                        : char;
+                }).join('');
             } else {
                 textDiv.textContent = b.text;
             }

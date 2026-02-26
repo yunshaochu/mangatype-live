@@ -138,11 +138,17 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
           paintOrder: 'stroke fill',
         }}
       >
-        {bubble.isVertical ? bubble.text.split('').map((char, i) => (
-          /[！？]/.test(char) ? (
-            <span key={i} style={{ display: 'inline-block', transform: 'translateX(-0.25em)' }}>{char}</span>
-          ) : char
-        )) : bubble.text}
+        {bubble.isVertical && config.editorPunctuationOffsets && config.editorPunctuationOffsets.length > 0
+          ? (() => {
+              const offsetMap = new Map(config.editorPunctuationOffsets!.map(o => [o.char, o.offset]));
+              return bubble.text.split('').map((char, i) => {
+                const off = offsetMap.get(char);
+                return off !== undefined
+                  ? <span key={i} style={{ display: 'inline-block', transform: `translateX(${off}em)` }}>{char}</span>
+                  : char;
+              });
+            })()
+          : bubble.text}
       </div>
     </div>
   );
@@ -153,6 +159,7 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
         prev.config.defaultMaskShape === next.config.defaultMaskShape &&
         prev.config.defaultMaskCornerRadius === next.config.defaultMaskCornerRadius &&
         prev.config.defaultMaskFeather === next.config.defaultMaskFeather &&
+        prev.config.editorPunctuationOffsets === next.config.editorPunctuationOffsets &&
         prev.isInteractive === next.isInteractive
     );
 });

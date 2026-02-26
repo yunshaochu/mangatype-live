@@ -81,6 +81,7 @@ export const ControlPanel: React.FC = () => {
       defaultMaskCornerRadius: aiConfig.defaultMaskCornerRadius,
       defaultMaskFeather: aiConfig.defaultMaskFeather,
       exportMethod: aiConfig.exportMethod || 'canvas',
+      screenshotPunctuationOffsets: aiConfig.screenshotPunctuationOffsets,
   });
 
   const blobToBase64 = (blob: Blob): Promise<string> => {

@@ -208,6 +208,8 @@ export interface AIConfig {
 
   // Export
   exportMethod?: 'canvas' | 'screenshot'; // Default: 'canvas'
+  screenshotPunctuationOffsets?: { char: string; offset: number }[]; // Vertical punctuation offset fix for screenshot export (em units)
+  editorPunctuationOffsets?: { char: string; offset: number }[]; // Vertical punctuation offset fix for editor display (em units)
 }
 
 // Add EyeDropper API type definition

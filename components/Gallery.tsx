@@ -119,6 +119,7 @@ export const Gallery: React.FC<GalleryProps> = ({ onAddFile, onAddFolder }) => {
         defaultMaskCornerRadius: aiConfig.defaultMaskCornerRadius,
         defaultMaskFeather: aiConfig.defaultMaskFeather,
         exportMethod: aiConfig.exportMethod || 'canvas',
+        screenshotPunctuationOffsets: aiConfig.screenshotPunctuationOffsets,
     });
   };
 

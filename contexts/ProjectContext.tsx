@@ -76,6 +76,15 @@ const DEFAULT_CONFIG: AIConfig = {
   enableInpainting: false,
   inpaintingUrl: runtimeConfig.IOPAINT_API_URL || 'http://localhost:8080',
   inpaintingModel: 'lama',
+  screenshotPunctuationOffsets: [
+    { char: '！', offset: -0.25 },
+    { char: '？', offset: -0.25 },
+    { char: '…', offset: 0.25 },
+  ],
+  editorPunctuationOffsets: [
+    { char: '！', offset: -0.25 },
+    { char: '？', offset: -0.25 },
+  ],
 };
 
 interface ProjectContextType {
