@@ -51,18 +51,33 @@ const getFontFaceBlocks = async (): Promise<Map<string, string[]>> => {
     return map;
 };
 
+/** Convert ArrayBuffer to base64 string in chunks, yielding to main thread between chunks */
+const arrayBufferToBase64 = async (buffer: ArrayBuffer): Promise<string> => {
+    const bytes = new Uint8Array(buffer);
+    const CHUNK = 64 * 1024; // 64KB per chunk
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i += CHUNK) {
+        const end = Math.min(i + CHUNK, bytes.byteLength);
+        for (let j = i; j < end; j++) {
+            binary += String.fromCharCode(bytes[j]);
+        }
+        // Yield to main thread between chunks
+        if (end < bytes.byteLength) {
+            await new Promise(r => setTimeout(r, 0));
+        }
+    }
+    return btoa(binary);
+};
+
 /** Fetch a woff2 URL and return base64 data URL (with caching) */
 const fetchWoff2AsDataUrl = async (url: string): Promise<string | null> => {
     if (_woff2DataUrlCache.has(url)) return _woff2DataUrlCache.get(url)!;
     try {
         const resp = await fetch(url);
         if (!resp.ok) return null;
-        const blob = await resp.blob();
-        const dataUrl = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(blob);
-        });
+        const buffer = await resp.arrayBuffer();
+        const base64 = await arrayBufferToBase64(buffer);
+        const dataUrl = `data:font/woff2;base64,${base64}`;
         _woff2DataUrlCache.set(url, dataUrl);
         return dataUrl;
     } catch {
@@ -72,7 +87,7 @@ const fetchWoff2AsDataUrl = async (url: string): Promise<string | null> => {
 
 /**
  * Build inlined @font-face CSS for only the given font families.
- * Fetches and base64-encodes only the woff2 files actually needed.
+ * Fetches woff2 files and creates local blob URLs for them.
  */
 const getInlinedFontCSS = async (usedFamilies: Set<string>): Promise<string> => {
     const blocks = await getFontFaceBlocks();
@@ -95,10 +110,12 @@ const getInlinedFontCSS = async (usedFamilies: Set<string>): Promise<string> => 
         }
     }
 
-    // Fetch all needed woff2 files in parallel
-    await Promise.all([...urlsToFetch].map(fetchWoff2AsDataUrl));
+    // Fetch and convert woff2 files one by one to avoid blocking the main thread
+    for (const url of urlsToFetch) {
+        await fetchWoff2AsDataUrl(url);
+    }
 
-    // Replace URLs with cached base64 data URLs
+    // Replace URLs with cached data URLs
     let css = neededBlocks.join('\n');
     for (const url of urlsToFetch) {
         const dataUrl = _woff2DataUrlCache.get(url);
@@ -914,6 +931,66 @@ export const downloadAllAsZip = async (
   URL.revokeObjectURL(url);
 };
 
+// ── Persistent screenshot DOM container ──
+let _screenshotWrapper: HTMLDivElement | null = null;
+let _screenshotContainer: HTMLDivElement | null = null;
+let _screenshotFontStyle: HTMLStyleElement | null = null;
+let _screenshotInitPromise: Promise<void> | null = null;
+
+/** Check if the persistent screenshot container is ready (fonts loaded) */
+export const isScreenshotReady = (): boolean => _screenshotWrapper !== null && _screenshotInitPromise === null;
+
+/**
+ * Initialize the persistent hidden DOM container for screenshot export.
+ * Pre-fetches and inlines ALL font @font-face as base64.
+ * Call this when user switches to screenshot export mode.
+ */
+export const initScreenshotContainer = (): Promise<void> => {
+    if (_screenshotWrapper) return Promise.resolve();
+    if (_screenshotInitPromise) return _screenshotInitPromise;
+
+    _screenshotInitPromise = (async () => {
+        // Pre-fetch all fonts
+        const allFamilies = new Set(FONTS.map(f => f.googleFontName));
+        const fontCSS = await getInlinedFontCSS(allFamilies);
+
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = `position: fixed; top: -99999px; left: -99999px; overflow: hidden;`;
+        document.body.appendChild(wrapper);
+
+        const container = document.createElement('div');
+        container.style.cssText = `position: relative; overflow: hidden;`;
+        wrapper.appendChild(container);
+
+        // Inject font CSS once — persists across exports
+        if (fontCSS) {
+            const styleEl = document.createElement('style');
+            styleEl.textContent = fontCSS;
+            container.appendChild(styleEl);
+            _screenshotFontStyle = styleEl;
+        }
+
+        _screenshotWrapper = wrapper;
+        _screenshotContainer = container;
+        _screenshotInitPromise = null;
+    })();
+
+    return _screenshotInitPromise;
+};
+
+/**
+ * Destroy the persistent screenshot DOM container.
+ * Call this when user switches away from screenshot export mode.
+ */
+export const destroyScreenshotContainer = () => {
+    if (_screenshotWrapper) {
+        document.body.removeChild(_screenshotWrapper);
+        _screenshotWrapper = null;
+        _screenshotContainer = null;
+        _screenshotFontStyle = null;
+    }
+};
+
 /**
  * Screenshot-based export: builds a hidden DOM at original image resolution,
  * replicates the exact same CSS rendering as BubbleLayer.tsx, then captures it.
@@ -922,46 +999,26 @@ export const downloadAllAsZip = async (
 export const compositeImageWithScreenshot = async (imageState: ImageState, options?: ExportOptions): Promise<Blob | null> => {
     const { width, height, bubbles } = imageState;
 
-    // Collect font families actually used by this image's bubbles
-    const usedFamilies = new Set<string>();
-    for (const b of bubbles) {
-        const font = FONTS.find(f => f.id === b.fontFamily);
-        if (font) usedFamilies.add(font.googleFontName);
+    // Ensure persistent container is ready (instant if already initialized)
+    await initScreenshotContainer();
+    const container = _screenshotContainer!;
+
+    // Set container size for this image
+    container.style.width = `${Math.floor(width)}px`;
+    container.style.height = `${Math.floor(height)}px`;
+
+    // Clear previous content (keep the <style> element)
+    while (container.lastChild && container.lastChild !== _screenshotFontStyle) {
+        container.removeChild(container.lastChild);
     }
 
-    // Inline only the needed @font-face as base64 for domToPng compatibility
-    const inlinedFontCSS = await getInlinedFontCSS(usedFamilies);
-
-    // 1. Create hidden wrapper (off-screen) and inner container (relative for overlay positioning)
-    const wrapper = document.createElement('div');
-    wrapper.style.cssText = `
-        position: fixed; top: -99999px; left: -99999px;
-        overflow: hidden;
-    `;
-    document.body.appendChild(wrapper);
-
-    const container = document.createElement('div');
-    container.style.cssText = `
-        position: relative;
-        width: ${Math.floor(width)}px; height: ${Math.floor(height)}px;
-        overflow: hidden;
-    `;
-    wrapper.appendChild(container);
-
     try {
-        // Inject inlined font CSS into the container
-        if (inlinedFontCSS) {
-            const styleEl = document.createElement('style');
-            styleEl.textContent = inlinedFontCSS;
-            container.appendChild(styleEl);
-        }
-        // 2. Background image — convert to base64 data URL for modern-screenshot compatibility
+        // Background image — convert to base64 data URL for modern-screenshot compatibility
         const bgSrc = imageState.inpaintedUrl || imageState.originalUrl || imageState.url || `data:image/png;base64,${imageState.base64}`;
         let bgDataUrl: string;
         if (bgSrc.startsWith('data:')) {
             bgDataUrl = bgSrc;
         } else {
-            // Convert blob/object URL to base64 via canvas
             const tmpImg = await loadImage(bgSrc);
             const tmpCanvas = document.createElement('canvas');
             tmpCanvas.width = Math.floor(width);
@@ -1082,8 +1139,10 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
         return blob;
 
     } finally {
-        // 8. Cleanup
-        document.body.removeChild(wrapper);
+        // 8. Clear content but keep the persistent container and font style
+        while (container.lastChild && container.lastChild !== _screenshotFontStyle) {
+            container.removeChild(container.lastChild);
+        }
     }
 };
 

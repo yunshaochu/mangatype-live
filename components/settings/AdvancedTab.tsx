@@ -1,10 +1,14 @@
 import React from 'react';
-import { Pipette, RotateCw, PenTool, RotateCcw, Palette, Camera } from 'lucide-react';
+import { Pipette, RotateCw, PenTool, RotateCcw, Palette, Camera, Loader2, CheckCircle } from 'lucide-react';
 import { t } from '../../services/i18n';
 import { DEFAULT_FONT_SELECTION_PROMPT, DEFAULT_COLOR_SELECTION_PROMPT } from '../../services/geminiService';
+import { useProjectContext } from '../../contexts/ProjectContext';
 import { TabProps } from './types';
 
 export const AdvancedTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
+  const { screenshotReady } = useProjectContext();
+  const isScreenshotMode = config.exportMethod === 'screenshot';
+
   return (
     <div className="space-y-8 animate-fade-in-right">
       <div className="space-y-1">
@@ -46,6 +50,14 @@ export const AdvancedTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
               {t('exportMethodScreenshot', lang)}
             </button>
           </div>
+          {isScreenshotMode && (
+            <div className={`mt-2 flex items-center gap-1.5 text-xs ${screenshotReady ? 'text-green-400' : 'text-yellow-400'}`}>
+              {screenshotReady
+                ? <><CheckCircle size={12}/> {lang === 'zh' ? '字体已就绪，可以导出' : 'Fonts ready, export available'}</>
+                : <><Loader2 size={12} className="animate-spin"/> {lang === 'zh' ? '正在预加载字体…' : 'Preloading fonts…'}</>
+              }
+            </div>
+          )}
         </div>
 
         {/* Auto Detect Background */}

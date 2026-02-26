@@ -4,7 +4,7 @@ import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
 import { isBubbleInsideMask } from '../utils/editorUtils';
-import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage } from '../services/exportService';
+import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage, initScreenshotContainer, destroyScreenshotContainer } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 
 const STORAGE_KEY = 'mangatype_live_settings_v1';
@@ -160,6 +160,7 @@ interface ProjectContextType {
   // Refs (for direct access if needed, though mostly internal)
   historyRef: React.MutableRefObject<{ past: ImageState[][]; present: ImageState[]; future: ImageState[][]; }>;
   aiConfigRef: React.MutableRefObject<AIConfig>;
+  screenshotReady: boolean;
 }
 
 // 1. Create Context
@@ -238,6 +239,18 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     aiConfigRef.current = aiConfig;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(aiConfig)); } catch (e) { console.warn("Failed to save settings", e); }
   }, [aiConfig]);
+
+  // Auto-init/destroy persistent screenshot DOM container based on export method
+  const [screenshotReady, setScreenshotReady] = useState(false);
+  useEffect(() => {
+    if (aiConfig.exportMethod === 'screenshot') {
+      setScreenshotReady(false);
+      initScreenshotContainer().then(() => setScreenshotReady(true));
+    } else {
+      destroyScreenshotContainer();
+      setScreenshotReady(false);
+    }
+  }, [aiConfig.exportMethod]);
 
   // MOVED UP: UI State (so setActiveLayer is available for handlers below)
   const [drawTool, setDrawTool] = useState<'none' | 'bubble' | 'mask' | 'brush'>('none');
@@ -684,7 +697,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     brushColor, setBrushColor,
     brushSize, setBrushSize,
     paintMode, setPaintMode,
-    brushType, setBrushType
+    brushType, setBrushType,
+    screenshotReady
   };
 
   return (
