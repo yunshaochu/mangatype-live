@@ -31,6 +31,8 @@ export interface Bubble {
   maskShape?: 'rectangle' | 'rounded' | 'ellipse';
   maskCornerRadius?: number; // 0-50 (percentage)
   maskFeather?: number; // 0-50 (intensity)
+  letterSpacing?: number; // em units, default 0.05
+  lineHeight?: number; // multiplier, default 1.5
 }
 
 // Mode 2: Simple selection region without text/style properties

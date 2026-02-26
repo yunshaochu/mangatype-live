@@ -33,6 +33,8 @@ export const createBubble = (x: number, y: number, defaultFontSize: number, widt
   backgroundColor: '#ffffff',
   rotation: 0,
   maskFeather: 0,
+  letterSpacing: 0.15,
+  lineHeight: 1.1,
 });
 
 export const createMaskRegion = (x: number, y: number): MaskRegion => ({

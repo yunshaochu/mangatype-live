@@ -599,7 +599,8 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 writing-mode: ${b.isVertical ? 'vertical-rl' : 'horizontal-tb'};
                 text-orientation: ${b.isVertical ? 'mixed' : 'auto'};
                 white-space: pre;
-                line-height: 1.5;
+                line-height: ${b.lineHeight ?? 1.1};
+                letter-spacing: ${b.letterSpacing ?? 0.15}em;
                 text-align: ${b.isVertical ? 'left' : 'center'};
                 -webkit-text-stroke: 3px ${b.strokeColor && b.strokeColor !== 'transparent' ? b.strokeColor : '#ffffff'};
                 paint-order: stroke fill;
@@ -611,7 +612,7 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 // Use an inner block container so that \n (with white-space:pre)
                 // actually creates column breaks inside the flex parent
                 const innerBlock = document.createElement('div');
-                innerBlock.style.cssText = 'white-space: pre; writing-mode: vertical-rl; text-orientation: mixed; line-height: 1.5;';
+                innerBlock.style.cssText = `white-space: pre; writing-mode: vertical-rl; text-orientation: mixed; line-height: ${b.lineHeight ?? 1.1}; letter-spacing: ${b.letterSpacing ?? 0.15}em;`;
                 b.text.split('').forEach(char => {
                     if (char === '\n') {
                         innerBlock.appendChild(document.createTextNode('\n'));
@@ -702,11 +703,11 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
 
             // Fix letter-spacing to match CSS rendering
             if ('letterSpacing' in ctx) {
-                (ctx as any).letterSpacing = '0px';
+                (ctx as any).letterSpacing = `${b.letterSpacing ?? 0.15}em`;
             }
 
             const lines = b.text.split('\n');
-            const lineHeight = fontSize * 1.5;
+            const lineHeight = fontSize * (b.lineHeight ?? 1.1);
 
             if (b.isVertical) {
                 // Vertical text: use DOM-measured character positions for pixel-perfect rendering
@@ -870,7 +871,8 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
                 font-size: ${fontSize}px;
                 font-weight: bold;
                 color: ${b.color};
-                line-height: 1.5;
+                line-height: ${b.lineHeight ?? 1.1};
+                letter-spacing: ${b.letterSpacing ?? 0.15}em;
                 text-align: ${b.isVertical ? 'left' : 'center'};
                 white-space: pre;
                 z-index: 2;
@@ -1212,7 +1214,8 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
                 writing-mode: ${b.isVertical ? 'vertical-rl' : 'horizontal-tb'};
                 ${b.isVertical ? 'text-orientation: mixed;' : ''}
                 white-space: pre;
-                line-height: 1.5;
+                line-height: ${b.lineHeight ?? 1.1};
+                letter-spacing: ${b.letterSpacing ?? 0.15}em;
                 text-align: ${b.isVertical ? 'start' : 'center'};
                 -webkit-text-stroke: 3px ${strokeColor};
                 paint-order: stroke fill;

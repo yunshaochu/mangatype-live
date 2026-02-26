@@ -364,6 +364,24 @@ export const BubbleEditor: React.FC = () => {
                   <button onClick={() => updateBubble(bubble.id, { fontSize: parseFloat(Math.min(10, bubble.fontSize + 0.1).toFixed(1)) })} className="p-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-400 hover:text-white"><Plus size={12}/></button>
                 </div>
               </div>
+              {/* Letter Spacing */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] text-gray-400 mb-1"><span>{t('letterSpacing', lang)}</span><span>{(bubble.letterSpacing ?? 0.15).toFixed(2)}em</span></div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => updateBubble(bubble.id, { letterSpacing: parseFloat(Math.max(-0.1, (bubble.letterSpacing ?? 0.15) - 0.01).toFixed(2)) })} className="p-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-400 hover:text-white"><Minus size={12}/></button>
+                  <input type="range" min="-0.1" max="0.5" step="0.01" value={bubble.letterSpacing ?? 0.15} onChange={(e) => updateBubble(bubble.id, { letterSpacing: parseFloat(e.target.value) })} className="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"/>
+                  <button onClick={() => updateBubble(bubble.id, { letterSpacing: parseFloat(Math.min(0.5, (bubble.letterSpacing ?? 0.15) + 0.01).toFixed(2)) })} className="p-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-400 hover:text-white"><Plus size={12}/></button>
+                </div>
+              </div>
+              {/* Line Height */}
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] text-gray-400 mb-1"><span>{t('lineHeight', lang)}</span><span>{(bubble.lineHeight ?? 1.1).toFixed(1)}</span></div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => updateBubble(bubble.id, { lineHeight: parseFloat(Math.max(0.8, (bubble.lineHeight ?? 1.1) - 0.1).toFixed(1)) })} className="p-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-400 hover:text-white"><Minus size={12}/></button>
+                  <input type="range" min="0.8" max="3" step="0.1" value={bubble.lineHeight ?? 1.1} onChange={(e) => updateBubble(bubble.id, { lineHeight: parseFloat(e.target.value) })} className="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"/>
+                  <button onClick={() => updateBubble(bubble.id, { lineHeight: parseFloat(Math.min(3, (bubble.lineHeight ?? 1.1) + 0.1).toFixed(1)) })} className="p-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-400 hover:text-white"><Plus size={12}/></button>
+                </div>
+              </div>
               {/* Rotation */}
               <div className="space-y-1">
                 <div className="flex justify-between text-[10px] text-gray-400 mb-1">
