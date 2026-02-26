@@ -7,12 +7,14 @@ import { PunctuationOffset } from '../../types';
 const DEFAULT_SCREENSHOT_OFFSETS: PunctuationOffset[] = [
   { char: '！', offsetX: -0.35 },
   { char: '？', offsetX: -0.25 },
-  { char: '…', offsetX: 0.25 },
+  { char: '…', offsetX: 0.25, scale: 0.9 },
+  { char: '—', offsetX: 0, scale: 0.7 },
 ];
 
 const DEFAULT_EDITOR_OFFSETS: PunctuationOffset[] = [
   { char: '！', offsetX: -0.25 },
   { char: '？', offsetX: -0.25 },
+  { char: '，', offsetX: -0.25, offsetY: 0.1 },
 ];
 
 const OffsetList: React.FC<{
