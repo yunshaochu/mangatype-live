@@ -204,6 +204,15 @@ export interface AIConfig {
   defaultMaskCornerRadius: number;
   defaultMaskFeather: number;
 
+  // Global Defaults for Bubble Text Style
+  defaultFontFamily: FontFamily;
+  defaultTextColor: string;
+  defaultStrokeColor: string;
+  defaultBackgroundColor: string;
+  defaultLetterSpacing: number;
+  defaultLineHeight: number;
+  defaultIsVertical: boolean;
+
   // Processing
   concurrency?: number; // User-configurable concurrency for non-translation tasks (default 1)
   maxRetries?: number; // Auto-retry count on failure (default 0)

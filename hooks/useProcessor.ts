@@ -100,7 +100,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                     id: crypto.randomUUID(),
                     x: d.x, y: d.y, width: d.width, height: d.height,
                     text: d.text, isVertical: d.isVertical,
-                    fontFamily: (d.fontFamily as any) || 'noto',
+                    fontFamily: (d.fontFamily as any) || effectiveConfig.defaultFontFamily || 'noto',
                     fontSize: (() => {
                         if (effectiveConfig.allowAiFontSize !== false) {
                             if (effectiveConfig.fontSizeMode === 'direct' && d.fontSize != null) {
@@ -117,10 +117,12 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                         }
                         return effectiveConfig.defaultFontSize;
                     })(),
-                    color: d.color || '#000000',
-                    strokeColor: d.strokeColor || '#ffffff',
+                    color: d.color || effectiveConfig.defaultTextColor || '#000000',
+                    strokeColor: d.strokeColor || effectiveConfig.defaultStrokeColor || '#ffffff',
                     backgroundColor: overlapsCleanedMask ? 'transparent' : color,
                     rotation: d.rotation || 0,
+                    letterSpacing: effectiveConfig.defaultLetterSpacing ?? 0.15,
+                    lineHeight: effectiveConfig.defaultLineHeight ?? 1.1,
                     maskShape: effectiveConfig.defaultMaskShape,
                     maskCornerRadius: effectiveConfig.defaultMaskCornerRadius,
                     maskFeather: effectiveConfig.defaultMaskFeather,

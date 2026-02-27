@@ -40,7 +40,7 @@ export const ControlPanel: React.FC = () => {
 
   const onAddManualBubble = () => {
     if (!currentId) return;
-    const newBubble = createBubble(50, 50, aiConfig.defaultFontSize);
+    const newBubble = createBubble(50, 50, aiConfig);
     updateImageBubbles(currentId, [...bubbles, newBubble]);
     setSelectedBubbleId(newBubble.id); setSelectedMaskId(null);
   };

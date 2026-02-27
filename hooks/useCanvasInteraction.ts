@@ -187,7 +187,7 @@ export const useCanvasInteraction = ({
         // Pending → Drawing: create the object on first real drag
         if (mode === 'pending' && dragRef.current.hasMoved) {
             if (targetType === 'bubble') {
-                const newBubble = createBubble(startBx, startBy, aiConfig.defaultFontSize, 0, 0);
+                const newBubble = createBubble(startBx, startBy, aiConfig, 0, 0);
                 setImages(prev => {
                     const img = prev.find(i => i.id === currentId);
                     if (!img) return prev;

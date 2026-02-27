@@ -1,4 +1,4 @@
-import { Bubble, MaskRegion } from '../types';
+import { Bubble, MaskRegion, AIConfig } from '../types';
 import type { CSSProperties } from 'react';
 
 export const HANDLE_OFFSET = '-6px';
@@ -18,23 +18,23 @@ export const handleStyle = (cursor: string): CSSProperties => ({
     boxShadow: '0 0 4px rgba(0,0,0,0.4)',
 });
 
-export const createBubble = (x: number, y: number, defaultFontSize: number, width = 15, height = 25, isVertical = true): Bubble => ({
+export const createBubble = (x: number, y: number, config: AIConfig, width = 15, height = 25): Bubble => ({
   id: crypto.randomUUID(),
   x,
   y,
   width,
   height,
-  text: '', // Changed to empty string per user request
-  isVertical,
-  fontFamily: 'noto', // Changed from 'zhimang' to 'noto'
-  fontSize: defaultFontSize,
-  color: '#000000',
-  strokeColor: '#ffffff',
-  backgroundColor: '#ffffff',
+  text: '',
+  isVertical: config.defaultIsVertical ?? true,
+  fontFamily: config.defaultFontFamily ?? 'noto',
+  fontSize: config.defaultFontSize,
+  color: config.defaultTextColor ?? '#000000',
+  strokeColor: config.defaultStrokeColor ?? '#ffffff',
+  backgroundColor: config.defaultBackgroundColor ?? '#ffffff',
   rotation: 0,
-  maskFeather: 0,
-  letterSpacing: 0.15,
-  lineHeight: 1.1,
+  maskFeather: config.defaultMaskFeather ?? 0,
+  letterSpacing: config.defaultLetterSpacing ?? 0.15,
+  lineHeight: config.defaultLineHeight ?? 1.1,
 });
 
 export const createMaskRegion = (x: number, y: number): MaskRegion => ({

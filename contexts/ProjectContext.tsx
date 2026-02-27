@@ -69,6 +69,13 @@ const DEFAULT_CONFIG: AIConfig = {
   defaultMaskShape: 'rectangle',
   defaultMaskCornerRadius: 20,
   defaultMaskFeather: 0,
+  defaultFontFamily: 'noto',
+  defaultTextColor: '#000000',
+  defaultStrokeColor: '#ffffff',
+  defaultBackgroundColor: '#ffffff',
+  defaultLetterSpacing: 0.15,
+  defaultLineHeight: 1.1,
+  defaultIsVertical: true,
   // Model Capabilities (undefined = enabled by default)
   // modelSupportsFunctionCalling: undefined, // Set to false to skip Function Calling tier
   // modelSupportsJsonMode: undefined, // Set to false to skip JSON Mode tier
