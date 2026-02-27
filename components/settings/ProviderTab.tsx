@@ -147,6 +147,16 @@ const EndpointEditor: React.FC<{
         </label>
       </div>
 
+      {/* Concurrency */}
+      <div className="space-y-1">
+        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{lang === 'zh' ? '并发数' : 'Concurrency'}</label>
+        <input type="number" min={1} max={10}
+          value={draft.concurrency || 1}
+          onChange={e => setDraft({ ...draft, concurrency: Math.max(1, Math.min(10, parseInt(e.target.value) || 1)) })}
+          className="w-20 bg-[#0f1115] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+        <p className="text-[11px] text-gray-500">{lang === 'zh' ? '该端点同时处理的最大请求数' : 'Max parallel requests for this endpoint'}</p>
+      </div>
+
       {/* Save / Cancel */}
       <div className="flex gap-2 pt-2">
         <button onClick={() => onSave(draft)}
@@ -241,6 +251,11 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                     <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${ep.provider === 'gemini' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'}`}>
                       {ep.provider === 'gemini' ? 'Gemini' : 'OpenAI'}
                     </span>
+                    {(ep.concurrency || 1) > 1 && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-yellow-500/20 text-yellow-400">
+                        ×{ep.concurrency}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-gray-500 truncate font-mono">{ep.model || '(no model)'}</p>
                 </div>
@@ -268,8 +283,8 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
         <p className="text-xs text-blue-300/80 leading-relaxed">
           <strong className="text-blue-200">{lang === 'zh' ? '并发模式' : 'Concurrency'}:</strong>{' '}
           {lang === 'zh'
-            ? `当前启用 ${enabledCount} 个端点。批量翻译时，图片将自动轮流分配给各启用端点。`
-            : `${enabledCount} endpoint(s) active. During batch translation, images are distributed round-robin across enabled endpoints.`}
+            ? `当前启用 ${enabledCount} 个端点，总并发 ${endpoints.filter(ep => ep.enabled).reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)}。批量翻译时，每个端点按其并发数分配任务。`
+            : `${enabledCount} endpoint(s) active, ${endpoints.filter(ep => ep.enabled).reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)} total workers. Each endpoint processes up to its concurrency limit.`}
         </p>
       </div>
     </div>

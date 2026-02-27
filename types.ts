@@ -138,6 +138,7 @@ export interface APIEndpoint {
   model: string;
   modelSupportsFunctionCalling?: boolean;
   modelSupportsJsonMode?: boolean;
+  concurrency?: number; // 该端点的最大并发数，默认 1
 }
 
 export const mergeEndpointConfig = (global: AIConfig, ep: APIEndpoint): AIConfig => ({

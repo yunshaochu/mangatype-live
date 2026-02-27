@@ -421,7 +421,7 @@ export const ControlPanel: React.FC = () => {
             >
               <Palette size={16} />
             </button>
-            <div className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 border border-gray-700" title={lang === 'zh' ? `并发数（翻译按端点数，其他任务按此值）` : `Concurrency (translation uses endpoint count, other tasks use this value)`}>
+            <div className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 border border-gray-700" title={lang === 'zh' ? `并发数（翻译按各端点设置，其他任务按此值）` : `Concurrency (translation uses per-endpoint settings, other tasks use this value)`}>
               <Zap size={10} className="text-yellow-500" />
               <input
                 type="number"

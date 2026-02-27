@@ -259,7 +259,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             const enabledEndpoints = (aiConfig.endpoints || []).filter(ep => ep.enabled);
 
             if (task === 'translate' && enabledEndpoints.length > 0) {
-                // Worker-per-endpoint round-robin for translation
+                // Per-endpoint concurrency: each endpoint spawns N workers
                 let nextIndex = 0;
                 const worker = async (endpoint: APIEndpoint) => {
                     while (!signal.aborted) {
@@ -269,7 +269,10 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                         await runDetectionForImage(queue[idx], signal, mergedConfig);
                     }
                 };
-                await Promise.all(enabledEndpoints.map(ep => worker(ep)));
+                const workers = enabledEndpoints.flatMap(ep =>
+                    Array.from({ length: Math.max(1, ep.concurrency || 1) }, () => worker(ep))
+                );
+                await Promise.all(workers);
             } else {
                 // Inpaint or no endpoints: use original chunk-based concurrency
                 const batchSize = Math.max(1, concurrency);
