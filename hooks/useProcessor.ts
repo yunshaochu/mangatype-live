@@ -42,7 +42,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             const useAnnotatedImage = effectiveConfig.useMasksAsHints && effectiveConfig.drawMasksOnImage && img.maskRegions && img.maskRegions.length > 0;
 
             if (useMaskedImage) {
-                sourceBase64 = await generateMaskedImage({ ...img, base64: sourceBase64 });
+                sourceBase64 = await generateMaskedImage({ ...img, base64: sourceBase64 }, useAnnotatedImage);
             } else if (useAnnotatedImage) {
                 sourceBase64 = await generateAnnotatedImage({ ...img, base64: sourceBase64 });
             }

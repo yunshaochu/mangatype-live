@@ -337,14 +337,19 @@ export const generateAnnotatedImage = async (image: ImageState): Promise<string>
 
 /**
  * Generates an image where only the content inside mask regions is visible.
+ * When drawBoxes is true, also draws red box borders (expanding clip to include full stroke).
  */
-export const generateMaskedImage = async (image: ImageState): Promise<string> => {
+export const generateMaskedImage = async (image: ImageState, drawBoxes: boolean = false): Promise<string> => {
     const img = await loadImage(image.originalUrl || image.url);
     const canvas = document.createElement('canvas');
     canvas.width = img.width;
     canvas.height = img.height;
     const ctx = canvas.getContext('2d');
     if (!ctx) return image.base64;
+
+    const strokeWidth = Math.max(2, Math.round(Math.min(img.width, img.height) / 200));
+    // When drawing boxes, expand clip by half stroke width so the full border is visible
+    const expand = drawBoxes ? Math.ceil(strokeWidth / 2) + 1 : 0;
 
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -357,11 +362,23 @@ export const generateMaskedImage = async (image: ImageState): Promise<string> =>
              const y = (m.y / 100) * canvas.height;
              const w = (m.width / 100) * canvas.width;
              const h = (m.height / 100) * canvas.height;
-             ctx.rect(x - w/2, y - h/2, w, h);
+             ctx.rect(x - w/2 - expand, y - h/2 - expand, w + expand * 2, h + expand * 2);
         });
         ctx.clip();
         ctx.drawImage(img, 0, 0);
         ctx.restore();
+
+        if (drawBoxes) {
+            ctx.strokeStyle = '#ef4444';
+            ctx.lineWidth = strokeWidth;
+            image.maskRegions.forEach(m => {
+                const x = (m.x / 100) * canvas.width;
+                const y = (m.y / 100) * canvas.height;
+                const w = (m.width / 100) * canvas.width;
+                const h = (m.height / 100) * canvas.height;
+                ctx.strokeRect(x - w/2, y - h/2, w, h);
+            });
+        }
     } else {
         ctx.drawImage(img, 0, 0);
     }
