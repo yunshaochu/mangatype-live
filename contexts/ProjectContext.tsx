@@ -83,6 +83,11 @@ const DEFAULT_CONFIG: AIConfig = {
   enableInpainting: false,
   inpaintingUrl: runtimeConfig.IOPAINT_API_URL || 'http://localhost:8080',
   inpaintingModel: 'lama',
+  // API Protection defaults
+  apiProtectionEnabled: true,
+  apiProtectionDurations: [30, 60, 120, 300, 600],
+  apiProtectionDisableThreshold: 5,
+  showApiProtectionTest: false,
 };
 
 interface ProjectContextType {
@@ -283,8 +288,18 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [paintMode, setPaintMode] = useState<'brush' | 'box'>('brush');
   const [brushType, setBrushType] = useState<'paint' | 'restore'>('paint');
 
+  // Update endpoint helper for API protection
+  const updateEndpoint = useCallback((endpointId: string, updates: Partial<APIEndpoint>) => {
+    setAiConfig(prev => ({
+      ...prev,
+      endpoints: prev.endpoints.map(ep =>
+        ep.id === endpointId ? { ...ep, ...updates } : ep
+      )
+    }));
+  }, []);
+
   // 3. Processor Logic
-  const processor = useProcessor({ images, setImages, aiConfig });
+  const processor = useProcessor({ images, setImages, aiConfig, updateEndpoint });
 
   // 4. Inpainting Logic
   const [isInpainting, setIsInpainting] = useState(false);

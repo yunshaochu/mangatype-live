@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCw, AlertCircle, Globe, ChevronDown, Check, Bot, Cpu, Plus, Trash2, Pencil, Power, ChevronUp } from 'lucide-react';
+import { RefreshCw, AlertCircle, Globe, ChevronDown, Check, Bot, Cpu, Plus, Trash2, Pencil, Power, ChevronUp, Clock, AlertTriangle, TestTube, Settings, X, RotateCcw } from 'lucide-react';
 import { t } from '../../services/i18n';
 import { fetchAvailableModels } from '../../services/geminiService';
 import { AIProvider, APIEndpoint, mergeEndpointConfig } from '../../types';
 import { TabProps } from './types';
+import { isEndpointPaused, getRemainingPauseTime, formatPauseDuration, DEFAULT_API_PROTECTION_CONFIG } from '../../services/apiProtection';
+import { testEndpointProtection, formatTestResults } from '../../services/apiProtectionTest';
 
 const EndpointEditor: React.FC<{
   endpoint: APIEndpoint;
@@ -213,7 +215,56 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
   };
 
   const handleToggle = (id: string) => {
-    updateEndpoints(endpoints.map(e => e.id === id ? { ...e, enabled: !e.enabled } : e));
+    updateEndpoints(endpoints.map(e => {
+      if (e.id === id) {
+        // When re-enabling a disabled endpoint, clear error state
+        if (!e.enabled) {
+          return { ...e, enabled: true, consecutiveErrors: 0, pausedUntil: undefined, lastError: undefined };
+        }
+        return { ...e, enabled: false };
+      }
+      return e;
+    }));
+  };
+
+  // Test API Protection
+  const [showTestPanel, setShowTestPanel] = useState(false);
+  const [testResults, setTestResults] = useState<string>('');
+  const [showProtectionSettings, setShowProtectionSettings] = useState(false);
+
+  const runTest = (endpointId: string, scenario: 'single_error' | 'repeated_errors' | 'success_recovery' | 'auto_disable') => {
+    const endpoint = endpoints.find(ep => ep.id === endpointId);
+    if (!endpoint) return;
+
+    const { steps, summary } = testEndpointProtection(endpoint, scenario);
+    const resultsText = formatTestResults(steps, lang);
+
+    setTestResults(`${summary}\n${resultsText}`);
+
+    // Apply the final state to the endpoint
+    if (steps.length > 0) {
+      const finalStep = steps[steps.length - 1];
+      updateEndpoints(endpoints.map(e => e.id === endpointId ? finalStep.result : e));
+    }
+  };
+
+  const resetEndpoint = (endpointId: string) => {
+    updateEndpoints(endpoints.map(e =>
+      e.id === endpointId
+        ? { ...e, consecutiveErrors: 0, pausedUntil: undefined, lastError: undefined }
+        : e
+    ));
+    setTestResults('');
+  };
+
+  const resetProtectionSettings = () => {
+    setConfig(prev => ({
+      ...prev,
+      apiProtectionEnabled: DEFAULT_API_PROTECTION_CONFIG.enabled,
+      apiProtectionDurations: DEFAULT_API_PROTECTION_CONFIG.durations,
+      apiProtectionDisableThreshold: DEFAULT_API_PROTECTION_CONFIG.disableThreshold,
+      showApiProtectionTest: false,
+    }));
   };
 
   return (
@@ -225,11 +276,180 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
             {lang === 'zh' ? '配置多个API端点，批量翻译时自动并发分配。' : 'Configure multiple API endpoints for concurrent batch translation.'}
           </p>
         </div>
-        <button onClick={handleAdd}
-          className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-3 py-2 text-xs font-bold transition-colors">
-          <Plus size={14} /> {lang === 'zh' ? '添加端点' : 'Add Endpoint'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowProtectionSettings(true)}
+            className="flex items-center gap-1.5 bg-gray-700 hover:bg-gray-600 text-white rounded-lg px-3 py-2 text-xs font-bold transition-colors"
+            title={lang === 'zh' ? 'API 保护设置' : 'API Protection Settings'}
+          >
+            <Settings size={14} />
+          </button>
+          <button onClick={handleAdd}
+            className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg px-3 py-2 text-xs font-bold transition-colors">
+            <Plus size={14} /> {lang === 'zh' ? '添加端点' : 'Add Endpoint'}
+          </button>
+        </div>
       </div>
+
+      {/* API Protection Settings Modal */}
+      {showProtectionSettings && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#1a1d24] rounded-xl border border-gray-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-gray-700 sticky top-0 bg-[#1a1d24] z-10">
+              <div className="flex items-center gap-2">
+                <Settings size={18} className="text-blue-400" />
+                <h3 className="text-lg font-semibold text-white">
+                  {lang === 'zh' ? 'API 保护设置' : 'API Protection Settings'}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowProtectionSettings(false)}
+                className="p-1.5 hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                <X size={18} className="text-gray-400" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 space-y-4">
+              {/* Enable/Disable */}
+              <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
+                <div>
+                  <label className="text-sm font-semibold text-white">
+                    {lang === 'zh' ? '启用 API 保护' : 'Enable API Protection'}
+                  </label>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {lang === 'zh' ? '自动检测并处理 429/503 等错误' : 'Automatically detect and handle 429/503 errors'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setConfig(prev => ({ ...prev, apiProtectionEnabled: !(prev.apiProtectionEnabled ?? true) }))}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${
+                    (config.apiProtectionEnabled ?? true) ? 'bg-blue-600' : 'bg-gray-600'
+                  }`}
+                >
+                  <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                    (config.apiProtectionEnabled ?? true) ? 'translate-x-6' : ''
+                  }`} />
+                </button>
+              </div>
+
+              {/* Disable Threshold */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-white">
+                  {lang === 'zh' ? '自动停用阈值' : 'Auto-Disable Threshold'}
+                </label>
+                <p className="text-xs text-gray-400">
+                  {lang === 'zh' ? '第几次连续错误后自动停用端点（同时决定需要配置多少个暂停时间）' : 'Which consecutive error triggers auto-disable (also determines number of pause durations)'}
+                </p>
+                <input
+                  type="number"
+                  min="1"
+                  max="10"
+                  value={config.apiProtectionDisableThreshold || DEFAULT_API_PROTECTION_CONFIG.disableThreshold}
+                  onChange={(e) => {
+                    const newThreshold = parseInt(e.target.value) || 5;
+                    const currentDurations = config.apiProtectionDurations || DEFAULT_API_PROTECTION_CONFIG.durations;
+
+                    // Adjust durations array to match new threshold
+                    let newDurations = [...currentDurations];
+                    if (newThreshold > newDurations.length) {
+                      // Add more durations (use last duration or 600 as default)
+                      const lastDuration = newDurations[newDurations.length - 1] || 600;
+                      while (newDurations.length < newThreshold) {
+                        newDurations.push(lastDuration);
+                      }
+                    } else if (newThreshold < newDurations.length) {
+                      // Remove extra durations
+                      newDurations = newDurations.slice(0, newThreshold);
+                    }
+
+                    setConfig(prev => ({
+                      ...prev,
+                      apiProtectionDisableThreshold: newThreshold,
+                      apiProtectionDurations: newDurations
+                    }));
+                  }}
+                  className="w-full bg-[#0f1115] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none"
+                />
+              </div>
+
+              {/* Pause Durations */}
+              <div className="space-y-2">
+                <label className="text-sm font-semibold text-white">
+                  {lang === 'zh' ? '暂停时间（秒）' : 'Pause Durations (seconds)'}
+                </label>
+                <p className="text-xs text-gray-400">
+                  {lang === 'zh'
+                    ? `每次错误后的暂停时间，共 ${config.apiProtectionDisableThreshold || DEFAULT_API_PROTECTION_CONFIG.disableThreshold} 个（对应阈值）`
+                    : `Pause time after each error, ${config.apiProtectionDisableThreshold || DEFAULT_API_PROTECTION_CONFIG.disableThreshold} total (matches threshold)`}
+                </p>
+                <div className="grid grid-cols-5 gap-2">
+                  {Array.from({ length: config.apiProtectionDisableThreshold || DEFAULT_API_PROTECTION_CONFIG.disableThreshold }).map((_, index) => {
+                    const durations = config.apiProtectionDurations || DEFAULT_API_PROTECTION_CONFIG.durations;
+                    const duration = durations[index] || 600;
+
+                    return (
+                      <div key={index} className="space-y-1">
+                        <label className="text-[10px] text-gray-500 uppercase">
+                          {lang === 'zh' ? `第${index + 1}次` : `${index + 1}${['st', 'nd', 'rd', 'th', 'th', 'th', 'th', 'th', 'th', 'th'][index]}`}
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={duration}
+                          onChange={(e) => {
+                            const newDurations = [...(config.apiProtectionDurations || DEFAULT_API_PROTECTION_CONFIG.durations)];
+                            // Ensure array is long enough
+                            while (newDurations.length <= index) {
+                              newDurations.push(600);
+                            }
+                            newDurations[index] = parseInt(e.target.value) || 1;
+                            setConfig(prev => ({ ...prev, apiProtectionDurations: newDurations }));
+                          }}
+                          className="w-full bg-[#0f1115] border border-gray-700 rounded-lg p-2 text-xs text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none"
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Show Test Tool */}
+              <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
+                <div>
+                  <label className="text-sm font-semibold text-white">
+                    {lang === 'zh' ? '显示测试工具' : 'Show Test Tool'}
+                  </label>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {lang === 'zh' ? '在主界面显示 API 保护测试工具' : 'Show API protection test tool in main panel'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setConfig(prev => ({ ...prev, showApiProtectionTest: !prev.showApiProtectionTest }))}
+                  className={`relative w-12 h-6 rounded-full transition-colors ${
+                    config.showApiProtectionTest ? 'bg-blue-600' : 'bg-gray-600'
+                  }`}
+                >
+                  <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
+                    config.showApiProtectionTest ? 'translate-x-6' : ''
+                  }`} />
+                </button>
+              </div>
+
+              {/* Reset Button */}
+              <button
+                onClick={resetProtectionSettings}
+                className="w-full flex items-center justify-center gap-2 p-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white transition-colors"
+              >
+                <RotateCcw size={16} />
+                {lang === 'zh' ? '恢复默认设置' : 'Reset to Defaults'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Endpoint List */}
       <div className="space-y-3">
@@ -256,8 +476,28 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                         ×{ep.concurrency}
                       </span>
                     )}
+                    {/* API Protection Status */}
+                    {isEndpointPaused(ep) && (
+                      <>
+                        <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-bold bg-orange-500/20 text-orange-400" title={ep.lastError || 'Rate limited'}>
+                          <Clock size={10} />
+                          {formatPauseDuration(getRemainingPauseTime(ep))}
+                        </span>
+                        {ep.consecutiveErrors && ep.consecutiveErrors > 0 && (
+                          <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-bold bg-red-500/20 text-red-400" title={`${ep.consecutiveErrors} consecutive errors`}>
+                            <AlertTriangle size={10} />
+                            {ep.consecutiveErrors}
+                          </span>
+                        )}
+                      </>
+                    )}
                   </div>
                   <p className="text-xs text-gray-500 truncate font-mono">{ep.model || '(no model)'}</p>
+                  {isEndpointPaused(ep) && ep.lastError && (
+                    <p className="text-[10px] text-red-400/70 truncate mt-0.5" title={ep.lastError}>
+                      {ep.lastError}
+                    </p>
+                  )}
                 </div>
                 {/* Actions */}
                 <button onClick={() => setEditingId(ep.id)} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
@@ -278,14 +518,131 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
         )}
       </div>
 
+      {/* Test Panel */}
+      {endpoints.length > 0 && config.showApiProtectionTest && (
+        <div className="border border-purple-800/30 rounded-xl overflow-hidden">
+          <button
+            onClick={() => setShowTestPanel(!showTestPanel)}
+            className="w-full flex items-center justify-between p-3 bg-purple-900/10 hover:bg-purple-900/20 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <TestTube size={16} className="text-purple-400" />
+              <span className="text-sm font-semibold text-purple-300">
+                {lang === 'zh' ? 'API 保护测试工具' : 'API Protection Test Tool'}
+              </span>
+            </div>
+            {showTestPanel ? <ChevronUp size={16} className="text-purple-400" /> : <ChevronDown size={16} className="text-purple-400" />}
+          </button>
+
+          {showTestPanel && (
+            <div className="p-4 bg-purple-900/5 space-y-4">
+              <p className="text-xs text-gray-400">
+                {lang === 'zh'
+                  ? '模拟各种 API 错误场景，测试保护机制，无需消耗真实 token。'
+                  : 'Simulate various API error scenarios to test protection without burning tokens.'}
+              </p>
+
+              {/* Endpoint Selector */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-gray-400 uppercase">
+                  {lang === 'zh' ? '选择端点' : 'Select Endpoint'}
+                </label>
+                <select
+                  id="test-endpoint"
+                  className="w-full bg-[#0f1115] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 outline-none"
+                >
+                  {endpoints.map(ep => (
+                    <option key={ep.id} value={ep.id}>
+                      {ep.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Test Scenarios */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    const select = document.getElementById('test-endpoint') as HTMLSelectElement;
+                    runTest(select.value, 'single_error');
+                  }}
+                  className="p-2 bg-orange-900/20 hover:bg-orange-900/30 border border-orange-800/30 rounded-lg text-xs text-orange-300 transition-colors"
+                >
+                  {lang === 'zh' ? '单次错误 (30s)' : 'Single Error (30s)'}
+                </button>
+
+                <button
+                  onClick={() => {
+                    const select = document.getElementById('test-endpoint') as HTMLSelectElement;
+                    runTest(select.value, 'repeated_errors');
+                  }}
+                  className="p-2 bg-orange-900/20 hover:bg-orange-900/30 border border-orange-800/30 rounded-lg text-xs text-orange-300 transition-colors"
+                >
+                  {lang === 'zh' ? '连续错误 (3次)' : 'Repeated Errors (3x)'}
+                </button>
+
+                <button
+                  onClick={() => {
+                    const select = document.getElementById('test-endpoint') as HTMLSelectElement;
+                    runTest(select.value, 'success_recovery');
+                  }}
+                  className="p-2 bg-green-900/20 hover:bg-green-900/30 border border-green-800/30 rounded-lg text-xs text-green-300 transition-colors"
+                >
+                  {lang === 'zh' ? '恢复测试' : 'Success Recovery'}
+                </button>
+
+                <button
+                  onClick={() => {
+                    const select = document.getElementById('test-endpoint') as HTMLSelectElement;
+                    runTest(select.value, 'auto_disable');
+                  }}
+                  className="p-2 bg-red-900/20 hover:bg-red-900/30 border border-red-800/30 rounded-lg text-xs text-red-300 transition-colors"
+                >
+                  {lang === 'zh' ? '自动停用 (5次)' : 'Auto-Disable (5x)'}
+                </button>
+              </div>
+
+              {/* Reset Button */}
+              <button
+                onClick={() => {
+                  const select = document.getElementById('test-endpoint') as HTMLSelectElement;
+                  resetEndpoint(select.value);
+                }}
+                className="w-full p-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs text-gray-300 transition-colors"
+              >
+                {lang === 'zh' ? '重置端点状态' : 'Reset Endpoint State'}
+              </button>
+
+              {/* Test Results */}
+              {testResults && (
+                <div className="p-3 bg-[#0f1115] border border-gray-700 rounded-lg">
+                  <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">{testResults}</pre>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Footer */}
-      <div className="p-3 bg-blue-900/10 border border-blue-800/30 rounded-lg">
-        <p className="text-xs text-blue-300/80 leading-relaxed">
-          <strong className="text-blue-200">{lang === 'zh' ? '并发模式' : 'Concurrency'}:</strong>{' '}
-          {lang === 'zh'
-            ? `当前启用 ${enabledCount} 个端点，总并发 ${endpoints.filter(ep => ep.enabled).reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)}。批量翻译时，每个端点按其并发数分配任务。`
-            : `${enabledCount} endpoint(s) active, ${endpoints.filter(ep => ep.enabled).reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)} total workers. Each endpoint processes up to its concurrency limit.`}
-        </p>
+      <div className="space-y-3">
+        <div className="p-3 bg-blue-900/10 border border-blue-800/30 rounded-lg">
+          <p className="text-xs text-blue-300/80 leading-relaxed">
+            <strong className="text-blue-200">{lang === 'zh' ? '并发模式' : 'Concurrency'}:</strong>{' '}
+            {lang === 'zh'
+              ? `当前启用 ${enabledCount} 个端点，总并发 ${endpoints.filter(ep => ep.enabled).reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)}。批量翻译时，每个端点按其并发数分配任务。`
+              : `${enabledCount} endpoint(s) active, ${endpoints.filter(ep => ep.enabled).reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)} total workers. Each endpoint processes up to its concurrency limit.`}
+          </p>
+        </div>
+
+        <div className="p-3 bg-orange-900/10 border border-orange-800/30 rounded-lg">
+          <p className="text-xs text-orange-300/80 leading-relaxed">
+            <strong className="text-orange-200">{lang === 'zh' ? 'API 保护' : 'API Protection'}:</strong>{' '}
+            {lang === 'zh'
+              ? '当端点遇到 429/503 等错误时，会自动暂停使用（30秒→1分钟→2分钟→5分钟→10分钟）。暂停时间超过 5 分钟后，端点将自动停用。'
+              : 'Endpoints are automatically paused when encountering 429/503 errors (30s→1m→2m→5m→10m). Endpoints are auto-disabled after 5+ minutes of pause time.'}
+          </p>
+        </div>
       </div>
     </div>
   );

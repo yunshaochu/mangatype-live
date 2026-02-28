@@ -4,14 +4,22 @@ import { detectAndTypesetComic, fetchRawDetectedRegions } from '../services/gemi
 import { generateMaskedImage, generateAnnotatedImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 import { isBubbleInsideMask } from '../utils/editorUtils';
+import {
+    handleEndpointError,
+    handleEndpointSuccess,
+    isEndpointPaused,
+    getRemainingPauseTime,
+    formatPauseDuration
+} from '../services/apiProtection';
 
 interface UseProcessorProps {
     images: ImageState[];
     setImages: (newImagesOrUpdater: ImageState[] | ((prev: ImageState[]) => ImageState[]), skipHistory?: boolean) => void;
     aiConfig: AIConfig;
+    updateEndpoint?: (endpointId: string, updates: Partial<APIEndpoint>) => void;
 }
 
-export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps) => {
+export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: UseProcessorProps) => {
     const [isProcessingBatch, setIsProcessingBatch] = useState(false);
     const [processingType, setProcessingType] = useState<'translate' | 'scan' | 'inpaint' | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -19,7 +27,7 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
     const maxRetries = aiConfig.maxRetries || 0;
 
     // --- Core Logic: Process a Single Image (Translate/Bubble) ---
-    const runDetectionForImage = async (img: ImageState, signal?: AbortSignal, configOverride?: AIConfig) => {
+    const runDetectionForImage = async (img: ImageState, signal?: AbortSignal, configOverride?: AIConfig, endpointId?: string) => {
         const effectiveConfig = configOverride || aiConfig;
         const retries = effectiveConfig.maxRetries || maxRetries;
 
@@ -135,6 +143,16 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                 bubbles: useMaskedImage ? [...p.bubbles, ...processedBubbles] : processedBubbles,
                 status: 'done'
             } : p));
+
+            // Success: Reset endpoint error count
+            if (endpointId && updateEndpoint) {
+                const endpoint = aiConfig.endpoints.find(ep => ep.id === endpointId);
+                if (endpoint) {
+                    const updatedEndpoint = handleEndpointSuccess(endpoint);
+                    updateEndpoint(endpointId, updatedEndpoint);
+                }
+            }
+
             return; // Success, exit retry loop
 
         } catch (e: any) {
@@ -143,6 +161,24 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
                 return;
             }
             console.error(`AI Error for ${img.name} (attempt ${attempt + 1}/${retries + 1})`, e);
+
+            // Handle API protection on last attempt
+            if (attempt === retries && endpointId && updateEndpoint) {
+                const endpoint = aiConfig.endpoints.find(ep => ep.id === endpointId);
+                if (endpoint) {
+                    const protectionConfig = {
+                        durations: aiConfig.apiProtectionDurations,
+                        disableThreshold: aiConfig.apiProtectionDisableThreshold,
+                    };
+                    const { updatedEndpoint, shouldDisable } = handleEndpointError(endpoint, e, protectionConfig);
+                    updateEndpoint(endpointId, updatedEndpoint);
+
+                    if (shouldDisable) {
+                        console.warn(`Endpoint ${endpoint.name} auto-disabled due to repeated errors`);
+                    }
+                }
+            }
+
             if (attempt < retries) {
                 // Wait before retry (exponential backoff: 1s, 2s, 4s...)
                 await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
@@ -259,17 +295,37 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             const enabledEndpoints = (aiConfig.endpoints || []).filter(ep => ep.enabled);
 
             if (task === 'translate' && enabledEndpoints.length > 0) {
+                // Filter out paused endpoints
+                const availableEndpoints = enabledEndpoints.filter(ep => !isEndpointPaused(ep));
+
+                if (availableEndpoints.length === 0) {
+                    const pausedInfo = enabledEndpoints.map(ep => {
+                        const remaining = getRemainingPauseTime(ep);
+                        return `${ep.name}: ${formatPauseDuration(remaining)}`;
+                    }).join(', ');
+                    alert(`All endpoints are paused. Wait time: ${pausedInfo}`);
+                    return;
+                }
+
                 // Per-endpoint concurrency: each endpoint spawns N workers
                 let nextIndex = 0;
                 const worker = async (endpoint: APIEndpoint) => {
                     while (!signal.aborted) {
+                        // Check if endpoint is paused before processing
+                        if (isEndpointPaused(endpoint)) {
+                            const remaining = getRemainingPauseTime(endpoint);
+                            console.log(`Endpoint ${endpoint.name} is paused for ${formatPauseDuration(remaining)}`);
+                            await new Promise(r => setTimeout(r, 1000)); // Wait 1s and check again
+                            continue;
+                        }
+
                         const idx = nextIndex++;
                         if (idx >= queue.length) return;
                         const mergedConfig = mergeEndpointConfig(aiConfig, endpoint);
-                        await runDetectionForImage(queue[idx], signal, mergedConfig);
+                        await runDetectionForImage(queue[idx], signal, mergedConfig, endpoint.id);
                     }
                 };
-                const workers = enabledEndpoints.flatMap(ep =>
+                const workers = availableEndpoints.flatMap(ep =>
                     Array.from({ length: Math.max(1, ep.concurrency || 1) }, () => worker(ep))
                 );
                 await Promise.all(workers);
@@ -306,9 +362,21 @@ export const useProcessor = ({ images, setImages, aiConfig }: UseProcessorProps)
             setIsProcessingBatch(true);
             setProcessingType('translate');
             try {
-                const firstEndpoint = (aiConfig.endpoints || []).find(ep => ep.enabled);
-                const mergedConfig = firstEndpoint ? mergeEndpointConfig(aiConfig, firstEndpoint) : aiConfig;
-                await runDetectionForImage(currentImage, controller.signal, mergedConfig);
+                const firstEndpoint = (aiConfig.endpoints || []).find(ep => ep.enabled && !isEndpointPaused(ep));
+
+                if (!firstEndpoint) {
+                    const pausedEndpoint = (aiConfig.endpoints || []).find(ep => ep.enabled);
+                    if (pausedEndpoint) {
+                        const remaining = getRemainingPauseTime(pausedEndpoint);
+                        alert(`Endpoint is paused. Wait time: ${formatPauseDuration(remaining)}`);
+                    } else {
+                        alert('No enabled endpoints available');
+                    }
+                    return;
+                }
+
+                const mergedConfig = mergeEndpointConfig(aiConfig, firstEndpoint);
+                await runDetectionForImage(currentImage, controller.signal, mergedConfig, firstEndpoint.id);
             } finally {
                 setIsProcessingBatch(false);
                 setProcessingType(null);

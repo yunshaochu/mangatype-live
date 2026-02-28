@@ -139,6 +139,10 @@ export interface APIEndpoint {
   modelSupportsFunctionCalling?: boolean;
   modelSupportsJsonMode?: boolean;
   concurrency?: number; // 该端点的最大并发数，默认 1
+  // API Protection
+  pausedUntil?: number; // Timestamp (ms) when endpoint can be used again
+  consecutiveErrors?: number; // Count of consecutive errors for exponential backoff
+  lastError?: string; // Last error message for debugging
 }
 
 export const mergeEndpointConfig = (global: AIConfig, ep: APIEndpoint): AIConfig => ({
@@ -217,6 +221,12 @@ export interface AIConfig {
   // Processing
   concurrency?: number; // User-configurable concurrency for non-translation tasks (default 1)
   maxRetries?: number; // Auto-retry count on failure (default 0)
+
+  // API Protection
+  apiProtectionEnabled?: boolean; // Enable/disable API protection (default true)
+  apiProtectionDurations?: number[]; // Custom pause durations in seconds [30, 60, 120, 300, 600]
+  apiProtectionDisableThreshold?: number; // Which error number triggers auto-disable (default 5)
+  showApiProtectionTest?: boolean; // Show test tool in settings (default false)
 
   // Export
   exportMethod?: 'canvas' | 'screenshot'; // Default: 'canvas'
