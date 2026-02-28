@@ -456,6 +456,25 @@ export const ControlPanel: React.FC = () => {
           )}
         </div>
 
+        {/* Translation progress */}
+        {images.length > 0 && (() => {
+          const total = images.filter(img => !img.skipped).length;
+          const done  = images.filter(img => !img.skipped && img.status === 'done').length;
+          return (
+            <div className="flex items-center gap-2 px-0.5">
+              <div className="flex-1 h-1 bg-gray-800 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                  style={{ width: total > 0 ? `${(done / total) * 100}%` : '0%' }}
+                />
+              </div>
+              <span className="text-[10px] text-gray-500 tabular-nums shrink-0">
+                {done} / {total}
+              </span>
+            </div>
+          );
+        })()}
+
         <div className="h-px bg-gray-800"></div>
 
         {/* Global Settings & Export */}
