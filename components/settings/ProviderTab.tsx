@@ -397,8 +397,15 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                 </div>
               </div>
 
+              {/* Footnote */}
+              <p className="text-[11px] text-gray-600 leading-relaxed border-t border-gray-800 pt-3">
+                {lang === 'zh'
+                  ? '遇到 429 / 503 等限速错误时，端点按上方时间序列自动暂停；连续错误达到阈值次数后自动停用。'
+                  : 'On 429/503 errors, the endpoint is paused using the duration sequence above; it is auto-disabled after consecutive errors reach the threshold.'}
+              </p>
+
               {/* Show Test Tool + Reset row */}
-              <div className="flex items-center justify-between pt-1">
+              <div className="flex items-center justify-between">
                 <label className="flex items-center gap-2.5 cursor-pointer">
                   <button
                     onClick={() => setConfig(prev => ({ ...prev, showApiProtectionTest: !prev.showApiProtectionTest }))}
