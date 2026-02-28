@@ -22,6 +22,7 @@ export const ControlPanel: React.FC = () => {
     isMerging, setIsMerging,
     isZipping, setIsZipping,
     zipProgress, setZipProgress,
+    zipCancelRequested, requestZipCancel, resetZipCancel,
     setShowManualJson,
     // Brush
     brushColor, setBrushColor, brushSize, setBrushSize,
@@ -31,6 +32,7 @@ export const ControlPanel: React.FC = () => {
 
   const lang = aiConfig.language;
   const bubbles = currentImage?.bubbles || [];
+  const [showZipCancelConfirm, setShowZipCancelConfirm] = React.useState(false);
 
   const handleToolChange = (tool: 'none' | 'bubble' | 'mask' | 'brush') => {
       setDrawTool(tool);
@@ -127,10 +129,41 @@ export const ControlPanel: React.FC = () => {
 
   const onZipDownload = async () => {
     if (images.length === 0 || isZipping) return;
-    setIsZipping(true); setZipProgress({ current: 0, total: images.length });
-    try { 
-        await downloadAllAsZip(images, (curr, total) => { setZipProgress({ current: curr, total }); }, getExportOptions()); 
-    } catch (e) { console.error(e); alert("Zip creation failed"); } finally { setIsZipping(false); setZipProgress({ current: 0, total: 0 }); }
+    setIsZipping(true);
+    setZipProgress({ current: 0, total: images.length });
+    setShowZipCancelConfirm(false);
+    resetZipCancel(); // Reset cancel state at start
+
+    try {
+      await downloadAllAsZip(
+        images,
+        (curr, total) => { setZipProgress({ current: curr, total }); },
+        getExportOptions(),
+        () => zipCancelRequested
+      );
+    } catch (e) {
+      console.error(e);
+      alert("Zip creation failed");
+    } finally {
+      setIsZipping(false);
+      setZipProgress({ current: 0, total: 0 });
+      setShowZipCancelConfirm(false);
+      resetZipCancel(); // Reset cancel state at end
+    }
+  };
+
+  const handleZipButtonClick = () => {
+    if (!isZipping) {
+      onZipDownload();
+    } else {
+      // First click during zipping: show confirm button
+      setShowZipCancelConfirm(true);
+    }
+  };
+
+  const handleZipCancelConfirm = () => {
+    requestZipCancel();
+    setShowZipCancelConfirm(false);
   };
 
   return (
@@ -469,9 +502,9 @@ export const ControlPanel: React.FC = () => {
               <ImageIcon size={16} />
             </button>
             <button
-              onClick={onZipDownload}
-              disabled={isZipping || images.length === 0}
-              className={`p-2 rounded transition-colors relative ${isZipping ? 'text-blue-400 bg-gray-800 cursor-not-allowed' : 'text-gray-300 hover:text-white hover:bg-gray-800'}`}
+              onClick={handleZipButtonClick}
+              disabled={images.length === 0}
+              className={`p-2 rounded transition-colors relative ${isZipping ? 'text-blue-400 bg-gray-800' : 'text-gray-300 hover:text-white hover:bg-gray-800 disabled:opacity-30'}`}
               title={t('zipAll', lang)}
             >
               {isZipping ? (
@@ -483,6 +516,14 @@ export const ControlPanel: React.FC = () => {
                 <Archive size={16} />
               )}
             </button>
+            {showZipCancelConfirm && (
+              <button
+                onClick={handleZipCancelConfirm}
+                className="absolute -top-8 right-0 px-2 py-1 bg-red-600 hover:bg-red-500 text-white rounded text-[10px] font-bold shadow-lg animate-fade-in flex items-center gap-1"
+              >
+                <Square size={10} fill="currentColor" /> {lang === 'zh' ? '确认中止' : 'Confirm Stop'}
+              </button>
+            )}
           </div>
         </div>
       </div>

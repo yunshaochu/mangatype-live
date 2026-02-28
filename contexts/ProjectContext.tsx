@@ -147,6 +147,9 @@ interface ProjectContextType {
   setIsZipping: (v: boolean) => void;
   zipProgress: { current: number; total: number };
   setZipProgress: (p: { current: number; total: number }) => void;
+  zipCancelRequested: boolean;
+  requestZipCancel: () => void;
+  resetZipCancel: () => void;
   showGlobalStyles: boolean;
   setShowGlobalStyles: (v: boolean) => void;
   activeLayer: ViewLayer;
@@ -279,6 +282,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [isMerging, setIsMerging] = useState(false);
   const [isZipping, setIsZipping] = useState(false);
   const [zipProgress, setZipProgress] = useState({ current: 0, total: 0 });
+  const [zipCancelRequested, setZipCancelRequested] = useState(false);
   const [showGlobalStyles, setShowGlobalStyles] = useState(false);
   const [activeLayer, setActiveLayer] = useState<ViewLayer>('final');
   
@@ -693,6 +697,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     isMerging, setIsMerging,
     isZipping, setIsZipping,
     zipProgress, setZipProgress,
+    zipCancelRequested,
+    requestZipCancel: () => setZipCancelRequested(true),
+    resetZipCancel: () => setZipCancelRequested(false),
     showGlobalStyles, setShowGlobalStyles,
     activeLayer, setActiveLayer,
     updateBubble,

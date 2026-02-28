@@ -963,9 +963,10 @@ export const downloadSingleImage = async (imageState: ImageState, options?: Expo
 };
 
 export const downloadAllAsZip = async (
-    images: ImageState[], 
+    images: ImageState[],
     onProgress?: (current: number, total: number) => void,
-    options?: ExportOptions
+    options?: ExportOptions,
+    shouldCancel?: () => boolean
 ) => {
   const zip = new JSZip();
   const folder = zip.folder("typeset_manga");
@@ -973,6 +974,12 @@ export const downloadAllAsZip = async (
   const total = images.length;
 
   for (let i = 0; i < total; i++) {
+    // Check for cancellation before processing each image
+    if (shouldCancel && shouldCancel()) {
+      console.log(`Zip export cancelled at ${i}/${total}`);
+      return;
+    }
+
     const img = images[i];
     if (onProgress) onProgress(i + 1, total);
 
