@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AIConfig } from '../types';
-import { Settings, X, CheckCircle, Layout, Server, FileText, Scan, Eraser, Paintbrush, ALargeSmall, Zap } from 'lucide-react';
+import { Settings, X, Layout, Server, FileText, Scan, Eraser, Paintbrush, ALargeSmall, Zap } from 'lucide-react';
 import { t } from '../services/i18n';
 import { GeneralTab } from './settings/GeneralTab';
 import { ProviderTab } from './settings/ProviderTab';
@@ -13,17 +13,22 @@ import { FontSizeTab } from './settings/FontSizeTab';
 
 interface SettingsModalProps {
   config: AIConfig;
-  onSave: (config: AIConfig) => void;
+  onChange: (config: AIConfig) => void;
   onClose: () => void;
 }
 
 type TabKey = 'general' | 'provider' | 'prompt' | 'detection' | 'inpainting' | 'style' | 'fontSize' | 'advanced';
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, onClose }) => {
-  const [localConfig, setLocalConfig] = useState<AIConfig>(config);
+export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onChange, onClose }) => {
   const [activeTab, setActiveTab] = useState<TabKey>('general');
 
-  const lang = localConfig.language;
+  const lang = config.language;
+
+  // Wrap onChange to support both direct value and functional updater (used by tabs)
+  const handleChange: React.Dispatch<React.SetStateAction<AIConfig>> = (updater) => {
+    const newConfig = typeof updater === 'function' ? updater(config) : updater;
+    onChange(newConfig);
+  };
 
   const tabs: { id: TabKey; label: string; icon: React.FC<any> }[] = [
     { id: 'general', label: 'General', icon: Layout },
@@ -37,7 +42,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
   ];
 
   const renderTabContent = () => {
-    const tabProps = { config: localConfig, setConfig: setLocalConfig, lang };
+    const tabProps = { config, setConfig: handleChange, lang };
 
     switch (activeTab) {
       case 'general':
@@ -105,19 +110,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onSave, on
           </div>
         </div>
 
-        {/* Footer Actions */}
+        {/* Footer Close Button */}
         <div className="absolute bottom-6 right-8 flex gap-3 z-10">
           <button
             onClick={onClose}
             className="px-5 py-2.5 rounded-xl text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-800 transition-all border border-transparent hover:border-gray-700"
           >
-            {t('cancel', lang)}
-          </button>
-          <button
-            onClick={() => onSave(localConfig)}
-            className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold rounded-xl shadow-lg shadow-blue-900/20 flex items-center gap-2 transition-all transform hover:scale-105 active:scale-95"
-          >
-            <CheckCircle size={18} /> {t('saveSettings', lang)}
+            {t('close', lang)}
           </button>
         </div>
 

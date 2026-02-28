@@ -255,13 +255,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(aiConfig)); } catch (e) { console.warn("Failed to save settings", e); }
   }, [aiConfig]);
 
-  // Auto-init/destroy persistent screenshot DOM container based on export method
+  // Destroy screenshot container when switching away from screenshot mode
+  // Init is triggered only manually via AdvancedTab (not on every config save)
   const [screenshotReady, setScreenshotReady] = useState(false);
   useEffect(() => {
-    if (aiConfig.exportMethod === 'screenshot') {
-      setScreenshotReady(false);
-      initScreenshotContainer().then(() => setScreenshotReady(true));
-    } else {
+    if (aiConfig.exportMethod !== 'screenshot') {
       destroyScreenshotContainer();
       setScreenshotReady(false);
     }
