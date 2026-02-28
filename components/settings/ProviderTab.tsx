@@ -271,7 +271,19 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     <div className="space-y-6 animate-fade-in-right">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
-          <h3 className="text-lg font-semibold text-white">API Endpoints</h3>
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-semibold text-white">API Endpoints</h3>
+            {endpoints.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-xs px-2 py-1 rounded-md bg-blue-500/20 text-blue-300 font-semibold">
+                  {lang === 'zh' ? `${enabledCount} 个端点` : `${enabledCount} endpoint${enabledCount !== 1 ? 's' : ''}`}
+                </span>
+                <span className="text-xs px-2 py-1 rounded-md bg-green-500/20 text-green-300 font-semibold">
+                  {lang === 'zh' ? `${endpoints.filter(ep => ep.enabled).reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)} 并发` : `${endpoints.filter(ep => ep.enabled).reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)} workers`}
+                </span>
+              </div>
+            )}
+          </div>
           <p className="text-sm text-gray-500">
             {lang === 'zh' ? '配置多个API端点，批量翻译时自动并发分配。' : 'Configure multiple API endpoints for concurrent batch translation.'}
           </p>
