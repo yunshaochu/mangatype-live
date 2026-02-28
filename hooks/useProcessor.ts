@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { ImageState, AIConfig, APIEndpoint, MaskRegion, Bubble, mergeEndpointConfig } from '../types';
 import { detectAndTypesetComic, fetchRawDetectedRegions } from '../services/geminiService';
 import { generateMaskedImage, generateAnnotatedImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
@@ -23,6 +23,10 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
     const [isProcessingBatch, setIsProcessingBatch] = useState(false);
     const [processingType, setProcessingType] = useState<'translate' | 'scan' | 'inpaint' | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+
+    // Always-fresh reference to latest aiConfig — avoids stale closure inside async workers
+    const aiConfigRef = useRef(aiConfig);
+    useEffect(() => { aiConfigRef.current = aiConfig; }, [aiConfig]);
 
     const maxRetries = aiConfig.maxRetries || 0;
 
@@ -146,7 +150,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
 
             // Success: Reset endpoint error count
             if (endpointId && updateEndpoint) {
-                const endpoint = aiConfig.endpoints.find(ep => ep.id === endpointId);
+                const endpoint = aiConfigRef.current.endpoints.find(ep => ep.id === endpointId);
                 if (endpoint) {
                     const updatedEndpoint = handleEndpointSuccess(endpoint);
                     updateEndpoint(endpointId, updatedEndpoint);
@@ -164,7 +168,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
 
             // Handle API protection on last attempt
             if (attempt === retries && endpointId && updateEndpoint) {
-                const endpoint = aiConfig.endpoints.find(ep => ep.id === endpointId);
+                const endpoint = aiConfigRef.current.endpoints.find(ep => ep.id === endpointId);
                 if (endpoint) {
                     const protectionConfig = {
                         durations: aiConfig.apiProtectionDurations,
@@ -292,13 +296,12 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         setProcessingType(task);
 
         try {
-            const enabledEndpoints = (aiConfig.endpoints || []).filter(ep => ep.enabled);
+            const enabledEndpoints = (aiConfigRef.current.endpoints || []).filter(ep => ep.enabled);
 
             if (task === 'translate' && enabledEndpoints.length > 0) {
-                // Filter out paused endpoints
-                const availableEndpoints = enabledEndpoints.filter(ep => !isEndpointPaused(ep));
-
-                if (availableEndpoints.length === 0) {
+                // Initial check: are any endpoints available right now?
+                const availableNow = enabledEndpoints.filter(ep => !isEndpointPaused(ep));
+                if (availableNow.length === 0) {
                     const pausedInfo = enabledEndpoints.map(ep => {
                         const remaining = getRemainingPauseTime(ep);
                         return `${ep.name}: ${formatPauseDuration(remaining)}`;
@@ -307,27 +310,53 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     return;
                 }
 
-                // Per-endpoint concurrency: each endpoint spawns N workers
+                // Track concurrent requests per endpoint (JS single-threaded: no locks needed)
+                const inFlight = new Map<string, number>();
+
+                // Dynamically pick least-loaded available endpoint from latest config
+                const pickEndpoint = (): APIEndpoint | null => {
+                    const latest = (aiConfigRef.current.endpoints || [])
+                        .filter(ep => ep.enabled && !isEndpointPaused(ep))
+                        .filter(ep => (inFlight.get(ep.id) || 0) < Math.max(1, ep.concurrency || 1));
+                    if (latest.length === 0) return null;
+                    // Pick least loaded
+                    return latest.reduce((best, ep) =>
+                        (inFlight.get(ep.id) || 0) < (inFlight.get(best.id) || 0) ? ep : best
+                    );
+                };
+
+                // Worker count = sum of concurrencies of initially enabled endpoints
+                const totalWorkers = Math.max(1,
+                    enabledEndpoints.reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)
+                );
+
                 let nextIndex = 0;
-                const worker = async (endpoint: APIEndpoint) => {
+                const worker = async () => {
                     while (!signal.aborted) {
-                        // Check if endpoint is paused before processing
-                        if (isEndpointPaused(endpoint)) {
-                            const remaining = getRemainingPauseTime(endpoint);
-                            console.log(`Endpoint ${endpoint.name} is paused for ${formatPauseDuration(remaining)}`);
-                            await new Promise(r => setTimeout(r, 1000)); // Wait 1s and check again
+                        const endpoint = pickEndpoint();
+                        if (!endpoint) {
+                            // All slots busy or all endpoints paused/disabled — wait and retry
+                            await new Promise(r => setTimeout(r, 200));
                             continue;
                         }
 
                         const idx = nextIndex++;
                         if (idx >= queue.length) return;
-                        const mergedConfig = mergeEndpointConfig(aiConfig, endpoint);
-                        await runDetectionForImage(queue[idx], signal, mergedConfig, endpoint.id);
+
+                        inFlight.set(endpoint.id, (inFlight.get(endpoint.id) || 0) + 1);
+                        console.log(`[${new Date().toLocaleTimeString()}] "${queue[idx].name}" → "${endpoint.name}" (并发: ${inFlight.get(endpoint.id)}/${Math.max(1, endpoint.concurrency || 1)})`);
+
+                        const mergedConfig = mergeEndpointConfig(aiConfigRef.current, endpoint);
+                        try {
+                            await runDetectionForImage(queue[idx], signal, mergedConfig, endpoint.id);
+                        } finally {
+                            inFlight.set(endpoint.id, Math.max(0, (inFlight.get(endpoint.id) || 1) - 1));
+                            console.log(`[${new Date().toLocaleTimeString()}] "${queue[idx].name}" 完成，释放 "${endpoint.name}" (剩余并发: ${inFlight.get(endpoint.id)}/${Math.max(1, endpoint.concurrency || 1)})`);
+                        }
                     }
                 };
-                const workers = availableEndpoints.flatMap(ep =>
-                    Array.from({ length: Math.max(1, ep.concurrency || 1) }, () => worker(ep))
-                );
+
+                const workers = Array.from({ length: totalWorkers }, () => worker());
                 await Promise.all(workers);
             } else {
                 // Inpaint or no endpoints: use original chunk-based concurrency
@@ -362,10 +391,10 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             setIsProcessingBatch(true);
             setProcessingType('translate');
             try {
-                const firstEndpoint = (aiConfig.endpoints || []).find(ep => ep.enabled && !isEndpointPaused(ep));
+                const firstEndpoint = (aiConfigRef.current.endpoints || []).find(ep => ep.enabled && !isEndpointPaused(ep));
 
                 if (!firstEndpoint) {
-                    const pausedEndpoint = (aiConfig.endpoints || []).find(ep => ep.enabled);
+                    const pausedEndpoint = (aiConfigRef.current.endpoints || []).find(ep => ep.enabled);
                     if (pausedEndpoint) {
                         const remaining = getRemainingPauseTime(pausedEndpoint);
                         alert(`Endpoint is paused. Wait time: ${formatPauseDuration(remaining)}`);
@@ -375,7 +404,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     return;
                 }
 
-                const mergedConfig = mergeEndpointConfig(aiConfig, firstEndpoint);
+                const mergedConfig = mergeEndpointConfig(aiConfigRef.current, firstEndpoint);
                 await runDetectionForImage(currentImage, controller.signal, mergedConfig, firstEndpoint.id);
             } finally {
                 setIsProcessingBatch(false);
