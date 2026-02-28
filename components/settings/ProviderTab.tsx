@@ -282,6 +282,19 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
   const [testResults, setTestResults] = useState<string>('');
   const [showProtectionSettings, setShowProtectionSettings] = useState(false);
 
+  // ESC closes gear modal (capture phase so it doesn't bubble up to SettingsModal)
+  useEffect(() => {
+    if (!showProtectionSettings) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        setShowProtectionSettings(false);
+      }
+    };
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [showProtectionSettings]);
+
   const runTest = (endpointId: string, scenario: 'single_error' | 'repeated_errors' | 'success_recovery' | 'auto_disable') => {
     const endpoint = endpoints.find(ep => ep.id === endpointId);
     if (!endpoint) return;

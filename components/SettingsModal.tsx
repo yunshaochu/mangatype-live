@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AIConfig } from '../types';
 import { Settings, X, Layout, Server, FileText, Scan, Eraser, Paintbrush, ALargeSmall, Zap } from 'lucide-react';
 import { t } from '../services/i18n';
@@ -23,6 +23,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ config, onChange, 
   const [activeTab, setActiveTab] = useState<TabKey>('general');
 
   const lang = config.language;
+
+  // ESC closes the settings modal (bubble phase — sub-modals intercept first via capture)
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
 
   // Wrap onChange to support both direct value and functional updater (used by tabs)
   const handleChange: React.Dispatch<React.SetStateAction<AIConfig>> = (updater) => {
