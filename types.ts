@@ -139,6 +139,7 @@ export interface APIEndpoint {
   modelSupportsFunctionCalling?: boolean;
   modelSupportsJsonMode?: boolean;
   concurrency?: number; // 该端点的最大并发数，默认 1
+  group?: string; // 分组名称，留空表示未分组
   // API Protection
   pausedUntil?: number; // Timestamp (ms) when endpoint can be used again
   consecutiveErrors?: number; // Count of consecutive errors for exponential backoff

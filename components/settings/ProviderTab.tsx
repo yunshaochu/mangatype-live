@@ -11,9 +11,10 @@ const EndpointEditor: React.FC<{
   endpoint: APIEndpoint;
   config: any;
   lang: 'zh' | 'en';
+  groups: string[];
   onSave: (ep: APIEndpoint) => void;
   onCancel: () => void;
-}> = ({ endpoint, config, lang, onSave, onCancel }) => {
+}> = ({ endpoint, config, lang, groups, onSave, onCancel }) => {
   const [draft, setDraft] = useState<APIEndpoint>({ ...endpoint });
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
@@ -63,6 +64,18 @@ const EndpointEditor: React.FC<{
         <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{lang === 'zh' ? '名称' : 'Name'}</label>
         <input type="text" value={draft.name} onChange={e => setDraft({ ...draft, name: e.target.value })}
           className="w-full bg-[#0f1115] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none" />
+      </div>
+
+      {/* Group */}
+      <div className="space-y-1">
+        <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{lang === 'zh' ? '分组' : 'Group'}</label>
+        <input type="text" value={draft.group || ''} onChange={e => setDraft({ ...draft, group: e.target.value || undefined })}
+          placeholder={lang === 'zh' ? '留空表示未分组' : 'Leave empty for no group'}
+          list="endpoint-group-suggestions"
+          className="w-full bg-[#0f1115] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none placeholder-gray-600" />
+        <datalist id="endpoint-group-suggestions">
+          {groups.map(g => <option key={g} value={g} />)}
+        </datalist>
       </div>
 
       {/* Provider Toggle */}
@@ -175,9 +188,26 @@ const EndpointEditor: React.FC<{
 };
 export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingGroupName, setEditingGroupName] = useState<string | null>(null);
+  const [groupNameDraft, setGroupNameDraft] = useState('');
 
   const endpoints = config.endpoints || [];
   const enabledCount = endpoints.filter(ep => ep.enabled).length;
+
+  // Derive ordered unique groups from endpoint array
+  const groups = Array.from(new Set(endpoints.map((ep: APIEndpoint) => ep.group).filter(Boolean))) as string[];
+
+  // Build group → endpoints map (preserving array order)
+  const groupedMap = new Map<string, APIEndpoint[]>();
+  const ungrouped: APIEndpoint[] = [];
+  endpoints.forEach((ep: APIEndpoint) => {
+    if (ep.group) {
+      if (!groupedMap.has(ep.group)) groupedMap.set(ep.group, []);
+      groupedMap.get(ep.group)!.push(ep);
+    } else {
+      ungrouped.push(ep);
+    }
+  });
 
   const updateEndpoints = (newEndpoints: APIEndpoint[]) => {
     const first = newEndpoints.find(ep => ep.enabled) || newEndpoints[0];
@@ -215,9 +245,8 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
   };
 
   const handleToggle = (id: string) => {
-    updateEndpoints(endpoints.map(e => {
+    updateEndpoints(endpoints.map((e: APIEndpoint) => {
       if (e.id === id) {
-        // When re-enabling a disabled endpoint, clear error state
         if (!e.enabled) {
           return { ...e, enabled: true, consecutiveErrors: 0, pausedUntil: undefined, lastError: undefined };
         }
@@ -225,6 +254,27 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
       }
       return e;
     }));
+  };
+
+  const handleGroupToggle = (groupName: string, enable: boolean) => {
+    updateEndpoints(endpoints.map((e: APIEndpoint) => {
+      if (e.group !== groupName) return e;
+      if (enable) return { ...e, enabled: true, consecutiveErrors: 0, pausedUntil: undefined, lastError: undefined };
+      return { ...e, enabled: false };
+    }));
+  };
+
+  const handleGlobalToggle = (enable: boolean) => {
+    updateEndpoints(endpoints.map((e: APIEndpoint) => {
+      if (enable) return { ...e, enabled: true, consecutiveErrors: 0, pausedUntil: undefined, lastError: undefined };
+      return { ...e, enabled: false };
+    }));
+  };
+
+  const handleRenameGroup = (oldName: string, newName: string) => {
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === oldName) return;
+    updateEndpoints(endpoints.map((e: APIEndpoint) => e.group === oldName ? { ...e, group: trimmed } : e));
   };
 
   // Test API Protection
@@ -433,74 +483,153 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
       )}
 
       {/* Endpoint List */}
-      <div className="space-y-3">
-        {endpoints.map(ep => (
-          <div key={ep.id}>
-            {editingId === ep.id ? (
-              <EndpointEditor endpoint={ep} config={config} lang={lang} onSave={handleSave} onCancel={() => setEditingId(null)} />
-            ) : (
-              <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${ep.enabled ? 'bg-gray-800/40 border-gray-700' : 'bg-gray-900/30 border-gray-800 opacity-50'}`}>
-                {/* Enable toggle */}
-                <button onClick={() => handleToggle(ep.id)} title={ep.enabled ? 'Disable' : 'Enable'}
-                  className={`p-1.5 rounded-lg transition-colors ${ep.enabled ? 'text-green-400 hover:bg-green-900/30' : 'text-gray-600 hover:bg-gray-800'}`}>
-                  <Power size={16} />
-                </button>
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-semibold text-white truncate">{ep.name}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${ep.provider === 'gemini' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'}`}>
-                      {ep.provider === 'gemini' ? 'Gemini' : 'OpenAI'}
-                    </span>
-                    {(ep.concurrency || 1) > 1 && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-yellow-500/20 text-yellow-400">
-                        ×{ep.concurrency}
-                      </span>
-                    )}
-                    {/* API Protection Status */}
-                    {isEndpointPaused(ep) && (
-                      <>
-                        <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-bold bg-orange-500/20 text-orange-400" title={ep.lastError || 'Rate limited'}>
-                          <Clock size={10} />
-                          {formatPauseDuration(getRemainingPauseTime(ep))}
-                        </span>
-                        {ep.consecutiveErrors && ep.consecutiveErrors > 0 && (
-                          <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-bold bg-red-500/20 text-red-400" title={`${ep.consecutiveErrors} consecutive errors`}>
-                            <AlertTriangle size={10} />
-                            {ep.consecutiveErrors}
-                          </span>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <p className="text-xs text-gray-500 truncate font-mono">{ep.model || '(no model)'}</p>
-                  {isEndpointPaused(ep) && ep.lastError && (
-                    <p className="text-[10px] text-red-400/70 truncate mt-0.5" title={ep.lastError}>
-                      {ep.lastError}
-                    </p>
-                  )}
-                </div>
-                {/* Actions */}
-                <button onClick={() => setEditingId(ep.id)} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
-                  <Pencil size={14} />
-                </button>
-                <button onClick={() => handleDelete(ep.id)} className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
-
+      <div className="space-y-4">
         {endpoints.length === 0 && (
           <div className="text-center py-8 text-gray-500 text-sm">
             {lang === 'zh' ? '没有端点。点击"添加端点"开始配置。' : 'No endpoints. Click "Add Endpoint" to get started.'}
           </div>
         )}
+
+        {/* Helper: render a single endpoint row */}
+        {(() => {
+          const renderEndpoint = (ep: APIEndpoint) => (
+            <div key={ep.id}>
+              {editingId === ep.id ? (
+                <EndpointEditor endpoint={ep} config={config} lang={lang} groups={groups} onSave={handleSave} onCancel={() => setEditingId(null)} />
+              ) : (
+                <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${ep.enabled ? 'bg-gray-800/40 border-gray-700' : 'bg-gray-900/30 border-gray-800 opacity-50'}`}>
+                  <button onClick={() => handleToggle(ep.id)} title={ep.enabled ? 'Disable' : 'Enable'}
+                    className={`p-1.5 rounded-lg transition-colors ${ep.enabled ? 'text-green-400 hover:bg-green-900/30' : 'text-gray-600 hover:bg-gray-800'}`}>
+                    <Power size={16} />
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-white truncate">{ep.name}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${ep.provider === 'gemini' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'}`}>
+                        {ep.provider === 'gemini' ? 'Gemini' : 'OpenAI'}
+                      </span>
+                      {(ep.concurrency || 1) > 1 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-yellow-500/20 text-yellow-400">
+                          ×{ep.concurrency}
+                        </span>
+                      )}
+                      {isEndpointPaused(ep) && (
+                        <>
+                          <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-bold bg-orange-500/20 text-orange-400" title={ep.lastError || 'Rate limited'}>
+                            <Clock size={10} />
+                            {formatPauseDuration(getRemainingPauseTime(ep))}
+                          </span>
+                          {ep.consecutiveErrors && ep.consecutiveErrors > 0 && (
+                            <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-bold bg-red-500/20 text-red-400" title={`${ep.consecutiveErrors} consecutive errors`}>
+                              <AlertTriangle size={10} />
+                              {ep.consecutiveErrors}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 truncate font-mono">{ep.model || '(no model)'}</p>
+                    {isEndpointPaused(ep) && ep.lastError && (
+                      <p className="text-[10px] text-red-400/70 truncate mt-0.5" title={ep.lastError}>{ep.lastError}</p>
+                    )}
+                  </div>
+                  <button onClick={() => setEditingId(ep.id)} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
+                    <Pencil size={14} />
+                  </button>
+                  <button onClick={() => handleDelete(ep.id)} className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-900/20 rounded-lg transition-colors">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+
+          return (
+            <>
+              {/* Named groups */}
+              {groups.map(groupName => {
+                const groupEps = groupedMap.get(groupName) || [];
+                const groupEnabled = groupEps.filter(e => e.enabled).length;
+                return (
+                  <div key={groupName} className="space-y-1.5">
+                    {/* Group header */}
+                    <div className="flex items-center gap-2">
+                      {editingGroupName === groupName ? (
+                        <input
+                          autoFocus
+                          value={groupNameDraft}
+                          onChange={e => setGroupNameDraft(e.target.value)}
+                          onBlur={() => { handleRenameGroup(groupName, groupNameDraft); setEditingGroupName(null); }}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter') { handleRenameGroup(groupName, groupNameDraft); setEditingGroupName(null); }
+                            if (e.key === 'Escape') setEditingGroupName(null);
+                          }}
+                          className="text-xs font-semibold text-white bg-transparent border-b border-gray-500 outline-none min-w-0 w-28"
+                        />
+                      ) : (
+                        <button
+                          onClick={() => { setEditingGroupName(groupName); setGroupNameDraft(groupName); }}
+                          className="flex items-center gap-1 text-xs font-semibold text-gray-300 hover:text-white transition-colors group"
+                          title={lang === 'zh' ? '点击重命名' : 'Click to rename'}
+                        >
+                          {groupName}
+                          <Pencil size={9} className="opacity-0 group-hover:opacity-40 transition-opacity" />
+                        </button>
+                      )}
+                      <div className="flex-1 h-px bg-gray-800" />
+                      <span className="text-[10px] text-gray-600">{groupEnabled}/{groupEps.length}</span>
+                      <button onClick={() => handleGroupToggle(groupName, false)}
+                        className="text-[10px] text-gray-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-gray-700 transition-colors">
+                        {lang === 'zh' ? '全关' : 'Off'}
+                      </button>
+                      <button onClick={() => handleGroupToggle(groupName, true)}
+                        className="text-[10px] text-green-400 hover:text-green-300 px-1.5 py-0.5 rounded hover:bg-green-900/20 transition-colors">
+                        {lang === 'zh' ? '全开' : 'On'}
+                      </button>
+                    </div>
+                    {/* Endpoints in group */}
+                    <div className="space-y-1.5 pl-2 border-l border-gray-800">
+                      {groupEps.map(renderEndpoint)}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {/* Ungrouped endpoints */}
+              {ungrouped.length > 0 && (
+                <div className="space-y-1.5">
+                  {groups.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-600">{lang === 'zh' ? '未分组' : 'Ungrouped'}</span>
+                      <div className="flex-1 h-px bg-gray-800" />
+                    </div>
+                  )}
+                  <div className={`space-y-1.5 ${groups.length > 0 ? 'pl-2 border-l border-gray-800' : ''}`}>
+                    {ungrouped.map(renderEndpoint)}
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
 
-      {/* Test Panel */}
-      {endpoints.length > 0 && config.showApiProtectionTest && (
+      {/* Global toggle */}
+      {endpoints.length > 0 && (
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-px bg-gray-800" />
+          <button onClick={() => handleGlobalToggle(false)}
+            className="text-[10px] text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-800 hover:bg-gray-700 transition-colors">
+            {lang === 'zh' ? '全部关闭' : 'Disable All'}
+          </button>
+          <button onClick={() => handleGlobalToggle(true)}
+            className="text-[10px] text-green-400 hover:text-green-300 px-2 py-1 rounded bg-green-900/20 hover:bg-green-900/30 transition-colors">
+            {lang === 'zh' ? '全部开启' : 'Enable All'}
+          </button>
+        </div>
+      )}
+
+      {/* Test Panel */}      {endpoints.length > 0 && config.showApiProtectionTest && (
         <div className="border border-purple-800/30 rounded-xl overflow-hidden">
           <button
             onClick={() => setShowTestPanel(!showTestPanel)}
