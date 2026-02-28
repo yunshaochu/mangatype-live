@@ -35,6 +35,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   const originalImageRef = useRef<HTMLImageElement | null>(null); // Store original image for restoring
   const [isPainting, setIsPainting] = useState(false);
   const lastPos = useRef<{x: number, y: number} | null>(null);
+  const [brushCursorPos, setBrushCursorPos] = useState<{ x: number; y: number; d: number } | null>(null);
 
   // --- Zoom / Pan State ---
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -198,6 +199,12 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handlePaintMove = (e: React.MouseEvent) => {
+      // Always update brush cursor
+      if (paintCanvasRef.current) {
+          const rect = paintCanvasRef.current.getBoundingClientRect();
+          const scale = rect.width > 0 ? paintCanvasRef.current.width / rect.width : 1;
+          setBrushCursorPos({ x: e.clientX, y: e.clientY, d: Math.max(4, brushSize / scale) });
+      }
       // Only paint if in brush mode
       if (!isPainting || !showPaintCanvas || !paintCanvasRef.current || paintMode !== 'brush') return;
       
@@ -464,11 +471,11 @@ export const Workspace: React.FC<WorkspaceProps> = ({
         {showPaintCanvas ? (
             <canvas
                 ref={paintCanvasRef}
-                className={`max-h-[90vh] max-w-full block select-none relative z-20 cursor-crosshair`}
+                className={`max-h-[90vh] max-w-full block select-none relative z-20 cursor-none`}
                 onMouseDown={handlePaintStart}
                 onMouseMove={handlePaintMove}
                 onMouseUp={handlePaintEnd}
-                onMouseLeave={handlePaintEnd}
+                onMouseLeave={() => { handlePaintEnd(); setBrushCursorPos(null); }}
             />
         ) : (
             <img
@@ -541,6 +548,23 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Brush cursor ring */}
+      {showPaintCanvas && brushCursorPos && (
+        <div style={{
+          position: 'fixed',
+          left: brushCursorPos.x,
+          top: brushCursorPos.y,
+          width: brushCursorPos.d,
+          height: brushCursorPos.d,
+          transform: 'translate(-50%, -50%)',
+          borderRadius: '50%',
+          border: '1px solid rgba(255,255,255,0.9)',
+          boxShadow: '0 0 0 1px rgba(0,0,0,0.7)',
+          pointerEvents: 'none',
+          zIndex: 9999,
+        }} />
+      )}
 
       {/* Zoom Indicator */}
       {zoom !== 1 && (
