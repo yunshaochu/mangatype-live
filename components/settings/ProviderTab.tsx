@@ -324,140 +324,102 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
             </div>
 
             {/* Content */}
-            <div className="p-4 space-y-4">
-              {/* Enable/Disable */}
-              <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-                <div>
-                  <label className="text-sm font-semibold text-white">
+            <div className="p-4 space-y-5">
+              {/* Enable + Threshold row */}
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setConfig(prev => ({ ...prev, apiProtectionEnabled: !(prev.apiProtectionEnabled ?? true) }))}
+                    className={`relative shrink-0 w-10 h-5 rounded-full transition-colors ${
+                      (config.apiProtectionEnabled ?? true) ? 'bg-blue-600' : 'bg-gray-600'
+                    }`}
+                  >
+                    <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                      (config.apiProtectionEnabled ?? true) ? 'translate-x-5' : ''
+                    }`} />
+                  </button>
+                  <span className="text-sm font-semibold text-white">
                     {lang === 'zh' ? '启用 API 保护' : 'Enable API Protection'}
-                  </label>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {lang === 'zh' ? '自动检测并处理 429/503 等错误' : 'Automatically detect and handle 429/503 errors'}
-                  </p>
+                  </span>
                 </div>
-                <button
-                  onClick={() => setConfig(prev => ({ ...prev, apiProtectionEnabled: !(prev.apiProtectionEnabled ?? true) }))}
-                  className={`relative w-12 h-6 rounded-full transition-colors ${
-                    (config.apiProtectionEnabled ?? true) ? 'bg-blue-600' : 'bg-gray-600'
-                  }`}
-                >
-                  <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                    (config.apiProtectionEnabled ?? true) ? 'translate-x-6' : ''
-                  }`} />
-                </button>
-              </div>
-
-              {/* Disable Threshold */}
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-white">
-                  {lang === 'zh' ? '自动停用阈值' : 'Auto-Disable Threshold'}
-                </label>
-                <p className="text-xs text-gray-400">
-                  {lang === 'zh' ? '第几次连续错误后自动停用端点（同时决定需要配置多少个暂停时间）' : 'Which consecutive error triggers auto-disable (also determines number of pause durations)'}
-                </p>
-                <input
-                  type="number"
-                  min="1"
-                  max="10"
-                  value={config.apiProtectionDisableThreshold || DEFAULT_API_PROTECTION_CONFIG.disableThreshold}
-                  onChange={(e) => {
-                    const newThreshold = parseInt(e.target.value) || 5;
-                    const currentDurations = config.apiProtectionDurations || DEFAULT_API_PROTECTION_CONFIG.durations;
-
-                    // Adjust durations array to match new threshold
-                    let newDurations = [...currentDurations];
-                    if (newThreshold > newDurations.length) {
-                      // Add more durations (use last duration or 600 as default)
-                      const lastDuration = newDurations[newDurations.length - 1] || 600;
-                      while (newDurations.length < newThreshold) {
-                        newDurations.push(lastDuration);
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs text-gray-400">{lang === 'zh' ? '停用阈值' : 'Disable after'}</span>
+                  <input
+                    type="number"
+                    min="1"
+                    max="10"
+                    value={config.apiProtectionDisableThreshold || DEFAULT_API_PROTECTION_CONFIG.disableThreshold}
+                    onChange={(e) => {
+                      const newThreshold = parseInt(e.target.value) || 5;
+                      const currentDurations = config.apiProtectionDurations || DEFAULT_API_PROTECTION_CONFIG.durations;
+                      let newDurations = [...currentDurations];
+                      if (newThreshold > newDurations.length) {
+                        const lastDuration = newDurations[newDurations.length - 1] || 600;
+                        while (newDurations.length < newThreshold) newDurations.push(lastDuration);
+                      } else if (newThreshold < newDurations.length) {
+                        newDurations = newDurations.slice(0, newThreshold);
                       }
-                    } else if (newThreshold < newDurations.length) {
-                      // Remove extra durations
-                      newDurations = newDurations.slice(0, newThreshold);
-                    }
-
-                    setConfig(prev => ({
-                      ...prev,
-                      apiProtectionDisableThreshold: newThreshold,
-                      apiProtectionDurations: newDurations
-                    }));
-                  }}
-                  className="w-full bg-[#0f1115] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none"
-                />
+                      setConfig(prev => ({ ...prev, apiProtectionDisableThreshold: newThreshold, apiProtectionDurations: newDurations }));
+                    }}
+                    className="w-14 bg-[#0f1115] border border-gray-700 rounded-lg p-1.5 text-sm text-center text-white focus:border-blue-500 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                  <span className="text-xs text-gray-400">{lang === 'zh' ? '次' : 'errors'}</span>
+                </div>
               </div>
 
-              {/* Pause Durations */}
+              {/* Pause Durations — arrow chain */}
               <div className="space-y-2">
-                <label className="text-sm font-semibold text-white">
-                  {lang === 'zh' ? '暂停时间（秒）' : 'Pause Durations (seconds)'}
+                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  {lang === 'zh' ? '暂停时间（秒）' : 'Pause Durations (s)'}
                 </label>
-                <p className="text-xs text-gray-400">
-                  {lang === 'zh'
-                    ? `每次错误后的暂停时间，共 ${config.apiProtectionDisableThreshold || DEFAULT_API_PROTECTION_CONFIG.disableThreshold} 个（对应阈值）`
-                    : `Pause time after each error, ${config.apiProtectionDisableThreshold || DEFAULT_API_PROTECTION_CONFIG.disableThreshold} total (matches threshold)`}
-                </p>
-                <div className="grid grid-cols-5 gap-2">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   {Array.from({ length: config.apiProtectionDisableThreshold || DEFAULT_API_PROTECTION_CONFIG.disableThreshold }).map((_, index) => {
                     const durations = config.apiProtectionDurations || DEFAULT_API_PROTECTION_CONFIG.durations;
                     const duration = durations[index] || 600;
-
                     return (
-                      <div key={index} className="space-y-1">
-                        <label className="text-[10px] text-gray-500 uppercase">
-                          {lang === 'zh' ? `第${index + 1}次` : `${index + 1}${['st', 'nd', 'rd', 'th', 'th', 'th', 'th', 'th', 'th', 'th'][index]}`}
-                        </label>
+                      <React.Fragment key={index}>
+                        {index > 0 && <span className="text-gray-600 text-xs select-none">→</span>}
                         <input
                           type="number"
                           min="1"
                           value={duration}
                           onChange={(e) => {
                             const newDurations = [...(config.apiProtectionDurations || DEFAULT_API_PROTECTION_CONFIG.durations)];
-                            // Ensure array is long enough
-                            while (newDurations.length <= index) {
-                              newDurations.push(600);
-                            }
+                            while (newDurations.length <= index) newDurations.push(600);
                             newDurations[index] = parseInt(e.target.value) || 1;
                             setConfig(prev => ({ ...prev, apiProtectionDurations: newDurations }));
                           }}
-                          className="w-full bg-[#0f1115] border border-gray-700 rounded-lg p-2 text-xs text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none"
+                          className="w-14 bg-[#0f1115] border border-gray-700 rounded-lg p-1.5 text-xs text-center text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                         />
-                      </div>
+                      </React.Fragment>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Show Test Tool */}
-              <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-                <div>
-                  <label className="text-sm font-semibold text-white">
-                    {lang === 'zh' ? '显示测试工具' : 'Show Test Tool'}
-                  </label>
-                  <p className="text-xs text-gray-400 mt-0.5">
-                    {lang === 'zh' ? '在主界面显示 API 保护测试工具' : 'Show API protection test tool in main panel'}
-                  </p>
-                </div>
+              {/* Show Test Tool + Reset row */}
+              <div className="flex items-center justify-between pt-1">
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <button
+                    onClick={() => setConfig(prev => ({ ...prev, showApiProtectionTest: !prev.showApiProtectionTest }))}
+                    className={`relative shrink-0 w-10 h-5 rounded-full transition-colors ${
+                      config.showApiProtectionTest ? 'bg-blue-600' : 'bg-gray-600'
+                    }`}
+                  >
+                    <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                      config.showApiProtectionTest ? 'translate-x-5' : ''
+                    }`} />
+                  </button>
+                  <span className="text-sm text-gray-300">{lang === 'zh' ? '显示测试工具' : 'Show Test Tool'}</span>
+                </label>
                 <button
-                  onClick={() => setConfig(prev => ({ ...prev, showApiProtectionTest: !prev.showApiProtectionTest }))}
-                  className={`relative w-12 h-6 rounded-full transition-colors ${
-                    config.showApiProtectionTest ? 'bg-blue-600' : 'bg-gray-600'
-                  }`}
+                  onClick={resetProtectionSettings}
+                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors"
                 >
-                  <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                    config.showApiProtectionTest ? 'translate-x-6' : ''
-                  }`} />
+                  <RotateCcw size={13} />
+                  {lang === 'zh' ? '恢复默认' : 'Reset'}
                 </button>
               </div>
-
-              {/* Reset Button */}
-              <button
-                onClick={resetProtectionSettings}
-                className="w-full flex items-center justify-center gap-2 p-3 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm text-white transition-colors"
-              >
-                <RotateCcw size={16} />
-                {lang === 'zh' ? '恢复默认设置' : 'Reset to Defaults'}
-              </button>
             </div>
           </div>
         </div>
@@ -636,26 +598,6 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
         </div>
       )}
 
-      {/* Footer */}
-      <div className="space-y-3">
-        <div className="p-3 bg-blue-900/10 border border-blue-800/30 rounded-lg">
-          <p className="text-xs text-blue-300/80 leading-relaxed">
-            <strong className="text-blue-200">{lang === 'zh' ? '并发模式' : 'Concurrency'}:</strong>{' '}
-            {lang === 'zh'
-              ? `当前启用 ${enabledCount} 个端点，总并发 ${endpoints.filter(ep => ep.enabled).reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)}。批量翻译时，每个端点按其并发数分配任务。`
-              : `${enabledCount} endpoint(s) active, ${endpoints.filter(ep => ep.enabled).reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)} total workers. Each endpoint processes up to its concurrency limit.`}
-          </p>
-        </div>
-
-        <div className="p-3 bg-orange-900/10 border border-orange-800/30 rounded-lg">
-          <p className="text-xs text-orange-300/80 leading-relaxed">
-            <strong className="text-orange-200">{lang === 'zh' ? 'API 保护' : 'API Protection'}:</strong>{' '}
-            {lang === 'zh'
-              ? '当端点遇到 429/503 等错误时，会自动暂停使用（30秒→1分钟→2分钟→5分钟→10分钟）。暂停时间超过 5 分钟后，端点将自动停用。'
-              : 'Endpoints are automatically paused when encountering 429/503 errors (30s→1m→2m→5m→10m). Endpoints are auto-disabled after 5+ minutes of pause time.'}
-          </p>
-        </div>
-      </div>
     </div>
   );
 };
