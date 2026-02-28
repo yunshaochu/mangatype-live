@@ -128,6 +128,7 @@ export const Gallery: React.FC<GalleryProps> = ({ onAddFile, onAddFolder }) => {
       status: 'idle',
       detectionStatus: 'idle',
       inpaintingStatus: 'idle',
+      bubbles: [],
       errorMessage: undefined
     } : img));
   };

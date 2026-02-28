@@ -441,14 +441,15 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             : `Reset status for all ${targets.length} images?`;
 
         if (confirm(msg)) {
-             setImages(prev => prev.map(img => !img.skipped ? { 
-                 ...img, 
-                 status: 'idle', 
+             setImages(prev => prev.map(img => !img.skipped ? {
+                 ...img,
+                 status: 'idle',
                  detectionStatus: 'idle',
                  inpaintingStatus: 'idle',
-                 inpaintedUrl: undefined, // Reset inpaint layer on full reset? Maybe.
+                 bubbles: [],
+                 inpaintedUrl: undefined,
                  inpaintedBase64: undefined,
-                 errorMessage: undefined 
+                 errorMessage: undefined
              } : img));
         }
     };
