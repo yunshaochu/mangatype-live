@@ -272,15 +272,31 @@ export const Gallery: React.FC<GalleryProps> = ({ onAddFile, onAddFolder }) => {
                         e.stopPropagation();
                         onToggleSkip(img.id);
                     }}
-                    className={`absolute top-1 left-1 p-1 rounded-full z-20 transition-all ${
-                        img.skipped 
-                        ? 'bg-red-500/80 text-white opacity-100 hover:bg-red-600' 
-                        : 'bg-black/50 text-gray-400 opacity-0 group-hover:opacity-100 hover:bg-black/70 hover:text-white'
+                    className={`absolute top-1 left-1 p-1 rounded-full z-20 transition-all opacity-0 group-hover:opacity-100 ${
+                        img.skipped
+                        ? 'bg-red-500/80 text-white hover:bg-red-600'
+                        : 'bg-black/50 text-gray-400 hover:bg-black/70 hover:text-white'
                     }`}
                     title={img.skipped ? t('skippedRestore', lang) : t('skipAPI', lang)}
                 >
                     <Ban size={12} />
                 </button>
+
+                {/* Reset Status Button - below Skip, always visible when there's something to reset */}
+                {(img.bubbles.length > 0 || img.status === 'done' || img.status === 'error') && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setImages(prev => prev.map(p => p.id === img.id ? {
+                        ...p, status: 'idle', bubbles: [], errorMessage: undefined
+                      } : p));
+                    }}
+                    className="absolute top-7 left-1 p-1 rounded-full z-20 opacity-0 group-hover:opacity-100 bg-black/50 text-gray-400 hover:bg-black/70 hover:text-white transition-all"
+                    title={t('resetStatus', lang)}
+                  >
+                    <RefreshCw size={12} />
+                  </button>
+                )}
 
                 {/* Status Indicators - Bottom Right */}
                 <div className="absolute bottom-1 right-1 z-10 flex gap-1 bg-gray-900/70 p-0.5 rounded-full backdrop-blur-sm">
