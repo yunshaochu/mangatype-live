@@ -152,12 +152,14 @@ export interface APIEndpoint {
   effectiveConcurrency?: number; // Runtime effective concurrency (>=1)
   consecutiveBatchFailures?: number; // Batch-based failure counter (>=0)
   lastEventSeq?: number; // Last accepted protection event sequence (>=0)
+  protectionEpoch?: number; // Current protection epoch (increments on first protectable failure)
 }
 
 export const DEFAULT_ENDPOINT_CONCURRENCY = 1;
 export const DEFAULT_ENDPOINT_PROTECTION_MODE: APIProtectionMode = 'normal';
 export const DEFAULT_ENDPOINT_BATCH_FAILURES = 0;
 export const DEFAULT_ENDPOINT_EVENT_SEQ = 0;
+export const DEFAULT_ENDPOINT_PROTECTION_EPOCH = 1;
 
 const normalizePositiveInt = (value: unknown): number | undefined => {
   if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
@@ -189,6 +191,7 @@ export const normalizeEndpointProtectionState = (endpoint: APIEndpoint): APIEndp
     effectiveConcurrency,
     consecutiveBatchFailures: normalizeNonNegativeInt(endpoint.consecutiveBatchFailures) ?? DEFAULT_ENDPOINT_BATCH_FAILURES,
     lastEventSeq: normalizeNonNegativeInt(endpoint.lastEventSeq) ?? DEFAULT_ENDPOINT_EVENT_SEQ,
+    protectionEpoch: normalizePositiveInt(endpoint.protectionEpoch) ?? DEFAULT_ENDPOINT_PROTECTION_EPOCH,
     disableReasonCode: normalizeOptionalText(endpoint.disableReasonCode),
     disableReasonMessage: normalizeOptionalText(endpoint.disableReasonMessage),
     disabledAt: normalizePositiveInt(endpoint.disabledAt),

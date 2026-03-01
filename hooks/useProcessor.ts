@@ -9,6 +9,7 @@ import {
     EndpointProtectionEventType,
     classifyEndpointFailure,
     createEndpointProtectionEventQueue,
+    FAILURE_CODE_UNKNOWN,
     handleEndpointError,
     handleEndpointSuccess,
     isEndpointPaused,
@@ -99,6 +100,25 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         return queue.enqueue({ endpointId, eventSeq, eventType, apply });
     };
 
+    const createMergedAbortSignal = (signals: AbortSignal[]): AbortSignal => {
+        const merged = new AbortController();
+        const abort = (reason?: any) => {
+            if (!merged.signal.aborted) {
+                merged.abort(reason);
+            }
+        };
+
+        for (const sig of signals) {
+            if (sig.aborted) {
+                abort(sig.reason);
+                break;
+            }
+            sig.addEventListener('abort', () => abort(sig.reason), { once: true });
+        }
+
+        return merged.signal;
+    };
+
     // --- Core Logic: Process a Single Image (Translate/Bubble) ---
     const runDetectionForImage = async (
         img: ImageState,
@@ -106,12 +126,18 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         configOverride?: AIConfig,
         endpointId?: string,
         protectionMode: 'request' | 'batch' = 'request'
-    ): Promise<{ ok: boolean; protectableFailure: boolean; failureCode?: EndpointFailureCode }> => {
+    ): Promise<{ ok: boolean; protectableFailure: boolean; failureCode?: EndpointFailureCode; abortedByTrip?: boolean }> => {
         const effectiveConfig = configOverride || aiConfig;
         const retries = effectiveConfig.maxRetries || maxRetries;
 
         for (let attempt = 0; attempt <= retries; attempt++) {
-            if (signal?.aborted) return { ok: false, protectableFailure: false };
+            if (signal?.aborted) {
+                return {
+                    ok: false,
+                    protectableFailure: false,
+                    abortedByTrip: signal.reason === 'endpoint_trip',
+                };
+            }
             setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing', errorMessage: attempt > 0 ? `Retry ${attempt}/${retries}...` : undefined } : p));
 
             try {
@@ -231,9 +257,13 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             return { ok: true, protectableFailure: false }; // Success, exit retry loop
 
         } catch (e: any) {
-            if (e.message && e.message.includes('Aborted')) {
+            if (e?.name === 'AbortError' || signal?.aborted || (e.message && e.message.includes('Aborted'))) {
                 setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'idle', errorMessage: undefined } : p));
-                return { ok: false, protectableFailure: false };
+                return {
+                    ok: false,
+                    protectableFailure: false,
+                    abortedByTrip: signal?.reason === 'endpoint_trip',
+                };
             }
             console.error(`AI Error for ${img.name} (attempt ${attempt + 1}/${retries + 1})`, e);
 
@@ -416,76 +446,148 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 }
 
                 const pendingQueue = [...queue];
+                const inFlightByEndpoint = new Map<
+                    string,
+                    Map<string, { img: ImageState; epoch: number; controller: AbortController }>
+                >();
+                const runtimeByEndpoint = new Map<
+                    string,
+                    { epoch: number; trippedEpoch: number | null; epochRequestCount: number; successNotifiedEpoch: number | null }
+                >();
+                const activeTasks = new Set<Promise<void>>();
 
-                const runEndpointBatch = async (endpoint: APIEndpoint, batchItems: ImageState[]) => {
-                    if (batchItems.length === 0) return;
-
-                    const mergedConfig = mergeEndpointConfig(aiConfigRef.current, endpoint);
-                    const settled = await Promise.allSettled(
-                        batchItems.map(img => runDetectionForImage(img, signal, mergedConfig, endpoint.id, 'batch'))
-                    );
-
-                    if (signal.aborted) return;
-
-                    const protectableFailureCodes: EndpointFailureCode[] = [];
-                    for (const result of settled) {
-                        if (result.status !== 'fulfilled') continue;
-                        if (result.value.protectableFailure && result.value.failureCode) {
-                            protectableFailureCodes.push(result.value.failureCode);
-                        }
-                    }
-
-                    const now = Date.now();
-                    const pauseDurationsMs = (aiConfigRef.current.apiProtectionDurations || []).map(d => d * 1000);
-                    const disableThreshold = aiConfigRef.current.apiProtectionDisableThreshold || 5;
-
-                    if (protectableFailureCodes.length > 0) {
-                        await dispatchEndpointProtectionUpdate(endpoint.id, 'BATCH_FAILED', current =>
-                            reduceEndpointProtectionState(current, {
-                                type: 'BATCH_FAILED',
-                                now,
-                                pauseDurationsMs,
-                                disableThreshold,
-                                failureCodes: protectableFailureCodes,
-                                failedRequestCount: protectableFailureCodes.length,
-                                totalRequestCount: batchItems.length,
-                            })
-                        );
-                        return;
-                    }
-
-                    await dispatchEndpointProtectionUpdate(endpoint.id, 'BATCH_SUCCEEDED', current =>
-                        reduceEndpointProtectionState(current, {
-                            type: 'BATCH_SUCCEEDED',
-                            now,
-                            totalRequestCount: batchItems.length,
-                        })
-                    );
+                const getRuntime = (endpoint: APIEndpoint) => {
+                    const existing = runtimeByEndpoint.get(endpoint.id);
+                    if (existing) return existing;
+                    const created = {
+                        epoch: Math.max(1, endpoint.protectionEpoch || 1),
+                        trippedEpoch: null as number | null,
+                        epochRequestCount: 0,
+                        successNotifiedEpoch: null as number | null,
+                    };
+                    runtimeByEndpoint.set(endpoint.id, created);
+                    return created;
                 };
 
-                while (pendingQueue.length > 0 && !signal.aborted) {
+                const getInFlight = (endpointId: string) => {
+                    const existing = inFlightByEndpoint.get(endpointId);
+                    if (existing) return existing;
+                    const created = new Map<string, { img: ImageState; epoch: number; controller: AbortController }>();
+                    inFlightByEndpoint.set(endpointId, created);
+                    return created;
+                };
+
+                const startRequest = (endpoint: APIEndpoint, img: ImageState, requestEpoch: number) => {
+                    const runtime = getRuntime(endpoint);
+                    runtime.epochRequestCount += 1;
+
+                    const endpointInFlight = getInFlight(endpoint.id);
+                    const requestController = new AbortController();
+                    endpointInFlight.set(img.id, { img, epoch: requestEpoch, controller: requestController });
+                    const mergedSignal = createMergedAbortSignal([signal, requestController.signal]);
+                    const mergedConfig = mergeEndpointConfig(aiConfigRef.current, endpoint);
+
+                    const task = (async () => {
+                        const result = await runDetectionForImage(img, mergedSignal, mergedConfig, endpoint.id, 'batch');
+                        endpointInFlight.delete(img.id);
+
+                        if (signal.aborted) return;
+
+                        const latestEndpoint = aiConfigRef.current.endpoints.find(ep => ep.id === endpoint.id);
+                        if (!latestEndpoint) return;
+                        const latestRuntime = getRuntime(latestEndpoint);
+
+                        if (result.abortedByTrip) {
+                            pendingQueue.unshift(img);
+                            return;
+                        }
+
+                        if (result.protectableFailure) {
+                            if (latestRuntime.trippedEpoch === requestEpoch || latestRuntime.epoch !== requestEpoch) {
+                                return;
+                            }
+
+                            latestRuntime.trippedEpoch = requestEpoch;
+                            const failureCode = result.failureCode || FAILURE_CODE_UNKNOWN;
+                            const toAbort = Array.from(endpointInFlight.values()).filter(item => item.epoch === requestEpoch);
+                            for (const item of toAbort) {
+                                item.controller.abort('endpoint_trip');
+                            }
+
+                            const now = Date.now();
+                            const pauseDurationsMs = (aiConfigRef.current.apiProtectionDurations || []).map(d => d * 1000);
+                            const disableThreshold = aiConfigRef.current.apiProtectionDisableThreshold || 5;
+                            await dispatchEndpointProtectionUpdate(endpoint.id, 'BATCH_FAILED', current =>
+                                reduceEndpointProtectionState(current, {
+                                    type: 'BATCH_FAILED',
+                                    now,
+                                    pauseDurationsMs,
+                                    disableThreshold,
+                                    failureCodes: [failureCode],
+                                    failedRequestCount: 1,
+                                    totalRequestCount: Math.max(1, latestRuntime.epochRequestCount),
+                                })
+                            );
+                            latestRuntime.epoch += 1;
+                            latestRuntime.epochRequestCount = 0;
+                            latestRuntime.successNotifiedEpoch = null;
+                            return;
+                        }
+
+                        if (result.ok) {
+                            const refreshedEndpoint = aiConfigRef.current.endpoints.find(ep => ep.id === endpoint.id);
+                            if (!refreshedEndpoint) return;
+                            const isDegraded = refreshedEndpoint.protectionMode === 'degraded';
+                            if (isDegraded && latestRuntime.successNotifiedEpoch !== requestEpoch) {
+                                latestRuntime.successNotifiedEpoch = requestEpoch;
+                                await dispatchEndpointProtectionUpdate(endpoint.id, 'BATCH_SUCCEEDED', current =>
+                                    reduceEndpointProtectionState(current, {
+                                        type: 'BATCH_SUCCEEDED',
+                                        now: Date.now(),
+                                        totalRequestCount: Math.max(1, latestRuntime.epochRequestCount),
+                                    })
+                                );
+                            }
+                        }
+                    })()
+                        .catch((error: any) => {
+                            console.error('endpoint request task failed', error);
+                        })
+                        .finally(() => {
+                            activeTasks.delete(task);
+                        });
+
+                    activeTasks.add(task);
+                };
+
+                while (!signal.aborted) {
                     const availableEndpoints = (aiConfigRef.current.endpoints || [])
                         .filter(ep => ep.enabled && !isEndpointPaused(ep));
 
-                    if (availableEndpoints.length === 0) {
-                        await new Promise(r => setTimeout(r, 200));
-                        continue;
+                    for (const endpoint of availableEndpoints) {
+                        const runtime = getRuntime(endpoint);
+                        const endpointInFlight = getInFlight(endpoint.id);
+                        if (runtime.trippedEpoch === runtime.epoch) {
+                            continue;
+                        }
+                        const effectiveConcurrency = Math.max(1, endpoint.effectiveConcurrency || endpoint.concurrency || 1);
+                        while (endpointInFlight.size < effectiveConcurrency && pendingQueue.length > 0) {
+                            const nextImg = pendingQueue.shift();
+                            if (!nextImg) break;
+                            startRequest(endpoint, nextImg, runtime.epoch);
+                        }
                     }
 
-                    const assignments = availableEndpoints
-                        .map(endpoint => {
-                            const effectiveConcurrency = Math.max(1, endpoint.effectiveConcurrency || endpoint.concurrency || 1);
-                            const batchItems = pendingQueue.splice(0, effectiveConcurrency);
-                            return { endpoint, batchItems };
-                        })
-                        .filter(item => item.batchItems.length > 0);
-
-                    if (assignments.length === 0) {
-                        await new Promise(r => setTimeout(r, 200));
-                        continue;
+                    const inFlightCount = Array.from(inFlightByEndpoint.values()).reduce((sum, map) => sum + map.size, 0);
+                    if (pendingQueue.length === 0 && inFlightCount === 0) {
+                        break;
                     }
 
-                    await Promise.all(assignments.map(item => runEndpointBatch(item.endpoint, item.batchItems)));
+                    await new Promise(r => setTimeout(r, 60));
+                }
+
+                if (activeTasks.size > 0) {
+                    await Promise.allSettled(Array.from(activeTasks));
                 }
             } else if (task === 'translate' && enabledEndpoints.length > 0) {
                 const availableNow = enabledEndpoints.filter(ep => !isEndpointPaused(ep));

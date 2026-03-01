@@ -2,6 +2,7 @@ import {
   APIEndpoint,
   DEFAULT_ENDPOINT_BATCH_FAILURES,
   DEFAULT_ENDPOINT_PROTECTION_MODE,
+  DEFAULT_ENDPOINT_PROTECTION_EPOCH,
   normalizeEndpointProtectionState,
 } from '../types';
 import {
@@ -71,6 +72,7 @@ export const reduceEndpointProtectionState = (
 
       return normalizeEndpointProtectionState({
         ...current,
+        protectionEpoch: Math.max(DEFAULT_ENDPOINT_PROTECTION_EPOCH, current.protectionEpoch || DEFAULT_ENDPOINT_PROTECTION_EPOCH) + 1,
         consecutiveBatchFailures: nextBatchFailures,
         protectionMode: 'degraded',
         effectiveConcurrency: 1,
@@ -86,6 +88,7 @@ export const reduceEndpointProtectionState = (
     case 'BATCH_SUCCEEDED': {
       return normalizeEndpointProtectionState({
         ...current,
+        protectionEpoch: Math.max(DEFAULT_ENDPOINT_PROTECTION_EPOCH, current.protectionEpoch || DEFAULT_ENDPOINT_PROTECTION_EPOCH),
         consecutiveBatchFailures: 0,
         pausedUntil: undefined,
         lastError: undefined,
@@ -104,6 +107,7 @@ export const reduceEndpointProtectionState = (
     case 'MANUAL_ENABLE': {
       return normalizeEndpointProtectionState({
         ...current,
+        protectionEpoch: Math.max(DEFAULT_ENDPOINT_PROTECTION_EPOCH, current.protectionEpoch || DEFAULT_ENDPOINT_PROTECTION_EPOCH),
         enabled: true,
         pausedUntil: undefined,
         consecutiveErrors: 0,
@@ -121,6 +125,7 @@ export const reduceEndpointProtectionState = (
       const reasonCode = event.reasonCode ?? FAILURE_CODE_UNKNOWN;
       return normalizeEndpointProtectionState({
         ...current,
+        protectionEpoch: Math.max(DEFAULT_ENDPOINT_PROTECTION_EPOCH, current.protectionEpoch || DEFAULT_ENDPOINT_PROTECTION_EPOCH),
         enabled: false,
         disableReasonCode: reasonCode,
         disableReasonMessage: getDisableMessage(reasonCode, event.reasonMessage),
