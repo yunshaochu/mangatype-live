@@ -5,15 +5,17 @@ import { generateMaskedImage, generateAnnotatedImage, detectBubbleColor, generat
 import { inpaintImage } from '../services/inpaintingService';
 import { isBubbleInsideMask } from '../utils/editorUtils';
 import {
+    EndpointFailureCode,
     EndpointProtectionEventType,
+    classifyEndpointFailure,
     createEndpointProtectionEventQueue,
     handleEndpointError,
     handleEndpointSuccess,
-    isProtectableError,
     isEndpointPaused,
     getRemainingPauseTime,
     formatPauseDuration
 } from '../services/apiProtection';
+import { reduceEndpointProtectionState } from '../services/apiProtectionReducer';
 
 interface UseProcessorProps {
     images: ImageState[];
@@ -27,7 +29,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
     const [processingType, setProcessingType] = useState<'translate' | 'scan' | 'inpaint' | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
 
-    // Always-fresh reference to latest aiConfig — avoids stale closure inside async workers
+    // Always-fresh reference to latest aiConfig to avoid stale closure inside async workers.
     const aiConfigRef = useRef(aiConfig);
     useEffect(() => { aiConfigRef.current = aiConfig; }, [aiConfig]);
     const protectionEventQueueRef = useRef<ReturnType<typeof createEndpointProtectionEventQueue> | null>(null);
@@ -42,7 +44,13 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
 
         protectionEventQueueRef.current = createEndpointProtectionEventQueue({
             getEndpoint: (endpointId: string) => aiConfigRef.current.endpoints.find(ep => ep.id === endpointId),
-            commitEndpoint: (endpointId: string, nextEndpoint: APIEndpoint) => updateEndpoint(endpointId, nextEndpoint),
+            commitEndpoint: (endpointId: string, nextEndpoint: APIEndpoint) => {
+                aiConfigRef.current = {
+                    ...aiConfigRef.current,
+                    endpoints: aiConfigRef.current.endpoints.map(ep => ep.id === endpointId ? nextEndpoint : ep),
+                };
+                updateEndpoint(endpointId, nextEndpoint);
+            },
             log: (level, message) => {
                 if (level === 'debug') {
                     console.log(message);
@@ -84,20 +92,26 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         endpointId: string,
         eventType: EndpointProtectionEventType,
         apply: (endpoint: APIEndpoint) => APIEndpoint
-    ) => {
+    ): Promise<void> => {
         const queue = protectionEventQueueRef.current;
-        if (!queue) return;
+        if (!queue) return Promise.resolve();
         const eventSeq = getNextEventSeq(endpointId);
-        void queue.enqueue({ endpointId, eventSeq, eventType, apply });
+        return queue.enqueue({ endpointId, eventSeq, eventType, apply });
     };
 
     // --- Core Logic: Process a Single Image (Translate/Bubble) ---
-    const runDetectionForImage = async (img: ImageState, signal?: AbortSignal, configOverride?: AIConfig, endpointId?: string) => {
+    const runDetectionForImage = async (
+        img: ImageState,
+        signal?: AbortSignal,
+        configOverride?: AIConfig,
+        endpointId?: string,
+        protectionMode: 'request' | 'batch' = 'request'
+    ): Promise<{ ok: boolean; protectableFailure: boolean; failureCode?: EndpointFailureCode }> => {
         const effectiveConfig = configOverride || aiConfig;
         const retries = effectiveConfig.maxRetries || maxRetries;
 
         for (let attempt = 0; attempt <= retries; attempt++) {
-            if (signal?.aborted) return;
+            if (signal?.aborted) return { ok: false, protectableFailure: false };
             setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing', errorMessage: attempt > 0 ? `Retry ${attempt}/${retries}...` : undefined } : p));
 
             try {
@@ -210,25 +224,26 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             } : p));
 
             // Success: Reset endpoint error count
-            if (endpointId && updateEndpoint) {
+            if (protectionMode === 'request' && endpointId && updateEndpoint) {
                 dispatchEndpointProtectionUpdate(endpointId, 'BATCH_SUCCEEDED', (endpoint) => handleEndpointSuccess(endpoint));
             }
 
-            return; // Success, exit retry loop
+            return { ok: true, protectableFailure: false }; // Success, exit retry loop
 
         } catch (e: any) {
             if (e.message && e.message.includes('Aborted')) {
                 setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'idle', errorMessage: undefined } : p));
-                return;
+                return { ok: false, protectableFailure: false };
             }
             console.error(`AI Error for ${img.name} (attempt ${attempt + 1}/${retries + 1})`, e);
 
             const protectionEnabled = aiConfigRef.current.apiProtectionEnabled ?? true;
-            const shouldProtectNow = protectionEnabled && isProtectableError(e).shouldProtect;
+            const failure = classifyEndpointFailure(e);
+            const shouldProtectNow = protectionEnabled && failure.shouldProtect;
 
             // IMPORTANT: Protectable errors (429/503 etc.) should pause immediately and stop retrying,
             // otherwise we keep pressuring the provider.
-            if (shouldProtectNow && endpointId && updateEndpoint) {
+            if (shouldProtectNow && endpointId && updateEndpoint && protectionMode === 'request') {
                 const protectionConfig = {
                     durations: aiConfigRef.current.apiProtectionDurations,
                     disableThreshold: aiConfigRef.current.apiProtectionDisableThreshold,
@@ -246,11 +261,20 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     status: 'error',
                     errorMessage: e.message || 'Rate limited - endpoint paused'
                 } : p));
-                return;
+                return { ok: false, protectableFailure: true, failureCode: failure.code };
+            }
+
+            if (shouldProtectNow && protectionMode === 'batch') {
+                setImages(prev => prev.map(p => p.id === img.id ? {
+                    ...p,
+                    status: 'error',
+                    errorMessage: e.message || 'Rate limited - endpoint paused'
+                } : p));
+                return { ok: false, protectableFailure: true, failureCode: failure.code };
             }
 
             // Non-protectable errors: only update protection state on last attempt
-            if (attempt === retries && endpointId && updateEndpoint && protectionEnabled) {
+            if (attempt === retries && endpointId && updateEndpoint && protectionEnabled && protectionMode === 'request') {
                 const protectionConfig = {
                     durations: aiConfigRef.current.apiProtectionDurations,
                     disableThreshold: aiConfigRef.current.apiProtectionDisableThreshold,
@@ -267,8 +291,10 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 continue;
             }
             setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'error', errorMessage: e.message || 'Unknown error occurred' } : p));
+            return { ok: false, protectableFailure: shouldProtectNow, failureCode: failure.code };
         }
         } // end retry loop
+        return { ok: false, protectableFailure: false };
     };
 
     // --- Core Logic: Inpaint a Single Image ---
@@ -377,7 +403,6 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             const enabledEndpoints = (aiConfigRef.current.endpoints || []).filter(ep => ep.enabled);
 
             if (task === 'translate' && enabledEndpoints.length > 0) {
-                // Initial check: are any endpoints available right now?
                 const availableNow = enabledEndpoints.filter(ep => !isEndpointPaused(ep));
                 if (availableNow.length === 0) {
                     const pausedInfo = enabledEndpoints.map(ep => {
@@ -388,56 +413,79 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     return;
                 }
 
-                // Track concurrent requests per endpoint (JS single-threaded: no locks needed)
-                const inFlight = new Map<string, number>();
+                const pendingQueue = [...queue];
 
-                // Dynamically pick least-loaded available endpoint from latest config
-                const pickEndpoint = (): APIEndpoint | null => {
-                    const latest = (aiConfigRef.current.endpoints || [])
-                        .filter(ep => ep.enabled && !isEndpointPaused(ep))
-                        .filter(ep => (inFlight.get(ep.id) || 0) < Math.max(1, ep.concurrency || 1));
-                    if (latest.length === 0) return null;
-                    // Pick least loaded
-                    return latest.reduce((best, ep) =>
-                        (inFlight.get(ep.id) || 0) < (inFlight.get(best.id) || 0) ? ep : best
+                const runEndpointBatch = async (endpoint: APIEndpoint, batchItems: ImageState[]) => {
+                    if (batchItems.length === 0) return;
+
+                    const mergedConfig = mergeEndpointConfig(aiConfigRef.current, endpoint);
+                    const settled = await Promise.allSettled(
+                        batchItems.map(img => runDetectionForImage(img, signal, mergedConfig, endpoint.id, 'batch'))
+                    );
+
+                    if (signal.aborted) return;
+
+                    const protectableFailureCodes: EndpointFailureCode[] = [];
+                    for (const result of settled) {
+                        if (result.status !== 'fulfilled') continue;
+                        if (result.value.protectableFailure && result.value.failureCode) {
+                            protectableFailureCodes.push(result.value.failureCode);
+                        }
+                    }
+
+                    const now = Date.now();
+                    const pauseDurationsMs = (aiConfigRef.current.apiProtectionDurations || []).map(d => d * 1000);
+                    const disableThreshold = aiConfigRef.current.apiProtectionDisableThreshold || 5;
+
+                    if (protectableFailureCodes.length > 0) {
+                        await dispatchEndpointProtectionUpdate(endpoint.id, 'BATCH_FAILED', current =>
+                            reduceEndpointProtectionState(current, {
+                                type: 'BATCH_FAILED',
+                                now,
+                                pauseDurationsMs,
+                                disableThreshold,
+                                failureCodes: protectableFailureCodes,
+                                failedRequestCount: protectableFailureCodes.length,
+                                totalRequestCount: batchItems.length,
+                            })
+                        );
+                        return;
+                    }
+
+                    await dispatchEndpointProtectionUpdate(endpoint.id, 'BATCH_SUCCEEDED', current =>
+                        reduceEndpointProtectionState(current, {
+                            type: 'BATCH_SUCCEEDED',
+                            now,
+                            totalRequestCount: batchItems.length,
+                        })
                     );
                 };
 
-                // Worker count = sum of concurrencies of initially enabled endpoints
-                const totalWorkers = Math.max(1,
-                    enabledEndpoints.reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)
-                );
+                while (pendingQueue.length > 0 && !signal.aborted) {
+                    const availableEndpoints = (aiConfigRef.current.endpoints || [])
+                        .filter(ep => ep.enabled && !isEndpointPaused(ep));
 
-                let nextIndex = 0;
-                const worker = async () => {
-                    while (!signal.aborted) {
-                        const endpoint = pickEndpoint();
-                        if (!endpoint) {
-                            // All slots busy or all endpoints paused/disabled — wait and retry
-                            await new Promise(r => setTimeout(r, 200));
-                            continue;
-                        }
-
-                        const idx = nextIndex++;
-                        if (idx >= queue.length) return;
-
-                        inFlight.set(endpoint.id, (inFlight.get(endpoint.id) || 0) + 1);
-                        console.log(`[${new Date().toLocaleTimeString()}] "${queue[idx].name}" → "${endpoint.name}" (并发: ${inFlight.get(endpoint.id)}/${Math.max(1, endpoint.concurrency || 1)})`);
-
-                        const mergedConfig = mergeEndpointConfig(aiConfigRef.current, endpoint);
-                        try {
-                            await runDetectionForImage(queue[idx], signal, mergedConfig, endpoint.id);
-                        } finally {
-                            inFlight.set(endpoint.id, Math.max(0, (inFlight.get(endpoint.id) || 1) - 1));
-                            console.log(`[${new Date().toLocaleTimeString()}] "${queue[idx].name}" 完成，释放 "${endpoint.name}" (剩余并发: ${inFlight.get(endpoint.id)}/${Math.max(1, endpoint.concurrency || 1)})`);
-                        }
+                    if (availableEndpoints.length === 0) {
+                        await new Promise(r => setTimeout(r, 200));
+                        continue;
                     }
-                };
 
-                const workers = Array.from({ length: totalWorkers }, () => worker());
-                await Promise.all(workers);
+                    const assignments = availableEndpoints
+                        .map(endpoint => {
+                            const effectiveConcurrency = Math.max(1, endpoint.effectiveConcurrency || endpoint.concurrency || 1);
+                            const batchItems = pendingQueue.splice(0, effectiveConcurrency);
+                            return { endpoint, batchItems };
+                        })
+                        .filter(item => item.batchItems.length > 0);
+
+                    if (assignments.length === 0) {
+                        await new Promise(r => setTimeout(r, 200));
+                        continue;
+                    }
+
+                    await Promise.all(assignments.map(item => runEndpointBatch(item.endpoint, item.batchItems)));
+                }
             } else {
-                // Inpaint or no endpoints: use original chunk-based concurrency
                 const batchSize = Math.max(1, concurrency);
                 for (let i = 0; i < queue.length; i += batchSize) {
                     if (signal.aborted) break;
@@ -457,7 +505,6 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             abortControllerRef.current = null;
         }
     };
-
     // --- Public Actions ---
 
     const handleBatchProcess = async (currentImage: ImageState | undefined, onlyCurrent: boolean, concurrency: number) => {
