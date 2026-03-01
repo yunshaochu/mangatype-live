@@ -85,6 +85,28 @@ export const AdvancedTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
           )}
         </div>
 
+        {/* Skipped Export Behavior */}
+        <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-emerald-500/30 rounded-xl transition-colors group">
+          <div className="flex justify-between items-start">
+            <div className="flex gap-3">
+              <div className="mt-1 p-1.5 bg-emerald-500/10 rounded text-emerald-400"><Download size={18}/></div>
+              <div>
+                <h4 className="text-sm font-medium text-white mb-1">{t('exportSkippedAsOriginal', lang)}</h4>
+                <p className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors leading-relaxed">{t('exportSkippedAsOriginalHint', lang)}</p>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                className="sr-only peer"
+                checked={config.exportSkippedAsOriginal === true}
+                onChange={(e) => setConfig({ ...config, exportSkippedAsOriginal: e.target.checked })}
+              />
+              <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+            </label>
+          </div>
+        </div>
+
         {/* Auto Detect Background */}
         <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-cyan-500/30 rounded-xl transition-colors group">
           <div className="flex justify-between items-start">

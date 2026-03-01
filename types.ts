@@ -283,6 +283,7 @@ export interface AIConfig {
 
   // Export
   exportMethod?: 'canvas' | 'screenshot'; // Default: 'canvas'
+  exportSkippedAsOriginal?: boolean; // If true, skipped images export as original image
 }
 
 // Add EyeDropper API type definition
