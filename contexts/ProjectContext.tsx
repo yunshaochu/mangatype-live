@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
-import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion } from '../types';
+import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion, normalizeEndpointProtectionState } from '../types';
 import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
@@ -34,7 +34,7 @@ const DEFAULT_CONFIG: AIConfig = {
   apiKey: '',
   baseUrl: 'https://api.openai.com/v1',
   model: '',
-  endpoints: [{
+  endpoints: [normalizeEndpointProtectionState({
     id: 'default-openai',
     name: 'Openai',
     enabled: true,
@@ -42,7 +42,7 @@ const DEFAULT_CONFIG: AIConfig = {
     apiKey: '',
     baseUrl: 'https://api.openai.com/v1',
     model: '',
-  }],
+  })],
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   defaultFontSize: 1.0,
   useTextDetectionApi: false,
@@ -230,7 +230,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         // 3. Migrate old flat config to endpoints array
         if (!parsed.endpoints || !Array.isArray(parsed.endpoints) || parsed.endpoints.length === 0) {
-            merged.endpoints = [{
+            merged.endpoints = [normalizeEndpointProtectionState({
                 id: crypto.randomUUID(),
                 name: parsed.provider === 'openai' ? 'OpenAI (Migrated)' : 'Gemini (Migrated)',
                 enabled: true,
@@ -240,8 +240,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 model: parsed.model || 'gemini-3-flash-preview',
                 modelSupportsFunctionCalling: parsed.modelSupportsFunctionCalling,
                 modelSupportsJsonMode: parsed.modelSupportsJsonMode,
-            }];
+            })];
         }
+
+        merged.endpoints = (Array.isArray(merged.endpoints) ? merged.endpoints : [])
+          .map((ep: APIEndpoint) => normalizeEndpointProtectionState(ep));
 
         return merged;
       }
@@ -295,7 +298,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setAiConfig(prev => ({
       ...prev,
       endpoints: prev.endpoints.map(ep =>
-        ep.id === endpointId ? { ...ep, ...updates } : ep
+        ep.id === endpointId ? normalizeEndpointProtectionState({ ...ep, ...updates }) : ep
       )
     }));
   }, []);

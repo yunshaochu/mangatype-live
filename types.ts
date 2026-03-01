@@ -127,6 +127,7 @@ export const getFontStack = (fontFamily: FontFamily): string => {
 };
 
 export type AIProvider = 'gemini' | 'openai';
+export type APIProtectionMode = 'normal' | 'degraded';
 
 export interface APIEndpoint {
   id: string;
@@ -144,7 +145,55 @@ export interface APIEndpoint {
   pausedUntil?: number; // Timestamp (ms) when endpoint can be used again
   consecutiveErrors?: number; // Count of consecutive errors for exponential backoff
   lastError?: string; // Last error message for debugging
+  disableReasonCode?: string; // Stable code for disabled endpoint reason
+  disableReasonMessage?: string; // User-facing disabled endpoint reason
+  disabledAt?: number; // Timestamp (ms) when endpoint was disabled
+  protectionMode?: APIProtectionMode; // normal or degraded batch mode
+  effectiveConcurrency?: number; // Runtime effective concurrency (>=1)
+  consecutiveBatchFailures?: number; // Batch-based failure counter (>=0)
+  lastEventSeq?: number; // Last accepted protection event sequence (>=0)
 }
+
+export const DEFAULT_ENDPOINT_CONCURRENCY = 1;
+export const DEFAULT_ENDPOINT_PROTECTION_MODE: APIProtectionMode = 'normal';
+export const DEFAULT_ENDPOINT_BATCH_FAILURES = 0;
+export const DEFAULT_ENDPOINT_EVENT_SEQ = 0;
+
+const normalizePositiveInt = (value: unknown): number | undefined => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return undefined;
+  return Math.floor(value);
+};
+
+const normalizeNonNegativeInt = (value: unknown): number | undefined => {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return undefined;
+  return Math.floor(value);
+};
+
+const normalizeOptionalText = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const text = value.trim();
+  return text.length > 0 ? text : undefined;
+};
+
+export const normalizeEndpointProtectionState = (endpoint: APIEndpoint): APIEndpoint => {
+  const configuredConcurrency = normalizePositiveInt(endpoint.concurrency) ?? DEFAULT_ENDPOINT_CONCURRENCY;
+  const effectiveConcurrency = normalizePositiveInt(endpoint.effectiveConcurrency) ?? configuredConcurrency;
+  const protectionMode: APIProtectionMode = endpoint.protectionMode === 'degraded'
+    ? 'degraded'
+    : DEFAULT_ENDPOINT_PROTECTION_MODE;
+
+  return {
+    ...endpoint,
+    concurrency: configuredConcurrency,
+    protectionMode,
+    effectiveConcurrency,
+    consecutiveBatchFailures: normalizeNonNegativeInt(endpoint.consecutiveBatchFailures) ?? DEFAULT_ENDPOINT_BATCH_FAILURES,
+    lastEventSeq: normalizeNonNegativeInt(endpoint.lastEventSeq) ?? DEFAULT_ENDPOINT_EVENT_SEQ,
+    disableReasonCode: normalizeOptionalText(endpoint.disableReasonCode),
+    disableReasonMessage: normalizeOptionalText(endpoint.disableReasonMessage),
+    disabledAt: normalizePositiveInt(endpoint.disabledAt),
+  };
+};
 
 export const mergeEndpointConfig = (global: AIConfig, ep: APIEndpoint): AIConfig => ({
   ...global,
