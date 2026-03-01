@@ -153,7 +153,10 @@ Endpoint C: Active
 
 A built-in test tool is available in Settings → API Endpoints.
 
-**Note**: The test tool is hidden by default. Enable it in API Protection Settings (⚙️ gear icon) → "Show Test Tool"
+The endpoint test button runs three checks:
+- Basic availability
+- Function Calling capability
+- JSON Mode capability (advanced/collapsible section in UI)
 
 ### Test Scenarios:
 1. **Single Error (30s)** - Simulates one 429 error

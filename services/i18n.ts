@@ -431,7 +431,7 @@ export const translations = {
         },
         {
           title: "跳过处理",
-          desc: "在图库缩略图左上角点击禁止图标可以标记「跳过 API 处理」。被跳过的图片不会被 AI 翻译，但仍会包含在 ZIP 导出中（保留原图）。"
+          desc: "在图库缩略图左上角点击禁止图标可以标记「跳过 API 处理」。被跳过的图片不会被 AI 翻译；导出是否保留原图可在设置 > Advanced 中通过“跳过图片导出原图”开关控制。"
         },
         {
           title: "批量选择",
@@ -939,7 +939,7 @@ export const translations = {
         },
         {
           title: "Skip Processing",
-          desc: "Click the ban icon on a gallery thumbnail's top-left corner to mark it as 'Skip API Processing'. Skipped images won't be AI-translated but will still be included in ZIP exports (preserving the original)."
+          desc: "Click the ban icon on a gallery thumbnail's top-left corner to mark it as 'Skip API Processing'. Skipped images won't be AI-translated; whether export keeps original is controlled by the 'Export Skipped As Original' toggle in Settings > Advanced."
         },
         {
           title: "Batch Selection",
