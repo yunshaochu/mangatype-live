@@ -29,6 +29,40 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
     const [isProcessingBatch, setIsProcessingBatch] = useState(false);
     const [processingType, setProcessingType] = useState<'translate' | 'scan' | 'inpaint' | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
+    const activeRunIdRef = useRef(0);
+
+    const beginRun = (): number => {
+        const next = activeRunIdRef.current + 1;
+        activeRunIdRef.current = next;
+        console.log(`run_start runId=${next}`);
+        return next;
+    };
+
+    const invalidateRun = () => {
+        const old = activeRunIdRef.current;
+        activeRunIdRef.current = old + 1;
+        console.log(`run_invalidate oldRunId=${old} newRunId=${activeRunIdRef.current}`);
+    };
+
+    const canWriteForRun = (runId?: number, signal?: AbortSignal): boolean => {
+        if (signal?.aborted) return false;
+        if (runId === undefined) return true;
+        return activeRunIdRef.current === runId;
+    };
+
+    const setImagesIfActive = (
+        updater: ImageState[] | ((prev: ImageState[]) => ImageState[]),
+        runId?: number,
+        signal?: AbortSignal
+    ) => {
+        if (!canWriteForRun(runId, signal)) {
+            if (runId !== undefined && activeRunIdRef.current !== runId) {
+                console.log(`run_drop_stale runId=${runId} active=${activeRunIdRef.current}`);
+            }
+            return;
+        }
+        setImages(updater);
+    };
 
     // Always-fresh reference to latest aiConfig to avoid stale closure inside async workers.
     const aiConfigRef = useRef(aiConfig);
@@ -172,7 +206,8 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         signal?: AbortSignal,
         configOverride?: AIConfig,
         endpointId?: string,
-        protectionMode: 'request' | 'batch' = 'request'
+        protectionMode: 'request' | 'batch' = 'request',
+        runId?: number
     ): Promise<{ ok: boolean; protectableFailure: boolean; failureCode?: EndpointFailureCode; abortedByTrip?: boolean; abortedByDisable?: boolean }> => {
         const effectiveConfig = configOverride || aiConfig;
         const retries = effectiveConfig.maxRetries || maxRetries;
@@ -186,7 +221,11 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     abortedByDisable: signal.reason === 'endpoint_disabled',
                 };
             }
-            setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing', errorMessage: attempt > 0 ? `Retry ${attempt}/${retries}...` : undefined } : p));
+            setImagesIfActive(
+                prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing', errorMessage: attempt > 0 ? `Retry ${attempt}/${retries}...` : undefined } : p),
+                runId,
+                signal
+            );
 
             try {
             // Always use original image for detection analysis
@@ -291,11 +330,15 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 } as Bubble;
             }));
 
-            setImages(prev => prev.map(p => p.id === img.id ? {
-                ...p,
-                bubbles: useMaskedImage ? [...p.bubbles, ...processedBubbles] : processedBubbles,
-                status: 'done'
-            } : p));
+            setImagesIfActive(
+                prev => prev.map(p => p.id === img.id ? {
+                    ...p,
+                    bubbles: useMaskedImage ? [...p.bubbles, ...processedBubbles] : processedBubbles,
+                    status: 'done'
+                } : p),
+                runId,
+                signal
+            );
 
             // Success: Reset endpoint error count
             if (protectionMode === 'request' && endpointId && updateEndpoint) {
@@ -306,7 +349,11 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
 
         } catch (e: any) {
             if (e?.name === 'AbortError' || signal?.aborted || (e.message && e.message.includes('Aborted'))) {
-                setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'idle', errorMessage: undefined } : p));
+                setImagesIfActive(
+                    prev => prev.map(p => p.id === img.id ? { ...p, status: 'idle', errorMessage: undefined } : p),
+                    runId,
+                    signal
+                );
                 return {
                     ok: false,
                     protectableFailure: false,
@@ -335,20 +382,28 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     return updatedEndpoint;
                 });
 
-                setImages(prev => prev.map(p => p.id === img.id ? {
-                    ...p,
-                    status: 'error',
-                    errorMessage: e.message || 'Rate limited - endpoint paused'
-                } : p));
+                setImagesIfActive(
+                    prev => prev.map(p => p.id === img.id ? {
+                        ...p,
+                        status: 'error',
+                        errorMessage: e.message || 'Rate limited - endpoint paused'
+                    } : p),
+                    runId,
+                    signal
+                );
                 return { ok: false, protectableFailure: true, failureCode: failure.code };
             }
 
             if (shouldProtectNow && protectionMode === 'batch') {
-                setImages(prev => prev.map(p => p.id === img.id ? {
-                    ...p,
-                    status: 'error',
-                    errorMessage: e.message || 'Rate limited - endpoint paused'
-                } : p));
+                setImagesIfActive(
+                    prev => prev.map(p => p.id === img.id ? {
+                        ...p,
+                        status: 'error',
+                        errorMessage: e.message || 'Rate limited - endpoint paused'
+                    } : p),
+                    runId,
+                    signal
+                );
                 return { ok: false, protectableFailure: true, failureCode: failure.code };
             }
 
@@ -369,7 +424,11 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
                 continue;
             }
-            setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'error', errorMessage: e.message || 'Unknown error occurred' } : p));
+            setImagesIfActive(
+                prev => prev.map(p => p.id === img.id ? { ...p, status: 'error', errorMessage: e.message || 'Unknown error occurred' } : p),
+                runId,
+                signal
+            );
             return { ok: false, protectableFailure: shouldProtectNow, failureCode: failure.code };
         }
         } // end retry loop
@@ -460,13 +519,33 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
 
     // --- Batch Managers ---
 
+    const rollbackByType = (type: 'translate' | 'scan' | 'inpaint' | null) => {
+        if (!type) return;
+        setImages(prev => prev.map(img => {
+            if (type === 'translate' && img.status === 'processing') {
+                return { ...img, status: 'idle', errorMessage: undefined };
+            }
+            if (type === 'scan' && img.detectionStatus === 'processing') {
+                return { ...img, detectionStatus: 'idle' };
+            }
+            if (type === 'inpaint' && img.inpaintingStatus === 'processing') {
+                return { ...img, inpaintingStatus: 'idle' };
+            }
+            return img;
+        }), true);
+    };
+
     const stopProcessing = () => {
+        const typeAtStop = processingType;
+        console.log(`run_stop requested type=${typeAtStop || 'none'} activeRunId=${activeRunIdRef.current}`);
+        invalidateRun();
         if (abortControllerRef.current) {
             abortControllerRef.current.abort();
             abortControllerRef.current = null;
-            setIsProcessingBatch(false);
-            setProcessingType(null);
         }
+        rollbackByType(typeAtStop);
+        setIsProcessingBatch(false);
+        setProcessingType(null);
     };
 
     const processQueue = async (queue: ImageState[], task: 'translate' | 'inpaint', concurrency: number) => {
@@ -475,6 +554,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         const controller = new AbortController();
         abortControllerRef.current = controller;
         const signal = controller.signal;
+        const runId = task === 'translate' ? beginRun() : undefined;
         setIsProcessingBatch(true);
         setProcessingType(task);
 
@@ -543,7 +623,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                             | { ok: boolean; protectableFailure: boolean; failureCode?: EndpointFailureCode; abortedByTrip?: boolean; abortedByDisable?: boolean }
                             | undefined;
                         try {
-                            result = await runDetectionForImage(img, mergedSignal, mergedConfig, endpoint.id, 'batch');
+                            result = await runDetectionForImage(img, mergedSignal, mergedConfig, endpoint.id, 'batch', runId);
                         } finally {
                             endpointInFlight.delete(img.id);
                             unregisterInFlightController(endpoint.id, requestController);
@@ -720,7 +800,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                         const mergedSignal = createMergedAbortSignal([signal, requestController.signal]);
                         const mergedConfig = mergeEndpointConfig(aiConfigRef.current, endpoint);
                         try {
-                            const result = await runDetectionForImage(img, mergedSignal, mergedConfig, endpoint.id, 'request');
+                            const result = await runDetectionForImage(img, mergedSignal, mergedConfig, endpoint.id, 'request', runId);
                             if (result.abortedByDisable) {
                                 retryQueue.push(img);
                             }
@@ -739,7 +819,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     if (signal.aborted) break;
                     const chunk = queue.slice(i, i + batchSize);
                     if (task === 'translate') {
-                        await Promise.all(chunk.map(img => runDetectionForImage(img, signal)));
+                        await Promise.all(chunk.map(img => runDetectionForImage(img, signal, undefined, undefined, 'request', runId)));
                     } else if (task === 'inpaint') {
                         await Promise.all(chunk.map(img => runInpaintingForImage(img, signal, { onlyInpaintMethod: true })));
                     }
@@ -761,6 +841,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         if (onlyCurrent && currentImage) {
             const controller = new AbortController();
             abortControllerRef.current = controller;
+            const runId = beginRun();
             setIsProcessingBatch(true);
             setProcessingType('translate');
             try {
@@ -782,7 +863,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 registerInFlightController(firstEndpoint.id, endpointController);
                 const mergedSignal = createMergedAbortSignal([controller.signal, endpointController.signal]);
                 try {
-                    await runDetectionForImage(currentImage, mergedSignal, mergedConfig, firstEndpoint.id);
+                    await runDetectionForImage(currentImage, mergedSignal, mergedConfig, firstEndpoint.id, 'request', runId);
                 } finally {
                     unregisterInFlightController(firstEndpoint.id, endpointController);
                 }
