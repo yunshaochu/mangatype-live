@@ -10,13 +10,57 @@ export const DEFAULT_API_PROTECTION_CONFIG = {
 // Error codes that trigger API protection
 const RATE_LIMIT_ERRORS = [429, 503, 502, 504];
 
+const collectErrorMessages = (error: any): string[] => {
+  const messages: string[] = [];
+  const visited = new Set<any>();
+  const stack: any[] = [error];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || visited.has(current)) continue;
+    visited.add(current);
+
+    const message = current?.message || current?.toString?.();
+    if (typeof message === 'string' && message.trim()) {
+      messages.push(message);
+    }
+
+    const nested = [
+      current?.error,
+      current?.cause,
+      current?.response?.data?.error,
+      current?.response?.data,
+      current?.details,
+      current?.errors,
+    ];
+
+    nested.forEach(item => {
+      if (!item) return;
+      if (Array.isArray(item)) {
+        item.forEach(i => stack.push(i));
+      } else {
+        stack.push(item);
+      }
+    });
+  }
+
+  return messages;
+};
+
 /**
  * Check if an error should trigger API protection
  */
 export const isProtectableError = (error: any): { shouldProtect: boolean; statusCode?: number } => {
-  // Check for HTTP status codes in error message or response
-  const errorMsg = error?.message || error?.toString() || '';
-  const statusCode = error?.status || error?.statusCode || error?.response?.status;
+  // Check for HTTP status codes in error object and wrapped causes
+  const statusCode =
+    error?.status ||
+    error?.statusCode ||
+    error?.response?.status ||
+    error?.cause?.status ||
+    error?.cause?.statusCode ||
+    error?.cause?.response?.status;
+  const messages = collectErrorMessages(error);
+  const combinedMessage = messages.join(' | ').toLowerCase();
 
   // Check status code directly
   if (statusCode && RATE_LIMIT_ERRORS.includes(statusCode)) {
@@ -25,17 +69,22 @@ export const isProtectableError = (error: any): { shouldProtect: boolean; status
 
   // Check error message for status codes
   for (const code of RATE_LIMIT_ERRORS) {
-    if (errorMsg.includes(`${code}`) || errorMsg.includes(`status ${code}`) || errorMsg.includes(`${code} `)) {
+    if (combinedMessage.includes(`${code}`) || combinedMessage.includes(`status ${code}`) || combinedMessage.includes(`${code} `)) {
       return { shouldProtect: true, statusCode: code };
     }
   }
 
   // Check for common rate limit keywords
   if (
-    errorMsg.toLowerCase().includes('rate limit') ||
-    errorMsg.toLowerCase().includes('too many requests') ||
-    errorMsg.toLowerCase().includes('quota exceeded') ||
-    errorMsg.toLowerCase().includes('service unavailable')
+    combinedMessage.includes('rate limit') ||
+    combinedMessage.includes('too many requests') ||
+    combinedMessage.includes('quota exceeded') ||
+    combinedMessage.includes('service unavailable') ||
+    combinedMessage.includes('resource_exhausted') ||
+    combinedMessage.includes('insufficient_quota') ||
+    combinedMessage.includes('exceeded your current quota') ||
+    combinedMessage.includes('requests per min') ||
+    combinedMessage.includes('requests per minute')
   ) {
     return { shouldProtect: true, statusCode: statusCode || 429 };
   }

@@ -1,6 +1,7 @@
 
 import { GoogleGenAI, FunctionDeclaration, Type, FunctionCallingConfigMode } from "@google/genai";
 import { AIConfig, DetectedBubble, MaskRegion } from "../types";
+import { isProtectableError } from "./apiProtection";
 
 export const DEFAULT_FONT_SELECTION_PROMPT = `### 字体选择指南：
 
@@ -374,6 +375,25 @@ const getOpenAiBaseUrl = (baseUrl: string): string => {
   return `${cleaned}/v1`;
 };
 
+const createWrappedError = (message: string, original?: any, extras?: Record<string, any>): Error => {
+  const wrapped: any = new Error(message);
+  if (original) {
+    wrapped.cause = original;
+    const status = original?.status || original?.statusCode || original?.response?.status;
+    if (status) {
+      wrapped.status = status;
+      wrapped.statusCode = status;
+    }
+    if (original?.response) {
+      wrapped.response = original.response;
+    }
+  }
+  if (extras) {
+    Object.assign(wrapped, extras);
+  }
+  return wrapped;
+};
+
 const getCustomMessages = (config: AIConfig, provider: 'gemini' | 'openai'): { history: any[], systemInjection: string } => {
   const rawMsgs = config.customMessages || [];
   let systemInjection = "";
@@ -625,6 +645,9 @@ export const detectAndTypesetComic = async (
       }
     } catch (e: any) {
       if (e.message?.includes('Aborted')) throw e;
+      if (isProtectableError(e).shouldProtect) {
+        throw createWrappedError(`Gemini request failed: ${e.message || 'Rate limit error'}`, e);
+      }
       console.warn("Tier 1 (Function Calling) failed:", e.message);
     }
     }
@@ -652,6 +675,9 @@ export const detectAndTypesetComic = async (
       return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text || b.translation) }));
     } catch (e: any) {
       if (e.message?.includes('Aborted')) throw e;
+      if (isProtectableError(e).shouldProtect) {
+        throw createWrappedError(`Gemini request failed: ${e.message || 'Rate limit error'}`, e);
+      }
       console.warn("Tier 2 (JSON Mode) failed:", e.message);
     }
     }
@@ -678,7 +704,7 @@ export const detectAndTypesetComic = async (
     } catch (e: any) {
       if (e.message?.includes('Aborted')) throw e;
       console.error("Tier 3 (Raw Text) failed too:", e.message);
-      throw new Error("AI failed to return structured data. " + e.message);
+      throw createWrappedError("AI failed to return structured data. " + (e.message || 'Unknown error'), e);
     }
 
   } else {
@@ -710,8 +736,25 @@ export const detectAndTypesetComic = async (
         })
       });
 
-      const resData = await parseOpenAIResponse(response);
-      if (resData.error) throw new Error("OpenAI API Error: " + resData.error.message);
+      let resData: any;
+      try {
+        resData = await parseOpenAIResponse(response);
+      } catch (parseError: any) {
+        throw createWrappedError(
+          `OpenAI API HTTP ${response.status}: Failed to parse response`,
+          parseError,
+          { status: response.status, statusCode: response.status }
+        );
+      }
+
+      if (!response.ok || resData?.error) {
+        const apiMessage = resData?.error?.message || `HTTP ${response.status}`;
+        throw createWrappedError(
+          "OpenAI API Error: " + apiMessage,
+          resData?.error,
+          { status: response.status, statusCode: response.status, response: { status: response.status, data: resData } }
+        );
+      }
 
       const toolCalls = resData.choices?.[0]?.message?.tool_calls;
       
@@ -734,7 +777,7 @@ export const detectAndTypesetComic = async (
       }
     } catch (e: any) {
       if (e.name === 'AbortError') throw new Error("Aborted by user");
-      throw new Error("Failed to process OpenAI vision request: " + e.message);
+      throw createWrappedError("Failed to process OpenAI vision request: " + (e.message || 'Unknown error'), e);
     }
   }
 };

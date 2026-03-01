@@ -7,6 +7,7 @@ import { isBubbleInsideMask } from '../utils/editorUtils';
 import {
     handleEndpointError,
     handleEndpointSuccess,
+    isProtectableError,
     isEndpointPaused,
     getRemainingPauseTime,
     formatPauseDuration
@@ -166,13 +167,17 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             }
             console.error(`AI Error for ${img.name} (attempt ${attempt + 1}/${retries + 1})`, e);
 
-            // Handle API protection on last attempt
-            if (attempt === retries && endpointId && updateEndpoint) {
+            const protectionEnabled = aiConfigRef.current.apiProtectionEnabled ?? true;
+            const shouldProtectNow = protectionEnabled && isProtectableError(e).shouldProtect;
+
+            // IMPORTANT: Protectable errors (429/503 etc.) should pause immediately and stop retrying,
+            // otherwise we keep pressuring the provider.
+            if (shouldProtectNow && endpointId && updateEndpoint) {
                 const endpoint = aiConfigRef.current.endpoints.find(ep => ep.id === endpointId);
                 if (endpoint) {
                     const protectionConfig = {
-                        durations: aiConfig.apiProtectionDurations,
-                        disableThreshold: aiConfig.apiProtectionDisableThreshold,
+                        durations: aiConfigRef.current.apiProtectionDurations,
+                        disableThreshold: aiConfigRef.current.apiProtectionDisableThreshold,
                     };
                     const { updatedEndpoint, shouldDisable } = handleEndpointError(endpoint, e, protectionConfig);
                     updateEndpoint(endpointId, updatedEndpoint);
@@ -180,6 +185,26 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     if (shouldDisable) {
                         console.warn(`Endpoint ${endpoint.name} auto-disabled due to repeated errors`);
                     }
+                }
+
+                setImages(prev => prev.map(p => p.id === img.id ? {
+                    ...p,
+                    status: 'error',
+                    errorMessage: e.message || 'Rate limited - endpoint paused'
+                } : p));
+                return;
+            }
+
+            // Non-protectable errors: only update protection state on last attempt
+            if (attempt === retries && endpointId && updateEndpoint && protectionEnabled) {
+                const endpoint = aiConfigRef.current.endpoints.find(ep => ep.id === endpointId);
+                if (endpoint) {
+                    const protectionConfig = {
+                        durations: aiConfigRef.current.apiProtectionDurations,
+                        disableThreshold: aiConfigRef.current.apiProtectionDisableThreshold,
+                    };
+                    const { updatedEndpoint } = handleEndpointError(endpoint, e, protectionConfig);
+                    updateEndpoint(endpointId, updatedEndpoint);
                 }
             }
 
