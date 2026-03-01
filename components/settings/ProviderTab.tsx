@@ -248,7 +248,19 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     updateEndpoints(endpoints.map((e: APIEndpoint) => {
       if (e.id === id) {
         if (!e.enabled) {
-          return { ...e, enabled: true, consecutiveErrors: 0, pausedUntil: undefined, lastError: undefined };
+          return {
+            ...e,
+            enabled: true,
+            consecutiveErrors: 0,
+            consecutiveBatchFailures: 0,
+            pausedUntil: undefined,
+            lastError: undefined,
+            protectionMode: 'normal',
+            effectiveConcurrency: Math.max(1, e.concurrency || 1),
+            disableReasonCode: undefined,
+            disableReasonMessage: undefined,
+            disabledAt: undefined,
+          };
         }
         return { ...e, enabled: false };
       }
@@ -259,14 +271,42 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
   const handleGroupToggle = (groupName: string, enable: boolean) => {
     updateEndpoints(endpoints.map((e: APIEndpoint) => {
       if (e.group !== groupName) return e;
-      if (enable) return { ...e, enabled: true, consecutiveErrors: 0, pausedUntil: undefined, lastError: undefined };
+      if (enable) {
+        return {
+          ...e,
+          enabled: true,
+          consecutiveErrors: 0,
+          consecutiveBatchFailures: 0,
+          pausedUntil: undefined,
+          lastError: undefined,
+          protectionMode: 'normal',
+          effectiveConcurrency: Math.max(1, e.concurrency || 1),
+          disableReasonCode: undefined,
+          disableReasonMessage: undefined,
+          disabledAt: undefined,
+        };
+      }
       return { ...e, enabled: false };
     }));
   };
 
   const handleGlobalToggle = (enable: boolean) => {
     updateEndpoints(endpoints.map((e: APIEndpoint) => {
-      if (enable) return { ...e, enabled: true, consecutiveErrors: 0, pausedUntil: undefined, lastError: undefined };
+      if (enable) {
+        return {
+          ...e,
+          enabled: true,
+          consecutiveErrors: 0,
+          consecutiveBatchFailures: 0,
+          pausedUntil: undefined,
+          lastError: undefined,
+          protectionMode: 'normal',
+          effectiveConcurrency: Math.max(1, e.concurrency || 1),
+          disableReasonCode: undefined,
+          disableReasonMessage: undefined,
+          disabledAt: undefined,
+        };
+      }
       return { ...e, enabled: false };
     }));
   };
@@ -314,7 +354,18 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
   const resetEndpoint = (endpointId: string) => {
     updateEndpoints(endpoints.map(e =>
       e.id === endpointId
-        ? { ...e, consecutiveErrors: 0, pausedUntil: undefined, lastError: undefined }
+        ? {
+          ...e,
+          consecutiveErrors: 0,
+          consecutiveBatchFailures: 0,
+          pausedUntil: undefined,
+          lastError: undefined,
+          protectionMode: 'normal',
+          effectiveConcurrency: Math.max(1, e.concurrency || 1),
+          disableReasonCode: undefined,
+          disableReasonMessage: undefined,
+          disabledAt: undefined,
+        }
         : e
     ));
     setTestResults('');
@@ -342,7 +393,14 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                   {lang === 'zh' ? `${enabledCount} 个端点` : `${enabledCount} endpoint${enabledCount !== 1 ? 's' : ''}`}
                 </span>
                 <span className="text-xs px-2 py-1 rounded-md bg-green-500/20 text-green-300 font-semibold">
-                  {lang === 'zh' ? `${endpoints.filter(ep => ep.enabled).reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)} 并发` : `${endpoints.filter(ep => ep.enabled).reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)} workers`}
+                  {(() => {
+                    const enabled = endpoints.filter(ep => ep.enabled);
+                    const userWorkers = enabled.reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0);
+                    const effectiveWorkers = enabled.reduce((sum, ep) => sum + Math.max(1, ep.effectiveConcurrency || ep.concurrency || 1), 0);
+                    return lang === 'zh'
+                      ? `U${userWorkers} / E${effectiveWorkers} 并发`
+                      : `U${userWorkers} / E${effectiveWorkers} workers`;
+                  })()}
                 </span>
               </div>
             )}
@@ -517,13 +575,24 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                   </button>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
+                      {(() => {
+                        const userConcurrency = Math.max(1, ep.concurrency || 1);
+                        const effectiveConcurrency = Math.max(1, ep.effectiveConcurrency || userConcurrency);
+                        const disableReason = ep.disableReasonCode
+                          ? `${ep.disableReasonCode}${ep.disableReasonMessage ? `: ${ep.disableReasonMessage}` : ''}`
+                          : undefined;
+                        return (
+                          <>
                       <span className="text-sm font-semibold text-white truncate">{ep.name}</span>
                       <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${ep.provider === 'gemini' ? 'bg-blue-500/20 text-blue-400' : 'bg-green-500/20 text-green-400'}`}>
                         {ep.provider === 'gemini' ? 'Gemini' : 'OpenAI'}
                       </span>
-                      {(ep.concurrency || 1) > 1 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-yellow-500/20 text-yellow-400">
-                          ×{ep.concurrency}
+                      <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-yellow-500/20 text-yellow-400" title={lang === 'zh' ? '用户并发 / 生效并发' : 'User / effective concurrency'}>
+                        U{userConcurrency}/E{effectiveConcurrency}
+                      </span>
+                      {!ep.enabled && disableReason && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-red-500/20 text-red-400" title={disableReason}>
+                          {lang === 'zh' ? '已停用' : 'Disabled'}
                         </span>
                       )}
                       {isEndpointPaused(ep) && (
@@ -540,8 +609,17 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                           )}
                         </>
                       )}
+                          </>
+                        );
+                      })()}
                     </div>
                     <p className="text-xs text-gray-500 truncate font-mono">{ep.model || '(no model)'}</p>
+                    {!ep.enabled && ep.disableReasonCode && (
+                      <p className="text-[10px] text-red-400/80 truncate mt-0.5" title={`${ep.disableReasonCode}${ep.disableReasonMessage ? `: ${ep.disableReasonMessage}` : ''}`}>
+                        {lang === 'zh' ? '停用原因' : 'Disabled reason'}: {ep.disableReasonCode}
+                        {ep.disableReasonMessage ? ` (${ep.disableReasonMessage})` : ''}
+                      </p>
+                    )}
                     {isEndpointPaused(ep) && ep.lastError && (
                       <p className="text-[10px] text-red-400/70 truncate mt-0.5" title={ep.lastError}>{ep.lastError}</p>
                     )}
