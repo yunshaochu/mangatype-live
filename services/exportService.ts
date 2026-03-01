@@ -219,7 +219,25 @@ export interface ExportOptions {
     defaultMaskCornerRadius?: number;
     defaultMaskFeather?: number;
     exportMethod?: 'canvas' | 'screenshot';
+    exportSkippedAsOriginal?: boolean;
 }
+
+const sourceToBlob = async (src: string, width: number, height: number): Promise<Blob | null> => {
+    if (!src) return null;
+    if (src.startsWith('data:') || src.startsWith('blob:')) {
+        const response = await fetch(src);
+        return response.blob();
+    }
+
+    const img = await loadImage(src);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.floor(width);
+    canvas.height = Math.floor(height);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.drawImage(img, 0, 0, width, height);
+    return new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+};
 
 /**
  * Detects the background color of a bubble region.
@@ -1277,6 +1295,14 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
  * Dispatcher: routes to canvas or screenshot export based on options.
  */
 export const compositeDispatch = async (imageState: ImageState, options?: ExportOptions): Promise<Blob | null> => {
+    // Optional behavior: skipped images can be exported as untouched original.
+    if (options?.exportSkippedAsOriginal && imageState.skipped) {
+        const originalSrc = imageState.originalUrl
+            || imageState.url
+            || (imageState.originalBase64 ? imageState.originalBase64 : `data:image/png;base64,${imageState.base64}`);
+        return sourceToBlob(originalSrc, imageState.width, imageState.height);
+    }
+
     if (options?.exportMethod === 'screenshot') {
         return compositeImageWithScreenshot(imageState, options);
     }
