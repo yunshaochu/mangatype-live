@@ -35,6 +35,10 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
     useEffect(() => { aiConfigRef.current = aiConfig; }, [aiConfig]);
     const protectionEventQueueRef = useRef<ReturnType<typeof createEndpointProtectionEventQueue> | null>(null);
     const endpointEventSeqRef = useRef<Map<string, number>>(new Map());
+    const inFlightControllersByEndpointRef = useRef<Map<string, Set<AbortController>>>(new Map());
+    const previousEndpointEnabledRef = useRef<Map<string, boolean>>(
+        new Map((aiConfig.endpoints || []).map(endpoint => [endpoint.id, endpoint.enabled]))
+    );
 
     useEffect(() => {
         if (!updateEndpoint) {
@@ -65,6 +69,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             protectionEventQueueRef.current?.clearAll();
             protectionEventQueueRef.current = null;
             endpointEventSeqRef.current.clear();
+            inFlightControllersByEndpointRef.current.clear();
         };
     }, [updateEndpoint]);
 
@@ -76,6 +81,22 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 endpointEventSeqRef.current.delete(endpointId);
             }
         }
+
+        for (const endpointId of inFlightControllersByEndpointRef.current.keys()) {
+            if (!activeEndpointIds.has(endpointId)) {
+                abortInFlightByEndpoint(endpointId, 'endpoint_disabled');
+                inFlightControllersByEndpointRef.current.delete(endpointId);
+            }
+        }
+
+        const nextEnabledMap = new Map((aiConfig.endpoints || []).map(endpoint => [endpoint.id, endpoint.enabled]));
+        for (const [endpointId, enabled] of nextEnabledMap.entries()) {
+            const previousEnabled = previousEndpointEnabledRef.current.get(endpointId);
+            if ((previousEnabled ?? enabled) && !enabled) {
+                abortInFlightByEndpoint(endpointId, 'endpoint_disabled');
+            }
+        }
+        previousEndpointEnabledRef.current = nextEnabledMap;
     }, [aiConfig.endpoints]);
 
     const maxRetries = aiConfig.maxRetries || 0;
@@ -119,6 +140,32 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         return merged.signal;
     };
 
+    const registerInFlightController = (endpointId: string, controller: AbortController) => {
+        const existing = inFlightControllersByEndpointRef.current.get(endpointId);
+        if (existing) {
+            existing.add(controller);
+            return;
+        }
+        inFlightControllersByEndpointRef.current.set(endpointId, new Set([controller]));
+    };
+
+    const unregisterInFlightController = (endpointId: string, controller: AbortController) => {
+        const existing = inFlightControllersByEndpointRef.current.get(endpointId);
+        if (!existing) return;
+        existing.delete(controller);
+        if (existing.size === 0) {
+            inFlightControllersByEndpointRef.current.delete(endpointId);
+        }
+    };
+
+    const abortInFlightByEndpoint = (endpointId: string, reason: 'endpoint_trip' | 'endpoint_disabled') => {
+        const controllers = inFlightControllersByEndpointRef.current.get(endpointId) as Set<AbortController> | undefined;
+        if (!controllers || controllers.size === 0) return;
+        for (const controller of controllers) {
+            controller.abort(reason);
+        }
+    };
+
     // --- Core Logic: Process a Single Image (Translate/Bubble) ---
     const runDetectionForImage = async (
         img: ImageState,
@@ -126,7 +173,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         configOverride?: AIConfig,
         endpointId?: string,
         protectionMode: 'request' | 'batch' = 'request'
-    ): Promise<{ ok: boolean; protectableFailure: boolean; failureCode?: EndpointFailureCode; abortedByTrip?: boolean }> => {
+    ): Promise<{ ok: boolean; protectableFailure: boolean; failureCode?: EndpointFailureCode; abortedByTrip?: boolean; abortedByDisable?: boolean }> => {
         const effectiveConfig = configOverride || aiConfig;
         const retries = effectiveConfig.maxRetries || maxRetries;
 
@@ -136,6 +183,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     ok: false,
                     protectableFailure: false,
                     abortedByTrip: signal.reason === 'endpoint_trip',
+                    abortedByDisable: signal.reason === 'endpoint_disabled',
                 };
             }
             setImages(prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing', errorMessage: attempt > 0 ? `Retry ${attempt}/${retries}...` : undefined } : p));
@@ -263,6 +311,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     ok: false,
                     protectableFailure: false,
                     abortedByTrip: signal?.reason === 'endpoint_trip',
+                    abortedByDisable: signal?.reason === 'endpoint_disabled',
                 };
             }
             console.error(`AI Error for ${img.name} (attempt ${attempt + 1}/${retries + 1})`, e);
@@ -455,6 +504,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     { epoch: number; trippedEpoch: number | null; epochRequestCount: number; successNotifiedEpoch: number | null }
                 >();
                 const activeTasks = new Set<Promise<void>>();
+                let noEnabledEndpointNotified = false;
 
                 const getRuntime = (endpoint: APIEndpoint) => {
                     const existing = runtimeByEndpoint.get(endpoint.id);
@@ -484,20 +534,29 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     const endpointInFlight = getInFlight(endpoint.id);
                     const requestController = new AbortController();
                     endpointInFlight.set(img.id, { img, epoch: requestEpoch, controller: requestController });
+                    registerInFlightController(endpoint.id, requestController);
                     const mergedSignal = createMergedAbortSignal([signal, requestController.signal]);
                     const mergedConfig = mergeEndpointConfig(aiConfigRef.current, endpoint);
 
                     const task = (async () => {
-                        const result = await runDetectionForImage(img, mergedSignal, mergedConfig, endpoint.id, 'batch');
-                        endpointInFlight.delete(img.id);
+                        let result:
+                            | { ok: boolean; protectableFailure: boolean; failureCode?: EndpointFailureCode; abortedByTrip?: boolean; abortedByDisable?: boolean }
+                            | undefined;
+                        try {
+                            result = await runDetectionForImage(img, mergedSignal, mergedConfig, endpoint.id, 'batch');
+                        } finally {
+                            endpointInFlight.delete(img.id);
+                            unregisterInFlightController(endpoint.id, requestController);
+                        }
 
                         if (signal.aborted) return;
+                        if (!result) return;
 
                         const latestEndpoint = aiConfigRef.current.endpoints.find(ep => ep.id === endpoint.id);
                         if (!latestEndpoint) return;
                         const latestRuntime = getRuntime(latestEndpoint);
 
-                        if (result.abortedByTrip) {
+                        if (result.abortedByTrip || result.abortedByDisable) {
                             pendingQueue.unshift(img);
                             return;
                         }
@@ -509,10 +568,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
 
                             latestRuntime.trippedEpoch = requestEpoch;
                             const failureCode = result.failureCode || FAILURE_CODE_UNKNOWN;
-                            const toAbort = Array.from(endpointInFlight.values()).filter(item => item.epoch === requestEpoch);
-                            for (const item of toAbort) {
-                                item.controller.abort('endpoint_trip');
-                            }
+                            abortInFlightByEndpoint(endpoint.id, 'endpoint_trip');
 
                             const now = Date.now();
                             const pauseDurationsMs = (aiConfigRef.current.apiProtectionDurations || []).map(d => d * 1000);
@@ -582,6 +638,16 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     if (pendingQueue.length === 0 && inFlightCount === 0) {
                         break;
                     }
+                    if (pendingQueue.length > 0 && inFlightCount === 0 && availableEndpoints.length === 0) {
+                        const hasEnabledEndpoints = (aiConfigRef.current.endpoints || []).some(ep => ep.enabled);
+                        if (!hasEnabledEndpoints) {
+                            if (!noEnabledEndpointNotified) {
+                                alert('No enabled endpoints available');
+                                noEnabledEndpointNotified = true;
+                            }
+                            break;
+                        }
+                    }
 
                     await new Promise(r => setTimeout(r, 60));
                 }
@@ -601,6 +667,8 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 }
 
                 const inFlight = new Map<string, number>();
+                const retryQueue: ImageState[] = [];
+                let noEnabledEndpointNotified = false;
                 const pickEndpoint = (): APIEndpoint | null => {
                     const latest = (aiConfigRef.current.endpoints || [])
                         .filter(ep => ep.enabled && !isEndpointPaused(ep))
@@ -621,18 +689,43 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     while (!signal.aborted) {
                         const endpoint = pickEndpoint();
                         if (!endpoint) {
-                            await new Promise(r => setTimeout(r, 200));
+                            const hasEnabledEndpoints = (aiConfigRef.current.endpoints || []).some(ep => ep.enabled);
+                            const inFlightTotal = Array.from(inFlight.values()).reduce((sum, count) => sum + count, 0);
+                            if (!hasEnabledEndpoints && inFlightTotal === 0) {
+                                if (!noEnabledEndpointNotified) {
+                                    alert('No enabled endpoints available');
+                                    noEnabledEndpointNotified = true;
+                                }
+                                return;
+                            }
+                            await new Promise(r => setTimeout(r, 120));
                             continue;
                         }
 
-                        const idx = nextIndex++;
-                        if (idx >= queue.length) return;
+                        let img = retryQueue.shift();
+                        if (!img) {
+                            const idx = nextIndex++;
+                            if (idx >= queue.length) {
+                                const inFlightTotal = Array.from(inFlight.values()).reduce((sum, count) => sum + count, 0);
+                                if (retryQueue.length === 0 && inFlightTotal === 0) return;
+                                await new Promise(r => setTimeout(r, 80));
+                                continue;
+                            }
+                            img = queue[idx];
+                        }
 
                         inFlight.set(endpoint.id, (inFlight.get(endpoint.id) || 0) + 1);
+                        const requestController = new AbortController();
+                        registerInFlightController(endpoint.id, requestController);
+                        const mergedSignal = createMergedAbortSignal([signal, requestController.signal]);
                         const mergedConfig = mergeEndpointConfig(aiConfigRef.current, endpoint);
                         try {
-                            await runDetectionForImage(queue[idx], signal, mergedConfig, endpoint.id, 'request');
+                            const result = await runDetectionForImage(img, mergedSignal, mergedConfig, endpoint.id, 'request');
+                            if (result.abortedByDisable) {
+                                retryQueue.push(img);
+                            }
                         } finally {
+                            unregisterInFlightController(endpoint.id, requestController);
                             inFlight.set(endpoint.id, Math.max(0, (inFlight.get(endpoint.id) || 1) - 1));
                         }
                     }
@@ -685,7 +778,14 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 }
 
                 const mergedConfig = mergeEndpointConfig(aiConfigRef.current, firstEndpoint);
-                await runDetectionForImage(currentImage, controller.signal, mergedConfig, firstEndpoint.id);
+                const endpointController = new AbortController();
+                registerInFlightController(firstEndpoint.id, endpointController);
+                const mergedSignal = createMergedAbortSignal([controller.signal, endpointController.signal]);
+                try {
+                    await runDetectionForImage(currentImage, mergedSignal, mergedConfig, firstEndpoint.id);
+                } finally {
+                    unregisterInFlightController(firstEndpoint.id, endpointController);
+                }
             } finally {
                 setIsProcessingBatch(false);
                 setProcessingType(null);
