@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, FunctionDeclaration, Type, FunctionCallingConfigMode } from "@google/genai";
 import { AIConfig, DetectedBubble, MaskRegion } from "../types";
-import { isProtectableError } from "./apiProtection";
+import { FAILURE_CODE_PARSE_BUBBLES_INVALID, isProtectableError } from "./apiProtection";
 
 export const DEFAULT_FONT_SELECTION_PROMPT = `### 字体选择指南：
 
@@ -198,6 +198,13 @@ const cleanDetectedText = (text: string): string => {
   return text.replace(/\\n/g, '\n');
 };
 
+const createParseBubblesError = (message: string, cause?: unknown): Error => {
+  const err: any = new Error(message);
+  err.code = FAILURE_CODE_PARSE_BUBBLES_INVALID;
+  if (cause) err.cause = cause;
+  return err;
+};
+
 /**
  * Robust JSON repair function.
  * Iterates through the string statefully to handle unescaped control characters inside quotes.
@@ -250,7 +257,7 @@ export const repairJson = (jsonStr: string): string => {
  * 4. Broken JSON with unescaped newlines (via repairJson)
  */
 const extractJsonFromText = (text: string): any => {
-  if (!text) throw new Error("Empty response received from AI");
+  if (!text) throw createParseBubblesError("Empty response received from AI");
   
   // 1. Try cleaning markdown code blocks first
   const markdownRegex = /```(?:json)?\s*([\s\S]*?)\s*```/;
@@ -281,7 +288,7 @@ const extractJsonFromText = (text: string): any => {
     }
   }
   
-  throw new Error("Could not parse JSON structure from AI response. Raw content: " + text.substring(0, 50) + "...");
+  throw createParseBubblesError("Could not parse JSON structure from AI response. Raw content: " + text.substring(0, 50) + "...");
 };
 
 /**
@@ -289,13 +296,13 @@ const extractJsonFromText = (text: string): any => {
  */
 const validateBubblesArray = (data: any): any[] => {
     if (!data || typeof data !== 'object') {
-        throw new Error("AI response is not a valid JSON object");
+        throw createParseBubblesError("AI response is not a valid JSON object");
     }
     if (!('bubbles' in data)) {
-        throw new Error("AI response missing 'bubbles' key. The model failed to follow the schema.");
+        throw createParseBubblesError("AI response missing 'bubbles' key. The model failed to follow the schema.");
     }
     if (!Array.isArray(data.bubbles)) {
-        throw new Error("AI response 'bubbles' is not an array.");
+        throw createParseBubblesError("AI response 'bubbles' is not an array.");
     }
     return data.bubbles;
 };
@@ -379,6 +386,9 @@ const createWrappedError = (message: string, original?: any, extras?: Record<str
   const wrapped: any = new Error(message);
   if (original) {
     wrapped.cause = original;
+    if (original?.code) {
+      wrapped.code = original.code;
+    }
     const status = original?.status || original?.statusCode || original?.response?.status;
     if (status) {
       wrapped.status = status;

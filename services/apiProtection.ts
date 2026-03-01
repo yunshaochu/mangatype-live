@@ -7,8 +7,111 @@ export const DEFAULT_API_PROTECTION_CONFIG = {
   disableThreshold: 5, // 5th error triggers auto-disable
 };
 
-// Error codes that trigger API protection
-const RATE_LIMIT_ERRORS = [429, 503, 502, 504];
+export const FAILURE_CODE_HTTP_429 = 'HTTP_429';
+export const FAILURE_CODE_HTTP_500 = 'HTTP_500';
+export const FAILURE_CODE_HTTP_503 = 'HTTP_503';
+export const FAILURE_CODE_HTTP_502_OR_504 = 'HTTP_502_OR_504';
+export const FAILURE_CODE_PARSE_BUBBLES_INVALID = 'PARSE_BUBBLES_INVALID';
+export const FAILURE_CODE_UNKNOWN = 'UNKNOWN_FAILURE';
+
+export const ENDPOINT_FAILURE_CODES = [
+  FAILURE_CODE_HTTP_429,
+  FAILURE_CODE_HTTP_500,
+  FAILURE_CODE_HTTP_503,
+  FAILURE_CODE_HTTP_502_OR_504,
+  FAILURE_CODE_PARSE_BUBBLES_INVALID,
+  FAILURE_CODE_UNKNOWN,
+] as const;
+
+export type EndpointFailureCode = typeof ENDPOINT_FAILURE_CODES[number];
+
+export const ENDPOINT_PROTECTION_EVENT_TYPES = [
+  'BATCH_STARTED',
+  'REQUEST_FAILED',
+  'BATCH_FAILED',
+  'BATCH_SUCCEEDED',
+  'PAUSE_EXPIRED',
+  'MANUAL_ENABLE',
+  'MANUAL_DISABLE',
+] as const;
+
+export type EndpointProtectionEventType = typeof ENDPOINT_PROTECTION_EVENT_TYPES[number];
+
+export interface EndpointProtectionEventBase {
+  type: EndpointProtectionEventType;
+  endpointId: string;
+  eventSeq: number;
+  timestamp: number;
+}
+
+export interface EndpointFailureClassification {
+  code: EndpointFailureCode;
+  shouldProtect: boolean;
+  statusCode?: number;
+  message: string;
+  rawMessages: string[];
+}
+
+export interface EndpointProtectionFailureEvent extends EndpointProtectionEventBase {
+  type: 'REQUEST_FAILED' | 'BATCH_FAILED';
+  failure: EndpointFailureClassification;
+}
+
+export interface EndpointProtectionSuccessEvent extends EndpointProtectionEventBase {
+  type: 'BATCH_STARTED' | 'BATCH_SUCCEEDED' | 'PAUSE_EXPIRED' | 'MANUAL_ENABLE' | 'MANUAL_DISABLE';
+}
+
+export type EndpointProtectionEvent =
+  | EndpointProtectionFailureEvent
+  | EndpointProtectionSuccessEvent;
+
+// Keep reason priority deterministic and stable across batch/error ordering.
+export const DISABLE_REASON_PRIORITY: EndpointFailureCode[] = [
+  FAILURE_CODE_HTTP_429,
+  FAILURE_CODE_HTTP_503,
+  FAILURE_CODE_HTTP_500,
+  FAILURE_CODE_HTTP_502_OR_504,
+  FAILURE_CODE_PARSE_BUBBLES_INVALID,
+  FAILURE_CODE_UNKNOWN,
+];
+
+const RATE_LIMIT_KEYWORDS = [
+  'rate limit',
+  'too many requests',
+  'quota exceeded',
+  'service unavailable',
+  'resource_exhausted',
+  'insufficient_quota',
+  'exceeded your current quota',
+  'requests per min',
+  'requests per minute',
+];
+
+const PARSE_FAILURE_KEYWORDS = [
+  FAILURE_CODE_PARSE_BUBBLES_INVALID.toLowerCase(),
+  'could not parse json structure',
+  "missing 'bubbles' key",
+  "'bubbles' is not an array",
+  'failed to parse response',
+  'failed to return structured data',
+  'response is not a valid json object',
+];
+
+const HTTP_STATUS_FAILURE_CODE_MAP: Record<number, EndpointFailureCode> = {
+  429: FAILURE_CODE_HTTP_429,
+  500: FAILURE_CODE_HTTP_500,
+  503: FAILURE_CODE_HTTP_503,
+  502: FAILURE_CODE_HTTP_502_OR_504,
+  504: FAILURE_CODE_HTTP_502_OR_504,
+};
+
+const PROTECTABLE_FAILURE_CODES = new Set<EndpointFailureCode>([
+  FAILURE_CODE_HTTP_429,
+  FAILURE_CODE_HTTP_500,
+  FAILURE_CODE_HTTP_503,
+  FAILURE_CODE_HTTP_502_OR_504,
+  FAILURE_CODE_PARSE_BUBBLES_INVALID,
+]);
 
 const collectErrorMessages = (error: any): string[] => {
   const messages: string[] = [];
@@ -22,7 +125,7 @@ const collectErrorMessages = (error: any): string[] => {
 
     const message = current?.message || current?.toString?.();
     if (typeof message === 'string' && message.trim()) {
-      messages.push(message);
+      messages.push(message.trim());
     }
 
     const nested = [
@@ -47,49 +150,122 @@ const collectErrorMessages = (error: any): string[] => {
   return messages;
 };
 
-/**
- * Check if an error should trigger API protection
- */
-export const isProtectableError = (error: any): { shouldProtect: boolean; statusCode?: number } => {
-  // Check for HTTP status codes in error object and wrapped causes
-  const statusCode =
+const getRawStatusCode = (error: any): number | undefined => {
+  const raw =
     error?.status ||
     error?.statusCode ||
     error?.response?.status ||
     error?.cause?.status ||
     error?.cause?.statusCode ||
     error?.cause?.response?.status;
-  const messages = collectErrorMessages(error);
-  const combinedMessage = messages.join(' | ').toLowerCase();
+  const code = Number(raw);
+  return Number.isInteger(code) && code > 0 ? code : undefined;
+};
 
-  // Check status code directly
-  if (statusCode && RATE_LIMIT_ERRORS.includes(statusCode)) {
-    return { shouldProtect: true, statusCode };
-  }
-
-  // Check error message for status codes
-  for (const code of RATE_LIMIT_ERRORS) {
-    if (combinedMessage.includes(`${code}`) || combinedMessage.includes(`status ${code}`) || combinedMessage.includes(`${code} `)) {
-      return { shouldProtect: true, statusCode: code };
+const findStatusCodeFromMessage = (message: string): number | undefined => {
+  for (const code of Object.keys(HTTP_STATUS_FAILURE_CODE_MAP).map(Number)) {
+    if (
+      message.includes(`${code}`) ||
+      message.includes(`status ${code}`) ||
+      message.includes(`${code} `)
+    ) {
+      return code;
     }
   }
+  return undefined;
+};
 
-  // Check for common rate limit keywords
-  if (
-    combinedMessage.includes('rate limit') ||
-    combinedMessage.includes('too many requests') ||
-    combinedMessage.includes('quota exceeded') ||
-    combinedMessage.includes('service unavailable') ||
-    combinedMessage.includes('resource_exhausted') ||
-    combinedMessage.includes('insufficient_quota') ||
-    combinedMessage.includes('exceeded your current quota') ||
-    combinedMessage.includes('requests per min') ||
-    combinedMessage.includes('requests per minute')
-  ) {
-    return { shouldProtect: true, statusCode: statusCode || 429 };
+const getFailureCodeFromStatus = (statusCode?: number): EndpointFailureCode | undefined => {
+  if (!statusCode) return undefined;
+  return HTTP_STATUS_FAILURE_CODE_MAP[statusCode];
+};
+
+export const pickDisableReasonCode = (codes: EndpointFailureCode[]): EndpointFailureCode => {
+  if (codes.length === 0) return FAILURE_CODE_UNKNOWN;
+  const weight = new Map(DISABLE_REASON_PRIORITY.map((code, index) => [code, index]));
+  return [...codes].sort((a, b) => (weight.get(a) ?? Number.MAX_SAFE_INTEGER) - (weight.get(b) ?? Number.MAX_SAFE_INTEGER))[0];
+};
+
+export const getDisableReasonMessage = (classification: EndpointFailureClassification): string => {
+  switch (classification.code) {
+    case FAILURE_CODE_HTTP_429:
+      return 'Endpoint auto-disabled after repeated HTTP 429 rate-limit failures.';
+    case FAILURE_CODE_HTTP_503:
+      return 'Endpoint auto-disabled after repeated HTTP 503 service-unavailable failures.';
+    case FAILURE_CODE_HTTP_500:
+      return 'Endpoint auto-disabled after repeated HTTP 500 server failures.';
+    case FAILURE_CODE_HTTP_502_OR_504:
+      return 'Endpoint auto-disabled after repeated HTTP 502/504 gateway failures.';
+    case FAILURE_CODE_PARSE_BUBBLES_INVALID:
+      return 'Endpoint auto-disabled after repeated invalid bubble parsing failures.';
+    default:
+      return 'Endpoint auto-disabled after repeated unknown failures.';
+  }
+};
+
+export const classifyEndpointFailure = (error: any): EndpointFailureClassification => {
+  const rawMessages = collectErrorMessages(error);
+  const combinedMessage = rawMessages.join(' | ').toLowerCase();
+  const statusFromError = getRawStatusCode(error);
+  const statusCode = statusFromError ?? findStatusCodeFromMessage(combinedMessage);
+  const statusCodeBased = getFailureCodeFromStatus(statusCode);
+
+  if (statusCodeBased) {
+    return {
+      code: statusCodeBased,
+      shouldProtect: true,
+      statusCode,
+      message: rawMessages[0] || `HTTP ${statusCode}`,
+      rawMessages,
+    };
   }
 
-  return { shouldProtect: false };
+  const explicitCode = error?.code;
+  if (explicitCode === FAILURE_CODE_PARSE_BUBBLES_INVALID) {
+    return {
+      code: FAILURE_CODE_PARSE_BUBBLES_INVALID,
+      shouldProtect: true,
+      message: rawMessages[0] || 'Invalid bubble parsing failure',
+      rawMessages,
+    };
+  }
+
+  if (PARSE_FAILURE_KEYWORDS.some(keyword => combinedMessage.includes(keyword))) {
+    return {
+      code: FAILURE_CODE_PARSE_BUBBLES_INVALID,
+      shouldProtect: true,
+      message: rawMessages[0] || 'Invalid bubble parsing failure',
+      rawMessages,
+    };
+  }
+
+  if (RATE_LIMIT_KEYWORDS.some(keyword => combinedMessage.includes(keyword))) {
+    return {
+      code: FAILURE_CODE_HTTP_429,
+      shouldProtect: true,
+      statusCode: 429,
+      message: rawMessages[0] || 'Rate limit failure',
+      rawMessages,
+    };
+  }
+
+  return {
+    code: FAILURE_CODE_UNKNOWN,
+    shouldProtect: false,
+    message: rawMessages[0] || 'Unknown failure',
+    rawMessages,
+  };
+};
+
+/**
+ * Check if an error should trigger API protection
+ */
+export const isProtectableError = (error: any): { shouldProtect: boolean; statusCode?: number } => {
+  const classification = classifyEndpointFailure(error);
+  return {
+    shouldProtect: PROTECTABLE_FAILURE_CODES.has(classification.code) && classification.shouldProtect,
+    statusCode: classification.statusCode,
+  };
 };
 
 /**
@@ -117,30 +293,25 @@ export const handleEndpointError = (
   endpoint: APIEndpoint,
   error: any,
   config?: { durations?: number[]; disableThreshold?: number }
-): { updatedEndpoint: APIEndpoint; shouldDisable: boolean } => {
-  const { shouldProtect, statusCode } = isProtectableError(error);
+): { updatedEndpoint: APIEndpoint; shouldDisable: boolean; classification: EndpointFailureClassification } => {
+  const classification = classifyEndpointFailure(error);
 
-  if (!shouldProtect) {
-    // Not a protectable error, just record it
+  if (!classification.shouldProtect) {
     return {
       updatedEndpoint: {
         ...endpoint,
-        lastError: error?.message || 'Unknown error',
+        lastError: `${classification.code}: ${classification.message}`,
       },
       shouldDisable: false,
+      classification,
     };
   }
 
-  // Increment consecutive errors
   const consecutiveErrors = (endpoint.consecutiveErrors || 0) + 1;
-
-  // Use custom durations if provided, otherwise use defaults
   const durations = config?.durations || DEFAULT_API_PROTECTION_CONFIG.durations;
   const durationsMs = durations.map(d => d * 1000);
   const pauseDuration = calculatePauseDuration(consecutiveErrors, durationsMs);
   const pausedUntil = Date.now() + pauseDuration;
-
-  // Check if this error count triggers auto-disable
   const disableThreshold = config?.disableThreshold || DEFAULT_API_PROTECTION_CONFIG.disableThreshold;
   const shouldDisable = consecutiveErrors >= disableThreshold;
 
@@ -148,11 +319,14 @@ export const handleEndpointError = (
     ...endpoint,
     consecutiveErrors,
     pausedUntil,
-    lastError: `${statusCode || 'Error'}: ${error?.message || 'API error'}`,
+    lastError: `${classification.code}: ${classification.message}`,
     enabled: shouldDisable ? false : endpoint.enabled,
+    disableReasonCode: shouldDisable ? classification.code : endpoint.disableReasonCode,
+    disableReasonMessage: shouldDisable ? getDisableReasonMessage(classification) : endpoint.disableReasonMessage,
+    disabledAt: shouldDisable ? Date.now() : endpoint.disabledAt,
   };
 
-  return { updatedEndpoint, shouldDisable };
+  return { updatedEndpoint, shouldDisable, classification };
 };
 
 /**
