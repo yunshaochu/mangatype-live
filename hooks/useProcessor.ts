@@ -5,6 +5,8 @@ import { generateMaskedImage, generateAnnotatedImage, detectBubbleColor, generat
 import { inpaintImage } from '../services/inpaintingService';
 import { isBubbleInsideMask } from '../utils/editorUtils';
 import {
+    EndpointProtectionEventType,
+    createEndpointProtectionEventQueue,
     handleEndpointError,
     handleEndpointSuccess,
     isProtectableError,
@@ -28,8 +30,66 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
     // Always-fresh reference to latest aiConfig — avoids stale closure inside async workers
     const aiConfigRef = useRef(aiConfig);
     useEffect(() => { aiConfigRef.current = aiConfig; }, [aiConfig]);
+    const protectionEventQueueRef = useRef<ReturnType<typeof createEndpointProtectionEventQueue> | null>(null);
+    const endpointEventSeqRef = useRef<Map<string, number>>(new Map());
+
+    useEffect(() => {
+        if (!updateEndpoint) {
+            protectionEventQueueRef.current = null;
+            endpointEventSeqRef.current.clear();
+            return;
+        }
+
+        protectionEventQueueRef.current = createEndpointProtectionEventQueue({
+            getEndpoint: (endpointId: string) => aiConfigRef.current.endpoints.find(ep => ep.id === endpointId),
+            commitEndpoint: (endpointId: string, nextEndpoint: APIEndpoint) => updateEndpoint(endpointId, nextEndpoint),
+            log: (level, message) => {
+                if (level === 'debug') {
+                    console.log(message);
+                    return;
+                }
+                console[level](message);
+            },
+        });
+
+        return () => {
+            protectionEventQueueRef.current?.clearAll();
+            protectionEventQueueRef.current = null;
+            endpointEventSeqRef.current.clear();
+        };
+    }, [updateEndpoint]);
+
+    useEffect(() => {
+        const activeEndpointIds = new Set((aiConfig.endpoints || []).map(ep => ep.id));
+        protectionEventQueueRef.current?.prune(activeEndpointIds);
+        for (const endpointId of endpointEventSeqRef.current.keys()) {
+            if (!activeEndpointIds.has(endpointId)) {
+                endpointEventSeqRef.current.delete(endpointId);
+            }
+        }
+    }, [aiConfig.endpoints]);
 
     const maxRetries = aiConfig.maxRetries || 0;
+
+    const getNextEventSeq = (endpointId: string): number => {
+        const endpoint = aiConfigRef.current.endpoints.find(ep => ep.id === endpointId);
+        const persistedSeq = endpoint?.lastEventSeq ?? 0;
+        const inMemorySeq = endpointEventSeqRef.current.get(endpointId) ?? 0;
+        const nextSeq = Math.max(persistedSeq, inMemorySeq) + 1;
+        endpointEventSeqRef.current.set(endpointId, nextSeq);
+        return nextSeq;
+    };
+
+    const dispatchEndpointProtectionUpdate = (
+        endpointId: string,
+        eventType: EndpointProtectionEventType,
+        apply: (endpoint: APIEndpoint) => APIEndpoint
+    ) => {
+        const queue = protectionEventQueueRef.current;
+        if (!queue) return;
+        const eventSeq = getNextEventSeq(endpointId);
+        void queue.enqueue({ endpointId, eventSeq, eventType, apply });
+    };
 
     // --- Core Logic: Process a Single Image (Translate/Bubble) ---
     const runDetectionForImage = async (img: ImageState, signal?: AbortSignal, configOverride?: AIConfig, endpointId?: string) => {
@@ -151,11 +211,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
 
             // Success: Reset endpoint error count
             if (endpointId && updateEndpoint) {
-                const endpoint = aiConfigRef.current.endpoints.find(ep => ep.id === endpointId);
-                if (endpoint) {
-                    const updatedEndpoint = handleEndpointSuccess(endpoint);
-                    updateEndpoint(endpointId, updatedEndpoint);
-                }
+                dispatchEndpointProtectionUpdate(endpointId, 'BATCH_SUCCEEDED', (endpoint) => handleEndpointSuccess(endpoint));
             }
 
             return; // Success, exit retry loop
@@ -173,19 +229,17 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             // IMPORTANT: Protectable errors (429/503 etc.) should pause immediately and stop retrying,
             // otherwise we keep pressuring the provider.
             if (shouldProtectNow && endpointId && updateEndpoint) {
-                const endpoint = aiConfigRef.current.endpoints.find(ep => ep.id === endpointId);
-                if (endpoint) {
-                    const protectionConfig = {
-                        durations: aiConfigRef.current.apiProtectionDurations,
-                        disableThreshold: aiConfigRef.current.apiProtectionDisableThreshold,
-                    };
+                const protectionConfig = {
+                    durations: aiConfigRef.current.apiProtectionDurations,
+                    disableThreshold: aiConfigRef.current.apiProtectionDisableThreshold,
+                };
+                dispatchEndpointProtectionUpdate(endpointId, 'REQUEST_FAILED', (endpoint) => {
                     const { updatedEndpoint, shouldDisable } = handleEndpointError(endpoint, e, protectionConfig);
-                    updateEndpoint(endpointId, updatedEndpoint);
-
                     if (shouldDisable) {
                         console.warn(`Endpoint ${endpoint.name} auto-disabled due to repeated errors`);
                     }
-                }
+                    return updatedEndpoint;
+                });
 
                 setImages(prev => prev.map(p => p.id === img.id ? {
                     ...p,
@@ -197,15 +251,14 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
 
             // Non-protectable errors: only update protection state on last attempt
             if (attempt === retries && endpointId && updateEndpoint && protectionEnabled) {
-                const endpoint = aiConfigRef.current.endpoints.find(ep => ep.id === endpointId);
-                if (endpoint) {
-                    const protectionConfig = {
-                        durations: aiConfigRef.current.apiProtectionDurations,
-                        disableThreshold: aiConfigRef.current.apiProtectionDisableThreshold,
-                    };
+                const protectionConfig = {
+                    durations: aiConfigRef.current.apiProtectionDurations,
+                    disableThreshold: aiConfigRef.current.apiProtectionDisableThreshold,
+                };
+                dispatchEndpointProtectionUpdate(endpointId, 'REQUEST_FAILED', (endpoint) => {
                     const { updatedEndpoint } = handleEndpointError(endpoint, e, protectionConfig);
-                    updateEndpoint(endpointId, updatedEndpoint);
-                }
+                    return updatedEndpoint;
+                });
             }
 
             if (attempt < retries) {

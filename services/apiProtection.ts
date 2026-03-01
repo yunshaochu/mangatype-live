@@ -65,6 +65,100 @@ export type EndpointProtectionEvent =
   | EndpointProtectionFailureEvent
   | EndpointProtectionSuccessEvent;
 
+export interface EndpointQueuedUpdate {
+  endpointId: string;
+  eventSeq: number;
+  eventType: EndpointProtectionEventType;
+  apply: (endpoint: APIEndpoint) => APIEndpoint;
+}
+
+export interface EndpointProtectionEventQueue {
+  enqueue: (update: EndpointQueuedUpdate) => Promise<void>;
+  clearEndpoint: (endpointId: string) => void;
+  prune: (activeEndpointIds: Set<string>) => void;
+  clearAll: () => void;
+}
+
+export interface EndpointProtectionEventQueueDeps {
+  getEndpoint: (endpointId: string) => APIEndpoint | undefined;
+  commitEndpoint: (endpointId: string, nextEndpoint: APIEndpoint) => void;
+  log?: (level: 'debug' | 'warn' | 'error', message: string) => void;
+}
+
+type EndpointQueueState = {
+  tail: Promise<void>;
+  lastAppliedSeq: number;
+};
+
+export const createEndpointProtectionEventQueue = (
+  deps: EndpointProtectionEventQueueDeps
+): EndpointProtectionEventQueue => {
+  const queueByEndpoint = new Map<string, EndpointQueueState>();
+  const log = deps.log || ((level: 'debug' | 'warn' | 'error', message: string) => {
+    const logger = level === 'debug' ? console.log : console[level];
+    logger(`[apiProtectionQueue] ${message}`);
+  });
+
+  const getQueueState = (endpointId: string): EndpointQueueState => {
+    const existing = queueByEndpoint.get(endpointId);
+    if (existing) return existing;
+    const initialSeq = deps.getEndpoint(endpointId)?.lastEventSeq ?? 0;
+    const created: EndpointQueueState = { tail: Promise.resolve(), lastAppliedSeq: initialSeq };
+    queueByEndpoint.set(endpointId, created);
+    return created;
+  };
+
+  return {
+    enqueue: async (update: EndpointQueuedUpdate): Promise<void> => {
+      const state = getQueueState(update.endpointId);
+      state.tail = state.tail
+        .then(() => {
+          const endpoint = deps.getEndpoint(update.endpointId);
+          if (!endpoint) {
+            log('warn', `skip ${update.eventType} seq=${update.eventSeq} because endpoint ${update.endpointId} no longer exists`);
+            queueByEndpoint.delete(update.endpointId);
+            return;
+          }
+
+          const latestSeq = Math.max(state.lastAppliedSeq, endpoint.lastEventSeq ?? 0);
+          if (update.eventSeq <= latestSeq) {
+            log('warn', `drop stale ${update.eventType} seq=${update.eventSeq} latest=${latestSeq} endpoint=${update.endpointId}`);
+            return;
+          }
+
+          const nextEndpoint = update.apply(endpoint);
+          deps.commitEndpoint(update.endpointId, {
+            ...nextEndpoint,
+            lastEventSeq: update.eventSeq,
+          });
+          state.lastAppliedSeq = update.eventSeq;
+          log('debug', `applied ${update.eventType} seq=${update.eventSeq} endpoint=${update.endpointId}`);
+        })
+        .catch((error: any) => {
+          log('error', `failed ${update.eventType} seq=${update.eventSeq} endpoint=${update.endpointId}: ${error?.message || error}`);
+        });
+
+      await state.tail;
+    },
+
+    clearEndpoint: (endpointId: string) => {
+      queueByEndpoint.delete(endpointId);
+    },
+
+    prune: (activeEndpointIds: Set<string>) => {
+      for (const endpointId of queueByEndpoint.keys()) {
+        if (!activeEndpointIds.has(endpointId)) {
+          queueByEndpoint.delete(endpointId);
+        }
+      }
+    },
+
+    clearAll: () => {
+      queueByEndpoint.clear();
+    },
+  };
+};
+
 // Keep reason priority deterministic and stable across batch/error ordering.
 export const DISABLE_REASON_PRIORITY: EndpointFailureCode[] = [
   FAILURE_CODE_HTTP_429,
