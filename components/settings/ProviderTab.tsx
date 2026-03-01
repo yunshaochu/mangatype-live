@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCw, AlertCircle, Globe, ChevronDown, Check, Bot, Cpu, Plus, Trash2, Pencil, Power, Clock, AlertTriangle, Settings, X, RotateCcw } from 'lucide-react';
+import { RefreshCw, AlertCircle, Globe, ChevronDown, Check, Bot, Cpu, Plus, Trash2, Pencil, Power, Clock, AlertTriangle, Settings, X, RotateCcw, TestTube2 } from 'lucide-react';
 import { t } from '../../services/i18n';
 import { fetchAvailableModels } from '../../services/geminiService';
 import { AIProvider, APIEndpoint, mergeEndpointConfig } from '../../types';
 import { TabProps } from './types';
 import { isEndpointPaused, getRemainingPauseTime, formatPauseDuration, DEFAULT_API_PROTECTION_CONFIG } from '../../services/apiProtection';
+import { EndpointCapabilityTestResult, runEndpointCapabilityTests } from '../../services/endpointTestService';
 
 const EndpointEditor: React.FC<{
   endpoint: APIEndpoint;
@@ -189,6 +190,8 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState<string | null>(null);
   const [groupNameDraft, setGroupNameDraft] = useState('');
+  const [testingId, setTestingId] = useState<string | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, EndpointCapabilityTestResult>>({});
 
   const endpoints = config.endpoints || [];
   const enabledCount = endpoints.filter(ep => ep.enabled).length;
@@ -314,6 +317,27 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     const trimmed = newName.trim();
     if (!trimmed || trimmed === oldName) return;
     updateEndpoints(endpoints.map((e: APIEndpoint) => e.group === oldName ? { ...e, group: trimmed } : e));
+  };
+
+  const handleRunEndpointTests = async (endpoint: APIEndpoint) => {
+    if (testingId) return;
+    setTestingId(endpoint.id);
+    try {
+      const result = await runEndpointCapabilityTests(config, endpoint);
+      setTestResults(prev => ({ ...prev, [endpoint.id]: result }));
+    } catch (e: any) {
+      const message = e?.message || 'Unknown error';
+      setTestResults(prev => ({
+        ...prev,
+        [endpoint.id]: {
+          basic: { ok: false, message, latencyMs: 0 },
+          functionCalling: { ok: false, message: 'Skipped due to basic failure', latencyMs: 0 },
+          jsonMode: { ok: false, message: 'Skipped due to basic failure', latencyMs: 0 },
+        },
+      }));
+    } finally {
+      setTestingId(null);
+    }
   };
 
   const [showProtectionSettings, setShowProtectionSettings] = useState(false);
@@ -545,6 +569,7 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
               {editingId === ep.id ? (
                 <EndpointEditor endpoint={ep} config={config} lang={lang} groups={groups} onSave={handleSave} onCancel={() => setEditingId(null)} />
               ) : (
+                <>
                 <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${ep.enabled ? 'bg-gray-800/40 border-gray-700' : 'bg-gray-900/30 border-gray-800 opacity-50'}`}>
                   <button onClick={() => handleToggle(ep.id)} title={ep.enabled ? 'Disable' : 'Enable'}
                     className={`p-1.5 rounded-lg transition-colors ${ep.enabled ? 'text-green-400 hover:bg-green-900/30' : 'text-gray-600 hover:bg-gray-800'}`}>
@@ -601,6 +626,14 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                       <p className="text-[10px] text-red-400/70 truncate mt-0.5" title={ep.lastError}>{ep.lastError}</p>
                     )}
                   </div>
+                  <button
+                    onClick={() => handleRunEndpointTests(ep)}
+                    disabled={testingId === ep.id}
+                    className="p-1.5 text-cyan-400 hover:text-cyan-300 hover:bg-cyan-900/20 rounded-lg transition-colors disabled:opacity-50"
+                    title={lang === 'zh' ? '测试端点能力' : 'Test endpoint capabilities'}
+                  >
+                    <TestTube2 size={14} className={testingId === ep.id ? 'animate-pulse' : ''} />
+                  </button>
                   <button onClick={() => setEditingId(ep.id)} className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-700 rounded-lg transition-colors">
                     <Pencil size={14} />
                   </button>
@@ -608,6 +641,26 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                     <Trash2 size={14} />
                   </button>
                 </div>
+                {testResults[ep.id] && (
+                  <div className="mt-1 p-2 rounded-lg border border-gray-700 bg-gray-900/40 text-[11px] space-y-1">
+                    <div className={`font-medium ${testResults[ep.id].basic.ok ? 'text-green-400' : 'text-red-400'}`}>
+                      {lang === 'zh' ? '基础可用性' : 'Basic'}: {testResults[ep.id].basic.ok ? (lang === 'zh' ? '通过' : 'Pass') : (lang === 'zh' ? '失败' : 'Fail')}
+                      {' '}({testResults[ep.id].basic.latencyMs}ms) - {testResults[ep.id].basic.message}
+                    </div>
+                    <details>
+                      <summary className="cursor-pointer text-gray-300">{lang === 'zh' ? '高级能力测试（可折叠）' : 'Advanced tests (collapsible)'}</summary>
+                      <div className="mt-1 space-y-1 pl-2 border-l border-gray-700">
+                        <div className={testResults[ep.id].functionCalling.ok ? 'text-green-400' : 'text-red-400'}>
+                          Function Calling: {testResults[ep.id].functionCalling.ok ? 'Pass' : 'Fail'} ({testResults[ep.id].functionCalling.latencyMs}ms) - {testResults[ep.id].functionCalling.message}
+                        </div>
+                        <div className={testResults[ep.id].jsonMode.ok ? 'text-green-400' : 'text-red-400'}>
+                          JSON Mode: {testResults[ep.id].jsonMode.ok ? 'Pass' : 'Fail'} ({testResults[ep.id].jsonMode.latencyMs}ms) - {testResults[ep.id].jsonMode.message}
+                        </div>
+                      </div>
+                    </details>
+                  </div>
+                )}
+                </>
               )}
             </div>
           );
