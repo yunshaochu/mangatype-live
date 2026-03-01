@@ -164,9 +164,9 @@ const EndpointEditor: React.FC<{
       {/* Concurrency */}
       <div className="space-y-1">
         <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">{lang === 'zh' ? '并发数' : 'Concurrency'}</label>
-        <input type="number" min={1} max={10}
+        <input type="number" min={1}
           value={draft.concurrency || 1}
-          onChange={e => setDraft({ ...draft, concurrency: Math.max(1, Math.min(10, parseInt(e.target.value) || 1)) })}
+          onChange={e => setDraft({ ...draft, concurrency: Math.max(1, parseInt(e.target.value) || 1) })}
           className="w-20 bg-[#0f1115] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
         <p className="text-[11px] text-gray-500">{lang === 'zh' ? '该端点同时处理的最大请求数' : 'Max parallel requests for this endpoint'}</p>
       </div>

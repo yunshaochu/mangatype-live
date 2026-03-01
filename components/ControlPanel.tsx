@@ -1,4 +1,4 @@
-
+﻿
 import React from 'react';
 import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon, Eraser, Brush, Pipette, Hash, PaintBucket, MousePointerClick, History } from 'lucide-react';
 import { t } from '../services/i18n';
@@ -107,19 +107,18 @@ export const ControlPanel: React.FC = () => {
             const newBase64 = await blobToBase64(blob);
             setImages(prev => prev.map(img => img.id === currentImage.id ? {
                 ...img,
-                // 合并后的图片作为新的原图
+                // 鍚堝苟鍚庣殑鍥剧墖浣滀负鏂扮殑鍘熷浘
                 originalUrl: newUrl,
                 originalBase64: newBase64,
                 url: newUrl,
                 base64: newBase64,
-                // 清除已合并的图层
+                // 娓呴櫎宸插悎骞剁殑鍥惧眰
                 inpaintedUrl: undefined,
                 inpaintedBase64: undefined,
-                // 清除已绘制的内容
+                // 娓呴櫎宸茬粯鍒剁殑鍐呭
                 bubbles: [],
                 maskRegions: [],
-                // 重置状态
-                status: 'idle',
+                // 閲嶇疆鐘舵€?                status: 'idle',
                 detectionStatus: 'idle',
                 inpaintingStatus: 'idle',
                 errorMessage: undefined
@@ -488,21 +487,25 @@ export const ControlPanel: React.FC = () => {
             >
               <Palette size={16} />
             </button>
-            <div className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 border border-gray-700" title={lang === 'zh' ? `并发数（翻译按各端点设置，其他任务按此值）` : `Concurrency (translation uses per-endpoint settings, other tasks use this value)`}>
+            <div className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 border border-gray-700" title={lang === 'zh' ? `骞跺彂鏁帮紙缈昏瘧鎸夊悇绔偣璁剧疆锛屽叾浠栦换鍔℃寜姝ゅ€硷級` : `Concurrency (translation uses per-endpoint settings, other tasks use this value)`}>
               <Zap size={10} className="text-yellow-500" />
               <input
                 type="number"
                 min={1}
-                max={20}
                 value={concurrency}
                 onChange={(e) => {
-                  const v = Math.max(1, Math.min(20, parseInt(e.target.value) || 1));
+                  const v = Math.max(1, parseInt(e.target.value) || 1);
                   setConcurrency(v);
                 }}
                 className="w-8 bg-transparent text-[10px] text-center text-gray-300 outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             </div>
-            <div className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 border border-gray-700" title={lang === 'zh' ? `失败自动重试次数` : `Auto-retry count on failure`}>
+            {concurrency > 50 && (
+              <span className="text-[10px] text-amber-400" title={lang === 'zh' ? '高并发可能触发限流或浏览器卡顿' : 'High concurrency may trigger rate limits or browser slowdown'}>
+                {lang === 'zh' ? '高并发风险' : 'High risk'}
+              </span>
+            )}
+            <div className="flex items-center gap-1 bg-gray-800 rounded px-1.5 py-1 border border-gray-700" title={lang === 'zh' ? `澶辫触鑷姩閲嶈瘯娆℃暟` : `Auto-retry count on failure`}>
               <RefreshCw size={10} className="text-blue-400" />
               <input
                 type="number"
@@ -548,8 +551,8 @@ export const ControlPanel: React.FC = () => {
               title={
                 isZipping
                   ? showZipCancelConfirm
-                    ? (lang === 'zh' ? '再次点击确认中止' : 'Click again to stop')
-                    : (lang === 'zh' ? '点击中止打包' : 'Click to stop')
+                    ? (lang === 'zh' ? '鍐嶆鐐瑰嚮纭涓' : 'Click again to stop')
+                    : (lang === 'zh' ? '鐐瑰嚮涓鎵撳寘' : 'Click to stop')
                   : t('zipAll', lang)
               }
             >
