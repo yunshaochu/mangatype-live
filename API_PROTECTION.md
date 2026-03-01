@@ -44,10 +44,7 @@ Click the gear icon (⚙️) next to "Add Endpoint" button in Settings → API E
    - Which consecutive error number triggers auto-disable
    - Range: 1-10 errors
 
-4. **Show Test Tool** (default: OFF)
-   - Toggle visibility of the API Protection Test Tool in main panel
-
-5. **Reset to Defaults**
+4. **Reset to Defaults**
    - Restore all settings to default values
 
 ## Implementation

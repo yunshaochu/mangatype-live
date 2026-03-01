@@ -280,7 +280,6 @@ export interface AIConfig {
   apiProtectionStateMachineV2?: boolean; // Feature flag for batch reducer/event-queue protection pipeline
   apiProtectionDurations?: number[]; // Custom pause durations in seconds [30, 60, 120, 300, 600]
   apiProtectionDisableThreshold?: number; // Which error number triggers auto-disable (default 5)
-  showApiProtectionTest?: boolean; // Show test tool in settings (default false)
 
   // Export
   exportMethod?: 'canvas' | 'screenshot'; // Default: 'canvas'

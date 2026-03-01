@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { RefreshCw, AlertCircle, Globe, ChevronDown, Check, Bot, Cpu, Plus, Trash2, Pencil, Power, ChevronUp, Clock, AlertTriangle, TestTube, Settings, X, RotateCcw } from 'lucide-react';
+import { RefreshCw, AlertCircle, Globe, ChevronDown, Check, Bot, Cpu, Plus, Trash2, Pencil, Power, Clock, AlertTriangle, Settings, X, RotateCcw } from 'lucide-react';
 import { t } from '../../services/i18n';
 import { fetchAvailableModels } from '../../services/geminiService';
 import { AIProvider, APIEndpoint, mergeEndpointConfig } from '../../types';
 import { TabProps } from './types';
 import { isEndpointPaused, getRemainingPauseTime, formatPauseDuration, DEFAULT_API_PROTECTION_CONFIG } from '../../services/apiProtection';
-import { testEndpointProtection, formatTestResults } from '../../services/apiProtectionTest';
 
 const EndpointEditor: React.FC<{
   endpoint: APIEndpoint;
@@ -317,9 +316,6 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     updateEndpoints(endpoints.map((e: APIEndpoint) => e.group === oldName ? { ...e, group: trimmed } : e));
   };
 
-  // Test API Protection
-  const [showTestPanel, setShowTestPanel] = useState(false);
-  const [testResults, setTestResults] = useState<string>('');
   const [showProtectionSettings, setShowProtectionSettings] = useState(false);
 
   // ESC closes gear modal (capture phase so it doesn't bubble up to SettingsModal)
@@ -335,42 +331,6 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     return () => document.removeEventListener('keydown', handler, true);
   }, [showProtectionSettings]);
 
-  const runTest = (endpointId: string, scenario: 'single_error' | 'repeated_errors' | 'success_recovery' | 'auto_disable') => {
-    const endpoint = endpoints.find(ep => ep.id === endpointId);
-    if (!endpoint) return;
-
-    const { steps, summary } = testEndpointProtection(endpoint, scenario);
-    const resultsText = formatTestResults(steps, lang);
-
-    setTestResults(`${summary}\n${resultsText}`);
-
-    // Apply the final state to the endpoint
-    if (steps.length > 0) {
-      const finalStep = steps[steps.length - 1];
-      updateEndpoints(endpoints.map(e => e.id === endpointId ? finalStep.result : e));
-    }
-  };
-
-  const resetEndpoint = (endpointId: string) => {
-    updateEndpoints(endpoints.map(e =>
-      e.id === endpointId
-        ? {
-          ...e,
-          consecutiveErrors: 0,
-          consecutiveBatchFailures: 0,
-          pausedUntil: undefined,
-          lastError: undefined,
-          protectionMode: 'normal',
-          effectiveConcurrency: Math.max(1, e.concurrency || 1),
-          disableReasonCode: undefined,
-          disableReasonMessage: undefined,
-          disabledAt: undefined,
-        }
-        : e
-    ));
-    setTestResults('');
-  };
-
   const resetProtectionSettings = () => {
     setConfig(prev => ({
       ...prev,
@@ -378,7 +338,6 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
       apiProtectionStateMachineV2: false,
       apiProtectionDurations: DEFAULT_API_PROTECTION_CONFIG.durations,
       apiProtectionDisableThreshold: DEFAULT_API_PROTECTION_CONFIG.disableThreshold,
-      showApiProtectionTest: false,
     }));
   };
 
@@ -553,21 +512,11 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                   : 'On 429/503 errors, the endpoint is paused using the duration sequence above; it is auto-disabled after consecutive errors reach the threshold.'}
               </p>
 
-              {/* Show Test Tool + Reset row */}
+              {/* Reset row */}
               <div className="flex items-center justify-between">
-                <label className="flex items-center gap-2.5 cursor-pointer">
-                  <button
-                    onClick={() => setConfig(prev => ({ ...prev, showApiProtectionTest: !prev.showApiProtectionTest }))}
-                    className={`relative shrink-0 w-10 h-5 rounded-full transition-colors ${
-                      config.showApiProtectionTest ? 'bg-blue-600' : 'bg-gray-600'
-                    }`}
-                  >
-                    <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
-                      config.showApiProtectionTest ? 'translate-x-5' : ''
-                    }`} />
-                  </button>
-                  <span className="text-sm text-gray-300">{lang === 'zh' ? '显示测试工具' : 'Show Test Tool'}</span>
-                </label>
+                <span className="text-sm text-gray-400">
+                  {lang === 'zh' ? '保护设置' : 'Protection Settings'}
+                </span>
                 <button
                   onClick={resetProtectionSettings}
                   className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white transition-colors"
@@ -745,111 +694,6 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
             className="text-[10px] text-green-400 hover:text-green-300 px-2 py-1 rounded bg-green-900/20 hover:bg-green-900/30 transition-colors">
             {lang === 'zh' ? '全部开启' : 'Enable All'}
           </button>
-        </div>
-      )}
-
-      {/* Test Panel */}      {endpoints.length > 0 && config.showApiProtectionTest && (
-        <div className="border border-purple-800/30 rounded-xl overflow-hidden">
-          <button
-            onClick={() => setShowTestPanel(!showTestPanel)}
-            className="w-full flex items-center justify-between p-3 bg-purple-900/10 hover:bg-purple-900/20 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <TestTube size={16} className="text-purple-400" />
-              <span className="text-sm font-semibold text-purple-300">
-                {lang === 'zh' ? 'API 保护测试工具' : 'API Protection Test Tool'}
-              </span>
-            </div>
-            {showTestPanel ? <ChevronUp size={16} className="text-purple-400" /> : <ChevronDown size={16} className="text-purple-400" />}
-          </button>
-
-          {showTestPanel && (
-            <div className="p-4 bg-purple-900/5 space-y-4">
-              <p className="text-xs text-gray-400">
-                {lang === 'zh'
-                  ? '模拟各种 API 错误场景，测试保护机制，无需消耗真实 token。'
-                  : 'Simulate various API error scenarios to test protection without burning tokens.'}
-              </p>
-
-              {/* Endpoint Selector */}
-              <div className="space-y-2">
-                <label className="text-xs font-semibold text-gray-400 uppercase">
-                  {lang === 'zh' ? '选择端点' : 'Select Endpoint'}
-                </label>
-                <select
-                  id="test-endpoint"
-                  className="w-full bg-[#0f1115] border border-gray-700 rounded-lg p-2.5 text-sm text-white focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 outline-none"
-                >
-                  {endpoints.map(ep => (
-                    <option key={ep.id} value={ep.id}>
-                      {ep.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Test Scenarios */}
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => {
-                    const select = document.getElementById('test-endpoint') as HTMLSelectElement;
-                    runTest(select.value, 'single_error');
-                  }}
-                  className="p-2 bg-orange-900/20 hover:bg-orange-900/30 border border-orange-800/30 rounded-lg text-xs text-orange-300 transition-colors"
-                >
-                  {lang === 'zh' ? '单次错误 (30s)' : 'Single Error (30s)'}
-                </button>
-
-                <button
-                  onClick={() => {
-                    const select = document.getElementById('test-endpoint') as HTMLSelectElement;
-                    runTest(select.value, 'repeated_errors');
-                  }}
-                  className="p-2 bg-orange-900/20 hover:bg-orange-900/30 border border-orange-800/30 rounded-lg text-xs text-orange-300 transition-colors"
-                >
-                  {lang === 'zh' ? '连续错误 (3次)' : 'Repeated Errors (3x)'}
-                </button>
-
-                <button
-                  onClick={() => {
-                    const select = document.getElementById('test-endpoint') as HTMLSelectElement;
-                    runTest(select.value, 'success_recovery');
-                  }}
-                  className="p-2 bg-green-900/20 hover:bg-green-900/30 border border-green-800/30 rounded-lg text-xs text-green-300 transition-colors"
-                >
-                  {lang === 'zh' ? '恢复测试' : 'Success Recovery'}
-                </button>
-
-                <button
-                  onClick={() => {
-                    const select = document.getElementById('test-endpoint') as HTMLSelectElement;
-                    runTest(select.value, 'auto_disable');
-                  }}
-                  className="p-2 bg-red-900/20 hover:bg-red-900/30 border border-red-800/30 rounded-lg text-xs text-red-300 transition-colors"
-                >
-                  {lang === 'zh' ? '自动停用 (5次)' : 'Auto-Disable (5x)'}
-                </button>
-              </div>
-
-              {/* Reset Button */}
-              <button
-                onClick={() => {
-                  const select = document.getElementById('test-endpoint') as HTMLSelectElement;
-                  resetEndpoint(select.value);
-                }}
-                className="w-full p-2 bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-xs text-gray-300 transition-colors"
-              >
-                {lang === 'zh' ? '重置端点状态' : 'Reset Endpoint State'}
-              </button>
-
-              {/* Test Results */}
-              {testResults && (
-                <div className="p-3 bg-[#0f1115] border border-gray-700 rounded-lg">
-                  <pre className="text-xs text-gray-300 whitespace-pre-wrap font-mono">{testResults}</pre>
-                </div>
-              )}
-            </div>
-          )}
         </div>
       )}
 
