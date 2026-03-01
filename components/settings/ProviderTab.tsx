@@ -375,6 +375,7 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     setConfig(prev => ({
       ...prev,
       apiProtectionEnabled: DEFAULT_API_PROTECTION_CONFIG.enabled,
+      apiProtectionStateMachineV2: false,
       apiProtectionDurations: DEFAULT_API_PROTECTION_CONFIG.durations,
       apiProtectionDisableThreshold: DEFAULT_API_PROTECTION_CONFIG.disableThreshold,
       showApiProtectionTest: false,
@@ -401,6 +402,9 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                       ? `U${userWorkers} / E${effectiveWorkers} 并发`
                       : `U${userWorkers} / E${effectiveWorkers} workers`;
                   })()}
+                </span>
+                <span className={`text-xs px-2 py-1 rounded-md font-semibold ${(config.apiProtectionStateMachineV2 ?? false) ? 'bg-emerald-500/20 text-emerald-300' : 'bg-gray-700/40 text-gray-300'}`}>
+                  {(config.apiProtectionStateMachineV2 ?? false) ? 'V2 ON' : 'V1 Legacy'}
                 </span>
               </div>
             )}
@@ -486,6 +490,30 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                   />
                   <span className="text-xs text-gray-400">{lang === 'zh' ? '次' : 'errors'}</span>
                 </div>
+              </div>
+
+              {/* State machine rollout switch */}
+              <div className="flex items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-sm font-semibold text-white">
+                    {lang === 'zh' ? 'State Machine V2 灰度' : 'State Machine V2 Canary'}
+                  </p>
+                  <p className="text-[11px] text-gray-500">
+                    {lang === 'zh'
+                      ? '开启后使用批次状态机与事件队列；关闭即回滚到旧请求级逻辑。'
+                      : 'On: batch reducer + event queue. Off: immediate rollback to legacy request-level logic.'}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setConfig(prev => ({ ...prev, apiProtectionStateMachineV2: !(prev.apiProtectionStateMachineV2 ?? false) }))}
+                  className={`relative shrink-0 w-10 h-5 rounded-full transition-colors ${
+                    (config.apiProtectionStateMachineV2 ?? false) ? 'bg-emerald-600' : 'bg-gray-600'
+                  }`}
+                >
+                  <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-transform ${
+                    (config.apiProtectionStateMachineV2 ?? false) ? 'translate-x-5' : ''
+                  }`} />
+                </button>
               </div>
 
               {/* Pause Durations — arrow chain */}

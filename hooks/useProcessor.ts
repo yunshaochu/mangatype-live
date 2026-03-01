@@ -402,7 +402,9 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         try {
             const enabledEndpoints = (aiConfigRef.current.endpoints || []).filter(ep => ep.enabled);
 
-            if (task === 'translate' && enabledEndpoints.length > 0) {
+            const useStateMachineV2 = aiConfigRef.current.apiProtectionStateMachineV2 ?? false;
+
+            if (task === 'translate' && enabledEndpoints.length > 0 && useStateMachineV2) {
                 const availableNow = enabledEndpoints.filter(ep => !isEndpointPaused(ep));
                 if (availableNow.length === 0) {
                     const pausedInfo = enabledEndpoints.map(ep => {
@@ -485,6 +487,57 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
 
                     await Promise.all(assignments.map(item => runEndpointBatch(item.endpoint, item.batchItems)));
                 }
+            } else if (task === 'translate' && enabledEndpoints.length > 0) {
+                const availableNow = enabledEndpoints.filter(ep => !isEndpointPaused(ep));
+                if (availableNow.length === 0) {
+                    const pausedInfo = enabledEndpoints.map(ep => {
+                        const remaining = getRemainingPauseTime(ep);
+                        return `${ep.name}: ${formatPauseDuration(remaining)}`;
+                    }).join(', ');
+                    alert(`All endpoints are paused. Wait time: ${pausedInfo}`);
+                    return;
+                }
+
+                const inFlight = new Map<string, number>();
+                const pickEndpoint = (): APIEndpoint | null => {
+                    const latest = (aiConfigRef.current.endpoints || [])
+                        .filter(ep => ep.enabled && !isEndpointPaused(ep))
+                        .filter(ep => (inFlight.get(ep.id) || 0) < Math.max(1, ep.concurrency || 1));
+                    if (latest.length === 0) return null;
+                    return latest.reduce((best, ep) =>
+                        (inFlight.get(ep.id) || 0) < (inFlight.get(best.id) || 0) ? ep : best
+                    );
+                };
+
+                const totalWorkers = Math.max(
+                    1,
+                    enabledEndpoints.reduce((sum, ep) => sum + Math.max(1, ep.concurrency || 1), 0)
+                );
+
+                let nextIndex = 0;
+                const worker = async () => {
+                    while (!signal.aborted) {
+                        const endpoint = pickEndpoint();
+                        if (!endpoint) {
+                            await new Promise(r => setTimeout(r, 200));
+                            continue;
+                        }
+
+                        const idx = nextIndex++;
+                        if (idx >= queue.length) return;
+
+                        inFlight.set(endpoint.id, (inFlight.get(endpoint.id) || 0) + 1);
+                        const mergedConfig = mergeEndpointConfig(aiConfigRef.current, endpoint);
+                        try {
+                            await runDetectionForImage(queue[idx], signal, mergedConfig, endpoint.id, 'request');
+                        } finally {
+                            inFlight.set(endpoint.id, Math.max(0, (inFlight.get(endpoint.id) || 1) - 1));
+                        }
+                    }
+                };
+
+                const workers = Array.from({ length: totalWorkers }, () => worker());
+                await Promise.all(workers);
             } else {
                 const batchSize = Math.max(1, concurrency);
                 for (let i = 0; i < queue.length; i += batchSize) {
