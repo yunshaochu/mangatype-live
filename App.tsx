@@ -465,7 +465,35 @@ const App: React.FC = () => {
                                           ))}
                                      </div>
 
-                                     <button 
+                                     {/* Precise fill quick-toggles (only when usePreciseFill is on) */}
+                                     {aiConfig.usePreciseFill && (
+                                         <div className="space-y-1.5 pt-1 border-t border-gray-700/50">
+                                             {/* useCharRects */}
+                                             <div className="flex items-center justify-between">
+                                                 <span className="text-[10px] text-gray-400">{t('useCharRects', lang)}</span>
+                                                 <label className="relative inline-flex items-center cursor-pointer">
+                                                     <input type="checkbox" className="sr-only peer"
+                                                         checked={aiConfig.useCharRects !== false}
+                                                         onChange={(e) => setAiConfig({...aiConfig, useCharRects: e.target.checked})}
+                                                     />
+                                                     <div className="w-8 h-4 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-orange-500"></div>
+                                                 </label>
+                                             </div>
+                                             {/* showContourPreview */}
+                                             <div className="flex items-center justify-between">
+                                                 <span className="text-[10px] text-gray-400">{t('showContourPreview', lang)}</span>
+                                                 <label className="relative inline-flex items-center cursor-pointer">
+                                                     <input type="checkbox" className="sr-only peer"
+                                                         checked={aiConfig.showContourPreview || false}
+                                                         onChange={(e) => setAiConfig({...aiConfig, showContourPreview: e.target.checked})}
+                                                     />
+                                                     <div className="w-8 h-4 bg-gray-700 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-orange-500"></div>
+                                                 </label>
+                                             </div>
+                                         </div>
+                                     )}
+
+                                     <button
                                          onClick={() => handleBoxFill(currentId, selectedMaskId, brushColor)}
                                          className="w-full py-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded-lg shadow-sm flex items-center justify-center gap-2 transition-all"
                                      >
