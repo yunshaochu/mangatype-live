@@ -494,25 +494,27 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           {/* We ONLY render these if we are NOT painting. If painting, they are drawn on canvas. */}
           {showFilledMasks && maskRegions.map(region => (
               (region.isCleaned && region.method === 'fill') && (
-                  region.fillMode === 'contour' && region.maskContourBase64 ? (
-                      <div
-                          key={`filled-${region.id}`}
-                          className="absolute z-[1] pointer-events-none"
-                          style={{
-                              top: `${region.y}%`,
-                              left: `${region.x}%`,
-                              width: `${region.maskContourW ?? region.width}%`,
-                              height: `${region.maskContourH ?? region.height}%`,
-                              transform: `translate(-50%, -50%)`,
-                              WebkitMaskImage: `url(data:image/png;base64,${region.maskContourBase64})`,
-                              maskImage: `url(data:image/png;base64,${region.maskContourBase64})`,
-                              WebkitMaskSize: '100% 100%',
-                              maskSize: '100% 100%',
-                              WebkitMaskMode: 'luminance',
-                              maskMode: 'luminance',
-                              backgroundColor: region.fillColor || '#ffffff',
-                          } as React.CSSProperties}
-                      />
+                  region.fillMode === 'contour' && region.maskContourRects && region.maskContourW !== undefined && region.maskContourH !== undefined ? (
+                      // Precise fill: render individual per-character bounding rects
+                      <React.Fragment key={`filled-${region.id}`}>
+                          {region.maskContourRects.map((r, i) => {
+                              const maskLeft = region.x - region.maskContourW! / 2;
+                              const maskTop  = region.y - region.maskContourH! / 2;
+                              return (
+                                  <div
+                                      key={i}
+                                      className="absolute z-[1] pointer-events-none"
+                                      style={{
+                                          left:   `${maskLeft + r.x * region.maskContourW!}%`,
+                                          top:    `${maskTop  + r.y * region.maskContourH!}%`,
+                                          width:  `${r.w * region.maskContourW!}%`,
+                                          height: `${r.h * region.maskContourH!}%`,
+                                          backgroundColor: region.fillColor || '#ffffff',
+                                      }}
+                                  />
+                              );
+                          })}
+                      </React.Fragment>
                   ) : (
                       <div
                           key={`filled-${region.id}`}

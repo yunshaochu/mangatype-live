@@ -48,6 +48,7 @@ export interface MaskRegion {
   maskContourBase64?: string; // Per-block refined mask from detection API (mask_refined_region_base64)
   maskContourW?: number;      // Original scan width % (before expansion/user resize)
   maskContourH?: number;      // Original scan height % (before expansion/user resize)
+  maskContourRects?: Array<{x: number; y: number; w: number; h: number}>; // BFS bounding rects, proportions (0–1) of mask image
   fillMode?: 'rect' | 'contour'; // Baked in at fill time: rect = whole box, contour = text pixels only
 }
 

@@ -327,8 +327,114 @@ export const detectBubbleColor = async (
 };
 
 /**
- * Generates an image with red boxes drawn on it to visually indicate mask regions.
+ * Finds bounding rectangles for each connected text component in a mask image.
+ * Used for precise fill: fills per-character bounding rects instead of raw mask pixels,
+ * ensuring complete coverage even when the mask has small gaps inside strokes.
+ *
+ * @param maskBase64 - Base64-encoded grayscale mask image (white = text)
+ * @param dilateRadius - Pixels to dilate before BFS, bridges gaps within one character (default 2)
+ * @param padding - Pixels to expand each bounding rect on all sides (default 2)
+ * @returns Array of rects as proportions (0–1) of the mask image dimensions
  */
+export const computeContourRects = async (
+    maskBase64: string,
+    dilateRadius = 2,
+    padding = 2
+): Promise<Array<{x: number; y: number; w: number; h: number}>> => {
+    try {
+        const img = await loadImage(`data:image/png;base64,${maskBase64}`);
+        const W = img.width, H = img.height;
+        if (W === 0 || H === 0) return [];
+
+        const canvas = document.createElement('canvas');
+        canvas.width = W; canvas.height = H;
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+        ctx.drawImage(img, 0, 0);
+        const raw = ctx.getImageData(0, 0, W, H).data;
+
+        // Binary mask: luminance > 128 → text pixel
+        const mask = new Uint8Array(W * H);
+        for (let i = 0; i < W * H; i++) {
+            mask[i] = (raw[i*4] + raw[i*4+1] + raw[i*4+2]) / 3 > 128 ? 1 : 0;
+        }
+
+        // Box dilation — bridges minor stroke gaps within the same character
+        const dilated = new Uint8Array(W * H);
+        for (let y = 0; y < H; y++) {
+            for (let x = 0; x < W; x++) {
+                if (!mask[y * W + x]) continue;
+                const y0 = Math.max(0, y - dilateRadius);
+                const y1 = Math.min(H - 1, y + dilateRadius);
+                const x0 = Math.max(0, x - dilateRadius);
+                const x1 = Math.min(W - 1, x + dilateRadius);
+                for (let dy = y0; dy <= y1; dy++)
+                    for (let dx = x0; dx <= x1; dx++)
+                        dilated[dy * W + dx] = 1;
+            }
+        }
+
+        // BFS connected components (8-connectivity)
+        const visited = new Uint8Array(W * H);
+        const rects: Array<{x: number; y: number; w: number; h: number}> = [];
+        const DIRS = [-W-1,-W,-W+1,-1,1,W-1,W,W+1]; // 8-neighbours as flat index offsets
+        const edgeCheck = [-1, -1, -1, -1, 1, 1, 1, 1]; // not used, kept for clarity
+
+        for (let si = 0; si < W * H; si++) {
+            if (!dilated[si] || visited[si]) continue;
+
+            const queue = new Int32Array(W * H);
+            let head = 0, tail = 0;
+            queue[tail++] = si;
+            visited[si] = 1;
+
+            let minX = si % W, maxX = minX;
+            let minY = (si / W) | 0, maxY = minY;
+
+            while (head < tail) {
+                const ci = queue[head++];
+                const cx = ci % W, cy = (ci / W) | 0;
+
+                // 8-connectivity manual (avoids edge wrapping from flat offsets)
+                for (let dy = -1; dy <= 1; dy++) {
+                    const ny = cy + dy;
+                    if (ny < 0 || ny >= H) continue;
+                    for (let dx = -1; dx <= 1; dx++) {
+                        if (dx === 0 && dy === 0) continue;
+                        const nx = cx + dx;
+                        if (nx < 0 || nx >= W) continue;
+                        const ni = ny * W + nx;
+                        if (!dilated[ni] || visited[ni]) continue;
+                        visited[ni] = 1;
+                        queue[tail++] = ni;
+                        if (nx < minX) minX = nx;
+                        if (nx > maxX) maxX = nx;
+                        if (ny < minY) minY = ny;
+                        if (ny > maxY) maxY = ny;
+                    }
+                }
+            }
+
+            // Expand bounding rect by padding, clamp to image
+            const rx  = Math.max(0,     minX - padding);
+            const ry  = Math.max(0,     minY - padding);
+            const rx2 = Math.min(W - 1, maxX + padding);
+            const ry2 = Math.min(H - 1, maxY + padding);
+            const rw  = rx2 - rx + 1;
+            const rh  = ry2 - ry + 1;
+
+            // Filter tiny noise components
+            if (rw >= 4 && rh >= 4) {
+                rects.push({ x: rx / W, y: ry / H, w: rw / W, h: rh / H });
+            }
+        }
+
+        return rects;
+    } catch {
+        return [];
+    }
+};
+
+
 export const generateAnnotatedImage = async (image: ImageState): Promise<string> => {
     const img = await loadImage(image.originalUrl || image.url);
     const canvas = document.createElement('canvas');
@@ -583,18 +689,21 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 const w = (m.width / 100) * width;
                 const h = (m.height / 100) * height;
 
-                if (m.fillMode === 'contour' && m.maskContourBase64) {
-                    // Precise fill: draw contour mask to offscreen canvas, apply fill color via source-in
-                    const offscreen = document.createElement('canvas');
-                    offscreen.width = Math.ceil(w);
-                    offscreen.height = Math.ceil(h);
-                    const offCtx = offscreen.getContext('2d')!;
-                    const contourImg = await loadImage(`data:image/png;base64,${m.maskContourBase64}`);
-                    offCtx.drawImage(contourImg, 0, 0, offscreen.width, offscreen.height);
-                    offCtx.globalCompositeOperation = 'source-in';
-                    offCtx.fillStyle = m.fillColor || '#ffffff';
-                    offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
-                    ctx.drawImage(offscreen, x - w / 2, y - h / 2);
+                if (m.fillMode === 'contour' && m.maskContourRects && m.maskContourW !== undefined && m.maskContourH !== undefined) {
+                    // Precise fill: draw per-character bounding rects
+                    ctx.fillStyle = m.fillColor || '#ffffff';
+                    const maskW_px = (m.maskContourW / 100) * width;
+                    const maskH_px = (m.maskContourH / 100) * height;
+                    const maskOriginX = x - maskW_px / 2;
+                    const maskOriginY = y - maskH_px / 2;
+                    for (const r of m.maskContourRects) {
+                        ctx.fillRect(
+                            maskOriginX + r.x * maskW_px,
+                            maskOriginY + r.y * maskH_px,
+                            r.w * maskW_px,
+                            r.h * maskH_px
+                        );
+                    }
                 } else {
                     ctx.fillStyle = m.fillColor || '#ffffff';
                     ctx.fillRect(x - w/2, y - h/2, w, h);
@@ -965,17 +1074,20 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
                     const y = (m.y / 100) * height;
                     const w = (m.width / 100) * width;
                     const h = (m.height / 100) * height;
-                    if (m.fillMode === 'contour' && m.maskContourBase64) {
-                        const offscreen = document.createElement('canvas');
-                        offscreen.width = Math.ceil(w);
-                        offscreen.height = Math.ceil(h);
-                        const offCtx = offscreen.getContext('2d')!;
-                        const contourImg = await loadImage(`data:image/png;base64,${m.maskContourBase64}`);
-                        offCtx.drawImage(contourImg, 0, 0, offscreen.width, offscreen.height);
-                        offCtx.globalCompositeOperation = 'source-in';
-                        offCtx.fillStyle = m.fillColor || '#ffffff';
-                        offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
-                        ctx.drawImage(offscreen, x - w / 2, y - h / 2);
+                    if (m.fillMode === 'contour' && m.maskContourRects && m.maskContourW !== undefined && m.maskContourH !== undefined) {
+                        ctx.fillStyle = m.fillColor || '#ffffff';
+                        const maskW_px = (m.maskContourW / 100) * width;
+                        const maskH_px = (m.maskContourH / 100) * height;
+                        const maskOriginX = x - maskW_px / 2;
+                        const maskOriginY = y - maskH_px / 2;
+                        for (const r of m.maskContourRects) {
+                            ctx.fillRect(
+                                maskOriginX + r.x * maskW_px,
+                                maskOriginY + r.y * maskH_px,
+                                r.w * maskW_px,
+                                r.h * maskH_px
+                            );
+                        }
                     } else {
                         ctx.fillStyle = m.fillColor || '#ffffff';
                         ctx.fillRect(x - w/2, y - h/2, w, h);
@@ -1221,20 +1333,24 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
         if (imageState.maskRegions) {
             imageState.maskRegions.forEach(m => {
                 if (m.isCleaned && m.method === 'fill') {
-                    const maskDiv = document.createElement('div');
-                    if (m.fillMode === 'contour' && m.maskContourBase64) {
-                        maskDiv.style.cssText = `
-                            position: absolute; z-index: 1;
-                            top: ${m.y}%; left: ${m.x}%;
-                            width: ${m.width}%; height: ${m.height}%;
-                            transform: translate(-50%, -50%);
-                            -webkit-mask-image: url(data:image/png;base64,${m.maskContourBase64});
-                            mask-image: url(data:image/png;base64,${m.maskContourBase64});
-                            -webkit-mask-size: 100% 100%;
-                            mask-size: 100% 100%;
-                            background-color: ${m.fillColor || '#ffffff'};
-                        `;
+                    if (m.fillMode === 'contour' && m.maskContourRects && m.maskContourW !== undefined && m.maskContourH !== undefined) {
+                        // Per-character bounding rects — matches canvas export exactly
+                        const maskLeft = m.x - m.maskContourW / 2;
+                        const maskTop  = m.y - m.maskContourH  / 2;
+                        for (const r of m.maskContourRects) {
+                            const rectDiv = document.createElement('div');
+                            rectDiv.style.cssText = `
+                                position: absolute; z-index: 1;
+                                left: ${maskLeft + r.x * m.maskContourW}%;
+                                top:  ${maskTop  + r.y * m.maskContourH}%;
+                                width: ${r.w * m.maskContourW}%;
+                                height: ${r.h * m.maskContourH}%;
+                                background-color: ${m.fillColor || '#ffffff'};
+                            `;
+                            overlay.appendChild(rectDiv);
+                        }
                     } else {
+                        const maskDiv = document.createElement('div');
                         maskDiv.style.cssText = `
                             position: absolute; z-index: 1;
                             top: ${m.y}%; left: ${m.x}%;
@@ -1242,8 +1358,8 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
                             transform: translate(-50%, -50%);
                             background-color: ${m.fillColor || '#ffffff'};
                         `;
+                        overlay.appendChild(maskDiv);
                     }
-                    overlay.appendChild(maskDiv);
                 }
             });
         }

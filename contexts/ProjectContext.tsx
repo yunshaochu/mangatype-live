@@ -4,7 +4,7 @@ import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
 import { isBubbleInsideMask } from '../utils/editorUtils';
-import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage, initScreenshotContainer, destroyScreenshotContainer } from '../services/exportService';
+import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage, initScreenshotContainer, destroyScreenshotContainer, computeContourRects } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 
 const STORAGE_KEY = 'mangatype_live_settings_v1';
@@ -429,15 +429,32 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Handle Box Fill (OPTIMIZED: Metadata Update Only)
   const handleBoxFill = useCallback(async (imageId: string, maskId: string, color: string) => {
+    // Find mask before setImages so we can do async work first
+    const targetImg = historyRef.current.present.find(i => i.id === imageId);
+    const targetMask = targetImg?.maskRegions?.find(m => m.id === maskId);
+
+    // Compute per-character bounding rects if precise fill is enabled
+    let contourRects: MaskRegion['maskContourRects'];
+    if (aiConfig.usePreciseFill && targetMask?.maskContourBase64) {
+        contourRects = await computeContourRects(targetMask.maskContourBase64);
+    }
+
     // Just update the metadata. Rendering happens in Workspace via CSS overlay.
     setImages(prev => prev.map(img => {
         if (img.id !== imageId) return img;
-        
+
         const mask = (img.maskRegions || []).find(m => m.id === maskId);
         if (!mask) return img;
 
         // Update masks status
-        const newMasks = (img.maskRegions || []).map(m => m.id === maskId ? { ...m, isCleaned: true, method: 'fill' as const, fillColor: color, fillMode: (aiConfig.usePreciseFill && m.maskContourBase64) ? 'contour' as const : undefined } : m);
+        const newMasks = (img.maskRegions || []).map(m => m.id === maskId ? {
+            ...m,
+            isCleaned: true,
+            method: 'fill' as const,
+            fillColor: color,
+            fillMode: contourRects ? 'contour' as const : undefined,
+            maskContourRects: contourRects,
+        } : m);
 
         // Update overlapping bubbles to transparent
         const newBubbles = img.bubbles.map(b => {
@@ -460,7 +477,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         };
     }));
     setActiveLayer('clean');
-  }, [setImages, setActiveLayer, aiConfig]);
+  }, [setImages, setActiveLayer, aiConfig, historyRef]);
 
   // Handle Batch Box Fill (OPTIMIZED: Metadata Update Only)
   const handleBatchBoxFill = useCallback(async (scope: 'current' | 'all', color: string) => {
@@ -472,18 +489,47 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     if (targetIds.size === 0) return;
 
+    // Pre-compute contour rects for all eligible masks (parallel)
+    const contourRectsMap = new Map<string, MaskRegion['maskContourRects']>();
+    if (aiConfig.usePreciseFill) {
+        const jobs: Promise<void>[] = [];
+        for (const img of historyRef.current.present) {
+            if (!targetIds.has(img.id)) continue;
+            for (const m of (img.maskRegions || [])) {
+                if (m.method !== 'inpaint' && !m.isCleaned && m.maskContourBase64) {
+                    jobs.push(
+                        computeContourRects(m.maskContourBase64).then(rects => {
+                            contourRectsMap.set(m.id, rects);
+                        })
+                    );
+                }
+            }
+        }
+        await Promise.all(jobs);
+    }
+
     setImages(prev => prev.map(img => {
         if (!targetIds.has(img.id)) return img;
 
         // Filter masks: Must NOT be 'inpaint' method AND must NOT be already cleaned
-        // This prevents overwriting already filled or inpainted masks
         const masksToFill = (img.maskRegions || []).filter(m => m.method !== 'inpaint' && !m.isCleaned);
-        
+
         if (masksToFill.length === 0) return img;
 
         // Update masks status
         const filledIds = new Set(masksToFill.map(m => m.id));
-        const newMasks = (img.maskRegions || []).map(m => filledIds.has(m.id) ? { ...m, isCleaned: true, method: 'fill' as const, fillColor: color, fillMode: (aiConfig.usePreciseFill && m.maskContourBase64) ? 'contour' as const : undefined } : m);
+        const newMasks = (img.maskRegions || []).map(m => {
+            if (!filledIds.has(m.id)) return m;
+            const contourRects = contourRectsMap.get(m.id);
+            return {
+                ...m,
+                isCleaned: true,
+                method: 'fill' as const,
+                fillColor: color,
+                fillMode: contourRects ? 'contour' as const : undefined,
+                maskContourRects: contourRects,
+            };
+        });
 
         // Update bubbles overlapping with FILLED masks
         const newBubbles = img.bubbles.map(b => {
