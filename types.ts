@@ -50,7 +50,7 @@ export interface MaskRegion {
   maskContourH?: number;         // Original scan height % (before expansion/user resize)
   maskContourRects?: Array<{x: number; y: number; w: number; h: number}>; // BFS bounding rects, proportions (0–1) of mask image
   maskContourDilatedBase64?: string; // Dilated mask image for pure-contour fill mode (粗一圈)
-  fillMode?: 'rect' | 'contour'; // Baked in at fill time: rect = whole box, contour = text pixels only
+  fillMode?: 'rect' | 'contour' | 'baked'; // Baked in at fill time: rect = whole box, contour = text pixels only, baked = pixels already written to image
 }
 
 export interface DetectedBubble {

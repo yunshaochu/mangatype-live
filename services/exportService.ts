@@ -434,6 +434,26 @@ export const computeContourRects = async (
     }
 };
 
+/** Convert a grayscale-RGB mask image to an RGBA image where luminance → alpha channel.
+ *  This lets Canvas `source-in` work correctly with masks that have no alpha (alpha=255 everywhere).
+ *  Returns an offscreen canvas whose pixels have R=G=B=255, A=luminance.
+ */
+const luminanceMaskToAlpha = (maskImg: HTMLImageElement, W: number, H: number): HTMLCanvasElement => {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const ctx = c.getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(maskImg, 0, 0, W, H);
+    const idata = ctx.getImageData(0, 0, W, H);
+    const d = idata.data;
+    for (let i = 0; i < d.length; i += 4) {
+        const lum = Math.round((d[i] + d[i+1] + d[i+2]) / 3);
+        d[i] = 255; d[i+1] = 255; d[i+2] = 255;
+        d[i+3] = lum; // white pixel where text is, transparent where not
+    }
+    ctx.putImageData(idata, 0, 0);
+    return c;
+};
+
 /** Shared helper: box-dilation on a binary Uint8Array mask (in-place → new array). */
 const _dilateBinary = (mask: Uint8Array, W: number, H: number, radius: number): Uint8Array => {
     const out = new Uint8Array(W * H);
@@ -514,12 +534,70 @@ export const applyContourPreFill = async (
         const off = document.createElement('canvas');
         off.width = Math.ceil(mW); off.height = Math.ceil(mH);
         const offCtx = off.getContext('2d')!;
-        offCtx.drawImage(maskImg, 0, 0, off.width, off.height);
+        const alphaCanvas = luminanceMaskToAlpha(maskImg, off.width, off.height);
+        offCtx.drawImage(alphaCanvas, 0, 0);
         offCtx.globalCompositeOperation = 'source-in';
         offCtx.fillStyle = '#ffffff';
         offCtx.fillRect(0, 0, off.width, off.height);
 
         ctx.drawImage(off, mX, mY);
+    }
+
+    return canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+};
+
+/**
+ * Bakes precise contour fills directly into the image pixels for a set of masks.
+ * Returns the new full-image base64 PNG (no data: prefix).
+ * Used when usePreciseFill=true so the result is a real pixel-modified image,
+ * not a CSS overlay — making it compatible with freehand brush and export.
+ */
+export const bakeContourFillsIntoImage = async (
+    srcBase64: string,
+    masks: MaskRegion[],
+    W: number,
+    H: number,
+    color: string,
+    useCharRects: boolean,
+): Promise<string> => {
+    const srcUrl = srcBase64.startsWith('data:') ? srcBase64 : `data:image/png;base64,${srcBase64}`;
+    const srcImg = await loadImage(srcUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(srcImg, 0, 0, W, H);
+
+    for (const m of masks) {
+        if (!m.maskContourBase64 || m.maskContourW === undefined || m.maskContourH === undefined) continue;
+        const maskW_px = (m.maskContourW / 100) * W;
+        const maskH_px = (m.maskContourH / 100) * H;
+        const maskOriginX = (m.x / 100) * W - maskW_px / 2;
+        const maskOriginY = (m.y / 100) * H - maskH_px / 2;
+
+        if (useCharRects && m.maskContourRects && m.maskContourRects.length > 0) {
+            ctx.fillStyle = color;
+            for (const r of m.maskContourRects) {
+                ctx.fillRect(
+                    maskOriginX + r.x * maskW_px,
+                    maskOriginY + r.y * maskH_px,
+                    r.w * maskW_px,
+                    r.h * maskH_px
+                );
+            }
+        } else {
+            const contourSrc = m.maskContourDilatedBase64 || m.maskContourBase64;
+            const offscreen = document.createElement('canvas');
+            offscreen.width = Math.ceil(maskW_px);
+            offscreen.height = Math.ceil(maskH_px);
+            const offCtx = offscreen.getContext('2d')!;
+            const contourImg = await loadImage(`data:image/png;base64,${contourSrc}`);
+            const alphaCanvas = luminanceMaskToAlpha(contourImg, offscreen.width, offscreen.height);
+            offCtx.drawImage(alphaCanvas, 0, 0);
+            offCtx.globalCompositeOperation = 'source-in';
+            offCtx.fillStyle = color;
+            offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
+            ctx.drawImage(offscreen, maskOriginX, maskOriginY);
+        }
     }
 
     return canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
@@ -806,7 +884,8 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                             offscreen.height = Math.ceil(maskH_px);
                             const offCtx = offscreen.getContext('2d')!;
                             const contourImg = await loadImage(`data:image/png;base64,${contourSrc}`);
-                            offCtx.drawImage(contourImg, 0, 0, offscreen.width, offscreen.height);
+                            const alphaCanvas = luminanceMaskToAlpha(contourImg, offscreen.width, offscreen.height);
+                            offCtx.drawImage(alphaCanvas, 0, 0);
                             offCtx.globalCompositeOperation = 'source-in';
                             offCtx.fillStyle = m.fillColor || '#ffffff';
                             offCtx.fillRect(0, 0, offscreen.width, offscreen.height);

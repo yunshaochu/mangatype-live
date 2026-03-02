@@ -4,7 +4,7 @@ import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
 import { isBubbleInsideMask } from '../utils/editorUtils';
-import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage, initScreenshotContainer, destroyScreenshotContainer, computeContourRects, dilateMaskImage, applyContourPreFill } from '../services/exportService';
+import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage, initScreenshotContainer, destroyScreenshotContainer, computeContourRects, dilateMaskImage, applyContourPreFill, bakeContourFillsIntoImage } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 
 const STORAGE_KEY = 'mangatype_live_settings_v1';
@@ -437,65 +437,73 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, [setImages, historyRef, setActiveLayer]);
 
-  // Handle Box Fill (OPTIMIZED: Metadata Update Only)
+  // Handle Box Fill
   const handleBoxFill = useCallback(async (imageId: string, maskId: string, color: string) => {
-    // Find mask before setImages so we can do async work first
     const targetImg = historyRef.current.present.find(i => i.id === imageId);
     const targetMask = targetImg?.maskRegions?.find(m => m.id === maskId);
 
-    // Compute per-character bounding rects if precise fill is enabled
-    let contourRects: MaskRegion['maskContourRects'];
-    let dilatedBase64: string | undefined;
     if (aiConfig.usePreciseFill && targetMask?.maskContourBase64) {
+        // --- PRECISE MODE: compute contour data, bake pixels into image ---
+        let contourRects: MaskRegion['maskContourRects'];
+        let dilatedBase64: string | undefined;
         if (aiConfig.useCharRects !== false) {
             contourRects = await computeContourRects(targetMask.maskContourBase64);
         } else {
             dilatedBase64 = await dilateMaskImage(targetMask.maskContourBase64);
         }
+
+        // Bake into pixels
+        const srcBase64 = targetImg!.inpaintedBase64 || targetImg!.originalBase64 || targetImg!.base64;
+        const maskWithData: MaskRegion = { ...targetMask, maskContourRects: contourRects, maskContourDilatedBase64: dilatedBase64 };
+        const newBase64 = await bakeContourFillsIntoImage(
+            srcBase64, [maskWithData], targetImg!.width, targetImg!.height,
+            color, aiConfig.useCharRects !== false
+        );
+        const newUrl = `data:image/png;base64,${newBase64}`;
+
+        setImages(prev => prev.map(img => {
+            if (img.id !== imageId) return img;
+            const mask = (img.maskRegions || []).find(m => m.id === maskId);
+            if (!mask) return img;
+            const newMasks = (img.maskRegions || []).map(m => m.id === maskId ? {
+                ...m, isCleaned: true, method: 'fill' as const, fillColor: color,
+                fillMode: 'baked' as const, // pixels already written to inpaintedUrl
+            } : m);
+            const newBubbles = img.bubbles.map(b => {
+                const overlaps = Math.abs(b.x - mask.x) <= mask.width / 2 && Math.abs(b.y - mask.y) <= mask.height / 2;
+                return overlaps ? { ...b, backgroundColor: 'transparent', autoDetectBackground: false } : b;
+            });
+            return {
+                ...img,
+                base64: newBase64,
+                url: newUrl,
+                inpaintedUrl: newUrl,
+                inpaintedBase64: newBase64,
+                inpaintingStatus: 'done' as const,
+                maskRegions: newMasks,
+                bubbles: newBubbles,
+            };
+        }));
+    } else {
+        // --- RECT MODE: metadata-only, fast CSS overlay ---
+        setImages(prev => prev.map(img => {
+            if (img.id !== imageId) return img;
+            const mask = (img.maskRegions || []).find(m => m.id === maskId);
+            if (!mask) return img;
+            const newMasks = (img.maskRegions || []).map(m => m.id === maskId ? {
+                ...m, isCleaned: true, method: 'fill' as const, fillColor: color,
+            } : m);
+            const newBubbles = img.bubbles.map(b => {
+                const overlaps = Math.abs(b.x - mask.x) <= mask.width / 2 && Math.abs(b.y - mask.y) <= mask.height / 2;
+                return overlaps ? { ...b, backgroundColor: 'transparent', autoDetectBackground: false } : b;
+            });
+            return { ...img, inpaintingStatus: 'done' as const, maskRegions: newMasks, bubbles: newBubbles };
+        }));
     }
-
-    // Just update the metadata. Rendering happens in Workspace via CSS overlay.
-    setImages(prev => prev.map(img => {
-        if (img.id !== imageId) return img;
-
-        const mask = (img.maskRegions || []).find(m => m.id === maskId);
-        if (!mask) return img;
-
-        // Update masks status
-        const newMasks = (img.maskRegions || []).map(m => m.id === maskId ? {
-            ...m,
-            isCleaned: true,
-            method: 'fill' as const,
-            fillColor: color,
-            fillMode: (contourRects || dilatedBase64) ? 'contour' as const : undefined,
-            maskContourRects: contourRects,
-            maskContourDilatedBase64: dilatedBase64,
-        } : m);
-
-        // Update overlapping bubbles to transparent
-        const newBubbles = img.bubbles.map(b => {
-            const xDiff = Math.abs(b.x - mask.x);
-            const yDiff = Math.abs(b.y - mask.y);
-            const halfW = mask.width / 2;
-            const halfH = mask.height / 2;
-            const overlaps = xDiff <= halfW && yDiff <= halfH;
-            if (overlaps) {
-                return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
-            }
-            return b;
-        });
-
-        return {
-            ...img,
-            inpaintingStatus: 'done', // Mark as "processed" so UI shows filled
-            maskRegions: newMasks,
-            bubbles: newBubbles
-        };
-    }));
     setActiveLayer('clean');
   }, [setImages, setActiveLayer, aiConfig, historyRef]);
 
-  // Handle Batch Box Fill (OPTIMIZED: Metadata Update Only)
+  // Handle Batch Box Fill
   const handleBatchBoxFill = useCallback(async (scope: 'current' | 'all', color: string) => {
     const targetIds = new Set(
         scope === 'current'
@@ -505,75 +513,82 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     if (targetIds.size === 0) return;
 
-    // Pre-compute contour data for all eligible masks (parallel)
-    const contourRectsMap = new Map<string, MaskRegion['maskContourRects']>();
-    const dilatedBase64Map = new Map<string, string>();
     if (aiConfig.usePreciseFill) {
-        const jobs: Promise<void>[] = [];
+        // --- PRECISE MODE: per-image pixel bake ---
+        // Pre-compute contour data for all eligible masks (parallel across masks)
+        const contourRectsMap = new Map<string, MaskRegion['maskContourRects']>();
+        const dilatedBase64Map = new Map<string, string>();
+        const contourJobs: Promise<void>[] = [];
         for (const img of historyRef.current.present) {
             if (!targetIds.has(img.id)) continue;
             for (const m of (img.maskRegions || [])) {
                 if (m.method !== 'inpaint' && !m.isCleaned && m.maskContourBase64) {
                     if (aiConfig.useCharRects !== false) {
-                        jobs.push(
-                            computeContourRects(m.maskContourBase64).then(rects => {
-                                contourRectsMap.set(m.id, rects);
-                            })
-                        );
+                        contourJobs.push(computeContourRects(m.maskContourBase64).then(r => { contourRectsMap.set(m.id, r); }));
                     } else {
-                        jobs.push(
-                            dilateMaskImage(m.maskContourBase64).then(b64 => {
-                                dilatedBase64Map.set(m.id, b64);
-                            })
-                        );
+                        contourJobs.push(dilateMaskImage(m.maskContourBase64).then(b => { dilatedBase64Map.set(m.id, b); }));
                     }
                 }
             }
         }
-        await Promise.all(jobs);
-    }
+        await Promise.all(contourJobs);
 
-    setImages(prev => prev.map(img => {
-        if (!targetIds.has(img.id)) return img;
-
-        // Filter masks: Must NOT be 'inpaint' method AND must NOT be already cleaned
-        const masksToFill = (img.maskRegions || []).filter(m => m.method !== 'inpaint' && !m.isCleaned);
-
-        if (masksToFill.length === 0) return img;
-
-        // Update masks status
-        const filledIds = new Set(masksToFill.map(m => m.id));
-        const newMasks = (img.maskRegions || []).map(m => {
-            if (!filledIds.has(m.id)) return m;
-            const contourRects = contourRectsMap.get(m.id);
-            const dilatedBase64 = dilatedBase64Map.get(m.id);
-            return {
+        // Bake pixels per image (sequential to avoid canvas memory pressure)
+        const bakedImages = new Map<string, { base64: string; url: string }>();
+        for (const img of historyRef.current.present) {
+            if (!targetIds.has(img.id)) continue;
+            const masksToFill = (img.maskRegions || []).filter(m => m.method !== 'inpaint' && !m.isCleaned && m.maskContourBase64);
+            if (masksToFill.length === 0) continue;
+            const masksWithData = masksToFill.map(m => ({
                 ...m,
-                isCleaned: true,
-                method: 'fill' as const,
-                fillColor: color,
-                fillMode: (contourRects || dilatedBase64) ? 'contour' as const : undefined,
-                maskContourRects: contourRects,
-                maskContourDilatedBase64: dilatedBase64,
+                maskContourRects: contourRectsMap.get(m.id),
+                maskContourDilatedBase64: dilatedBase64Map.get(m.id),
+            }));
+            const srcBase64 = img.inpaintedBase64 || img.originalBase64 || img.base64;
+            const newBase64 = await bakeContourFillsIntoImage(
+                srcBase64, masksWithData, img.width, img.height, color, aiConfig.useCharRects !== false
+            );
+            bakedImages.set(img.id, { base64: newBase64, url: `data:image/png;base64,${newBase64}` });
+        }
+
+        setImages(prev => prev.map(img => {
+            if (!targetIds.has(img.id)) return img;
+            const baked = bakedImages.get(img.id);
+            const masksToFill = (img.maskRegions || []).filter(m => m.method !== 'inpaint' && !m.isCleaned);
+            if (masksToFill.length === 0) return img;
+            const filledIds = new Set(masksToFill.map(m => m.id));
+            const newMasks = (img.maskRegions || []).map(m =>
+                filledIds.has(m.id) ? { ...m, isCleaned: true, method: 'fill' as const, fillColor: color, fillMode: 'baked' as const } : m
+            );
+            const newBubbles = img.bubbles.map(b => {
+                const overlaps = masksToFill.some(mask => isBubbleInsideMask(b.x, b.y, mask.x, mask.y, mask.width, mask.height));
+                return overlaps ? { ...b, backgroundColor: 'transparent', autoDetectBackground: false } : b;
+            });
+            return {
+                ...img,
+                ...(baked ? { base64: baked.base64, url: baked.url, inpaintedUrl: baked.url, inpaintedBase64: baked.base64 } : {}),
+                inpaintingStatus: 'done' as const,
+                maskRegions: newMasks,
+                bubbles: newBubbles,
             };
-        });
-
-        // Update bubbles overlapping with FILLED masks
-        const newBubbles = img.bubbles.map(b => {
-            const overlaps = masksToFill.some(mask => isBubbleInsideMask(b.x, b.y, mask.x, mask.y, mask.width, mask.height));
-            if (overlaps) {
-                return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
-            }
-            return b;
-        });
-
-        return {
-            ...img,
-            inpaintingStatus: 'done',
-            maskRegions: newMasks,
-            bubbles: newBubbles
-        };
-    }));
+        }));
+    } else {
+        // --- RECT MODE: metadata-only, fast CSS overlay ---
+        setImages(prev => prev.map(img => {
+            if (!targetIds.has(img.id)) return img;
+            const masksToFill = (img.maskRegions || []).filter(m => m.method !== 'inpaint' && !m.isCleaned);
+            if (masksToFill.length === 0) return img;
+            const filledIds = new Set(masksToFill.map(m => m.id));
+            const newMasks = (img.maskRegions || []).map(m =>
+                filledIds.has(m.id) ? { ...m, isCleaned: true, method: 'fill' as const, fillColor: color } : m
+            );
+            const newBubbles = img.bubbles.map(b => {
+                const overlaps = masksToFill.some(mask => isBubbleInsideMask(b.x, b.y, mask.x, mask.y, mask.width, mask.height));
+                return overlaps ? { ...b, backgroundColor: 'transparent', autoDetectBackground: false } : b;
+            });
+            return { ...img, inpaintingStatus: 'done' as const, maskRegions: newMasks, bubbles: newBubbles };
+        }));
+    }
 
     if (scope === 'current' || (currentId && targetIds.has(currentId))) {
         setActiveLayer('clean');

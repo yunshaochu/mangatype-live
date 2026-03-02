@@ -113,17 +113,18 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               ctx.drawImage(img, 0, 0);
 
               // 2. COMPOSITE METADATA FILLS ONTO CANVAS
-              // This allows the brush to see and paint over "Box Tool" fills
+              // This allows the brush to see and paint over "Box Tool" fills.
+              // Precise fills are already baked into the image pixels (inpaintedUrl),
+              // so we only need to handle rect-mode metadata fills here.
               if (currentImage.maskRegions) {
                   currentImage.maskRegions.forEach(region => {
-                      if (region.isCleaned && region.method === 'fill') {
+                      if (region.isCleaned && region.method === 'fill' && !region.fillMode) {
+                          // Only rect-mode fills reach here (fillMode is undefined for rect, 'baked' skips CSS overlay)
                           const x = (region.x / 100) * canvas.width;
                           const y = (region.y / 100) * canvas.height;
                           const w = (region.width / 100) * canvas.width;
                           const h = (region.height / 100) * canvas.height;
-                          
                           ctx.fillStyle = region.fillColor || '#ffffff';
-                          // Calculate top-left from center x/y
                           ctx.fillRect(x - w / 2, y - h / 2, w, h);
                       }
                   });
@@ -493,7 +494,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           {/* Filled Masks (Instant Render) - z-1: Above image, below everything else */}
           {/* We ONLY render these if we are NOT painting. If painting, they are drawn on canvas. */}
           {showFilledMasks && maskRegions.map(region => (
-              (region.isCleaned && region.method === 'fill') && (
+              (region.isCleaned && region.method === 'fill' && region.fillMode !== 'baked') && (
                   region.fillMode === 'contour' && region.maskContourW !== undefined && region.maskContourH !== undefined ? (
                       region.maskContourRects && region.maskContourRects.length > 0 ? (
                           // useCharRects=true: per-character bounding rects
