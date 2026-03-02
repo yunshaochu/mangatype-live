@@ -228,8 +228,8 @@ export const translations = {
     applyResult: "应用到图片",
     // Workspace Layers
     layerOriginal: "原图",
-    layerClean: "擦除后",
-    layerFinal: "翻译后",
+    layerClean: "擦除",
+    layerFinal: "翻译",
     deleteInpaint: "删除擦除层",
     zoomReset: "重置缩放",
     // Paint Tool
