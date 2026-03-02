@@ -184,6 +184,44 @@ export const DetectionTab: React.FC<TabProps> = ({ config, setConfig, lang }) =>
                     </label>
                   </div>
                 )}
+
+                {/* useCharRects — sub toggle */}
+                {config.usePreciseFill && (
+                  <div className="flex justify-between items-center pl-3 border-l-2 border-orange-500/30 animate-fade-in-down">
+                    <div>
+                      <h5 className="text-xs font-medium text-gray-400">{t('useCharRects', lang)}</h5>
+                      <p className="text-[10px] text-gray-500 mt-0.5">{t('useCharRectsHint', lang)}</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={config.useCharRects !== false}
+                        onChange={(e) => setConfig({...config, useCharRects: e.target.checked})}
+                      />
+                      <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
+                    </label>
+                  </div>
+                )}
+
+                {/* preInpaintContour — sub toggle */}
+                {config.usePreciseFill && (
+                  <div className="flex justify-between items-center pl-3 border-l-2 border-orange-500/30 animate-fade-in-down">
+                    <div>
+                      <h5 className="text-xs font-medium text-gray-400">{t('preInpaintContour', lang)}</h5>
+                      <p className="text-[10px] text-gray-500 mt-0.5">{t('preInpaintContourHint', lang)}</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={config.preInpaintContour || false}
+                        onChange={(e) => setConfig({...config, preInpaintContour: e.target.checked})}
+                      />
+                      <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
+                    </label>
+                  </div>
+                )}
               </div>
             </div>
           )}

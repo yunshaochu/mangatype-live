@@ -434,6 +434,97 @@ export const computeContourRects = async (
     }
 };
 
+/** Shared helper: box-dilation on a binary Uint8Array mask (in-place → new array). */
+const _dilateBinary = (mask: Uint8Array, W: number, H: number, radius: number): Uint8Array => {
+    const out = new Uint8Array(W * H);
+    for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+            if (!mask[y * W + x]) continue;
+            const y0 = Math.max(0, y - radius), y1 = Math.min(H - 1, y + radius);
+            const x0 = Math.max(0, x - radius), x1 = Math.min(W - 1, x + radius);
+            for (let ny = y0; ny <= y1; ny++)
+                for (let nx = x0; nx <= x1; nx++)
+                    out[ny * W + nx] = 1;
+        }
+    }
+    return out;
+};
+
+/**
+ * Dilates a grayscale binary mask image and returns the result as a base64 PNG.
+ * Used for "pure contour" fill mode — thickens text pixels by ~radius pixels.
+ */
+export const dilateMaskImage = async (maskBase64: string, radius = 3): Promise<string> => {
+    const img = await loadImage(`data:image/png;base64,${maskBase64}`);
+    const W = img.width, H = img.height;
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+    ctx.drawImage(img, 0, 0);
+    const raw = ctx.getImageData(0, 0, W, H).data;
+
+    const srcMask = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) {
+        srcMask[i] = (raw[i * 4] + raw[i * 4 + 1] + raw[i * 4 + 2]) / 3 > 128 ? 1 : 0;
+    }
+
+    const dilated = _dilateBinary(srcMask, W, H, radius);
+
+    const out = ctx.createImageData(W, H);
+    for (let i = 0; i < W * H; i++) {
+        const v = dilated[i] ? 255 : 0;
+        out.data[i * 4]     = v;
+        out.data[i * 4 + 1] = v;
+        out.data[i * 4 + 2] = v;
+        out.data[i * 4 + 3] = 255;
+    }
+    ctx.putImageData(out, 0, 0);
+    return canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+};
+
+/**
+ * Pre-fills text contour pixels (white) onto the source image before inpainting.
+ * Helps IOPaint API remove stroke pixels more thoroughly.
+ */
+export const applyContourPreFill = async (
+    srcBase64: string,
+    masks: MaskRegion[],
+    W: number,
+    H: number
+): Promise<string> => {
+    const srcUrl = srcBase64.startsWith('data:') ? srcBase64 : `data:image/png;base64,${srcBase64}`;
+    const srcImg = await loadImage(srcUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(srcImg, 0, 0, W, H);
+
+    for (const m of masks) {
+        if (!m.maskContourBase64) continue;
+        // Use dilated contour (if available) for better coverage
+        const contourBase64 = m.maskContourDilatedBase64 || m.maskContourBase64;
+        const maskImg = await loadImage(`data:image/png;base64,${contourBase64}`);
+
+        const mW = ((m.maskContourW ?? m.width) / 100) * W;
+        const mH = ((m.maskContourH ?? m.height) / 100) * H;
+        const mX = (m.x / 100) * W - mW / 2;
+        const mY = (m.y / 100) * H - mH / 2;
+
+        // offscreen: apply source-in to paint white only over text pixels
+        const off = document.createElement('canvas');
+        off.width = Math.ceil(mW); off.height = Math.ceil(mH);
+        const offCtx = off.getContext('2d')!;
+        offCtx.drawImage(maskImg, 0, 0, off.width, off.height);
+        offCtx.globalCompositeOperation = 'source-in';
+        offCtx.fillStyle = '#ffffff';
+        offCtx.fillRect(0, 0, off.width, off.height);
+
+        ctx.drawImage(off, mX, mY);
+    }
+
+    return canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+};
+
 
 export const generateAnnotatedImage = async (image: ImageState): Promise<string> => {
     const img = await loadImage(image.originalUrl || image.url);
@@ -689,20 +780,41 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 const w = (m.width / 100) * width;
                 const h = (m.height / 100) * height;
 
-                if (m.fillMode === 'contour' && m.maskContourRects && m.maskContourW !== undefined && m.maskContourH !== undefined) {
-                    // Precise fill: draw per-character bounding rects
-                    ctx.fillStyle = m.fillColor || '#ffffff';
+                if (m.fillMode === 'contour' && m.maskContourW !== undefined && m.maskContourH !== undefined) {
                     const maskW_px = (m.maskContourW / 100) * width;
                     const maskH_px = (m.maskContourH / 100) * height;
                     const maskOriginX = x - maskW_px / 2;
                     const maskOriginY = y - maskH_px / 2;
-                    for (const r of m.maskContourRects) {
-                        ctx.fillRect(
-                            maskOriginX + r.x * maskW_px,
-                            maskOriginY + r.y * maskH_px,
-                            r.w * maskW_px,
-                            r.h * maskH_px
-                        );
+
+                    if (m.maskContourRects && m.maskContourRects.length > 0) {
+                        // useCharRects=true: per-character bounding rects
+                        ctx.fillStyle = m.fillColor || '#ffffff';
+                        for (const r of m.maskContourRects) {
+                            ctx.fillRect(
+                                maskOriginX + r.x * maskW_px,
+                                maskOriginY + r.y * maskH_px,
+                                r.w * maskW_px,
+                                r.h * maskH_px
+                            );
+                        }
+                    } else {
+                        // useCharRects=false: dilated contour mask via source-in
+                        const contourSrc = m.maskContourDilatedBase64 || m.maskContourBase64;
+                        if (contourSrc) {
+                            const offscreen = document.createElement('canvas');
+                            offscreen.width = Math.ceil(maskW_px);
+                            offscreen.height = Math.ceil(maskH_px);
+                            const offCtx = offscreen.getContext('2d')!;
+                            const contourImg = await loadImage(`data:image/png;base64,${contourSrc}`);
+                            offCtx.drawImage(contourImg, 0, 0, offscreen.width, offscreen.height);
+                            offCtx.globalCompositeOperation = 'source-in';
+                            offCtx.fillStyle = m.fillColor || '#ffffff';
+                            offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
+                            ctx.drawImage(offscreen, maskOriginX, maskOriginY);
+                        } else {
+                            ctx.fillStyle = m.fillColor || '#ffffff';
+                            ctx.fillRect(x - w/2, y - h/2, w, h);
+                        }
                     }
                 } else {
                     ctx.fillStyle = m.fillColor || '#ffffff';
@@ -1333,21 +1445,50 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
         if (imageState.maskRegions) {
             imageState.maskRegions.forEach(m => {
                 if (m.isCleaned && m.method === 'fill') {
-                    if (m.fillMode === 'contour' && m.maskContourRects && m.maskContourW !== undefined && m.maskContourH !== undefined) {
-                        // Per-character bounding rects — matches canvas export exactly
+                    if (m.fillMode === 'contour' && m.maskContourW !== undefined && m.maskContourH !== undefined) {
                         const maskLeft = m.x - m.maskContourW / 2;
                         const maskTop  = m.y - m.maskContourH  / 2;
-                        for (const r of m.maskContourRects) {
-                            const rectDiv = document.createElement('div');
-                            rectDiv.style.cssText = `
-                                position: absolute; z-index: 1;
-                                left: ${maskLeft + r.x * m.maskContourW}%;
-                                top:  ${maskTop  + r.y * m.maskContourH}%;
-                                width: ${r.w * m.maskContourW}%;
-                                height: ${r.h * m.maskContourH}%;
-                                background-color: ${m.fillColor || '#ffffff'};
-                            `;
-                            overlay.appendChild(rectDiv);
+
+                        if (m.maskContourRects && m.maskContourRects.length > 0) {
+                            // useCharRects=true: per-character bounding rects
+                            for (const r of m.maskContourRects) {
+                                const rectDiv = document.createElement('div');
+                                rectDiv.style.cssText = `
+                                    position: absolute; z-index: 1;
+                                    left: ${maskLeft + r.x * m.maskContourW}%;
+                                    top:  ${maskTop  + r.y * m.maskContourH}%;
+                                    width: ${r.w * m.maskContourW}%;
+                                    height: ${r.h * m.maskContourH}%;
+                                    background-color: ${m.fillColor || '#ffffff'};
+                                `;
+                                overlay.appendChild(rectDiv);
+                            }
+                        } else {
+                            // useCharRects=false: dilated contour mask via CSS mask-image
+                            const contourSrc = m.maskContourDilatedBase64 || m.maskContourBase64;
+                            const maskDiv = document.createElement('div');
+                            if (contourSrc) {
+                                maskDiv.style.cssText = `
+                                    position: absolute; z-index: 1;
+                                    top: ${m.y}%; left: ${m.x}%;
+                                    width: ${m.maskContourW}%; height: ${m.maskContourH}%;
+                                    transform: translate(-50%, -50%);
+                                    -webkit-mask-image: url(data:image/png;base64,${contourSrc});
+                                    mask-image: url(data:image/png;base64,${contourSrc});
+                                    -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+                                    -webkit-mask-mode: luminance; mask-mode: luminance;
+                                    background-color: ${m.fillColor || '#ffffff'};
+                                `;
+                            } else {
+                                maskDiv.style.cssText = `
+                                    position: absolute; z-index: 1;
+                                    top: ${m.y}%; left: ${m.x}%;
+                                    width: ${m.width}%; height: ${m.height}%;
+                                    transform: translate(-50%, -50%);
+                                    background-color: ${m.fillColor || '#ffffff'};
+                                `;
+                            }
+                            overlay.appendChild(maskDiv);
                         }
                     } else {
                         const maskDiv = document.createElement('div');

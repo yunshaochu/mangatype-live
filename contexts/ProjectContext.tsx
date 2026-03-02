@@ -4,7 +4,7 @@ import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
 import { isBubbleInsideMask } from '../utils/editorUtils';
-import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage, initScreenshotContainer, destroyScreenshotContainer, computeContourRects } from '../services/exportService';
+import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage, initScreenshotContainer, destroyScreenshotContainer, computeContourRects, dilateMaskImage, applyContourPreFill } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 
 const STORAGE_KEY = 'mangatype_live_settings_v1';
@@ -330,7 +330,17 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         // Generate mask (if specific ID is passed, only that one is used; otherwise ALL for batch)
         // NOTE: For single box click, we respect the specific ID.
         const maskBase64 = await generateInpaintMask(img, { specificMaskId, useRefinedMask: false });
-        const sourceBase64 = img.inpaintedBase64 || img.originalBase64 || img.base64;
+        let sourceBase64 = img.inpaintedBase64 || img.originalBase64 || img.base64;
+
+        // Pre-fill text contour onto source image before inpainting (if enabled)
+        if (aiConfig.preInpaintContour) {
+            const masksToPreFill = specificMaskId
+                ? (img.maskRegions || []).filter(m => m.id === specificMaskId && m.maskContourBase64)
+                : (img.maskRegions || []).filter(m => m.maskContourBase64);
+            if (masksToPreFill.length > 0) {
+                sourceBase64 = await applyContourPreFill(sourceBase64, masksToPreFill, img.width, img.height);
+            }
+        }
 
         const cleanedBase64Raw = await inpaintImage(
             aiConfig.inpaintingUrl,
@@ -435,8 +445,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     // Compute per-character bounding rects if precise fill is enabled
     let contourRects: MaskRegion['maskContourRects'];
+    let dilatedBase64: string | undefined;
     if (aiConfig.usePreciseFill && targetMask?.maskContourBase64) {
-        contourRects = await computeContourRects(targetMask.maskContourBase64);
+        if (aiConfig.useCharRects !== false) {
+            contourRects = await computeContourRects(targetMask.maskContourBase64);
+        } else {
+            dilatedBase64 = await dilateMaskImage(targetMask.maskContourBase64);
+        }
     }
 
     // Just update the metadata. Rendering happens in Workspace via CSS overlay.
@@ -452,8 +467,9 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             isCleaned: true,
             method: 'fill' as const,
             fillColor: color,
-            fillMode: contourRects ? 'contour' as const : undefined,
+            fillMode: (contourRects || dilatedBase64) ? 'contour' as const : undefined,
             maskContourRects: contourRects,
+            maskContourDilatedBase64: dilatedBase64,
         } : m);
 
         // Update overlapping bubbles to transparent
@@ -489,19 +505,28 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     if (targetIds.size === 0) return;
 
-    // Pre-compute contour rects for all eligible masks (parallel)
+    // Pre-compute contour data for all eligible masks (parallel)
     const contourRectsMap = new Map<string, MaskRegion['maskContourRects']>();
+    const dilatedBase64Map = new Map<string, string>();
     if (aiConfig.usePreciseFill) {
         const jobs: Promise<void>[] = [];
         for (const img of historyRef.current.present) {
             if (!targetIds.has(img.id)) continue;
             for (const m of (img.maskRegions || [])) {
                 if (m.method !== 'inpaint' && !m.isCleaned && m.maskContourBase64) {
-                    jobs.push(
-                        computeContourRects(m.maskContourBase64).then(rects => {
-                            contourRectsMap.set(m.id, rects);
-                        })
-                    );
+                    if (aiConfig.useCharRects !== false) {
+                        jobs.push(
+                            computeContourRects(m.maskContourBase64).then(rects => {
+                                contourRectsMap.set(m.id, rects);
+                            })
+                        );
+                    } else {
+                        jobs.push(
+                            dilateMaskImage(m.maskContourBase64).then(b64 => {
+                                dilatedBase64Map.set(m.id, b64);
+                            })
+                        );
+                    }
                 }
             }
         }
@@ -521,13 +546,15 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const newMasks = (img.maskRegions || []).map(m => {
             if (!filledIds.has(m.id)) return m;
             const contourRects = contourRectsMap.get(m.id);
+            const dilatedBase64 = dilatedBase64Map.get(m.id);
             return {
                 ...m,
                 isCleaned: true,
                 method: 'fill' as const,
                 fillColor: color,
-                fillMode: contourRects ? 'contour' as const : undefined,
+                fillMode: (contourRects || dilatedBase64) ? 'contour' as const : undefined,
                 maskContourRects: contourRects,
+                maskContourDilatedBase64: dilatedBase64,
             };
         });
 

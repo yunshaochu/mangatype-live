@@ -45,10 +45,11 @@ export interface MaskRegion {
   isCleaned?: boolean; // True if this region has been Inpainted or Filled
   method?: 'fill' | 'inpaint'; // New: Tag to determine batch processing method. Default is 'fill'.
   fillColor?: string; // New: Store color for instant rendering
-  maskContourBase64?: string; // Per-block refined mask from detection API (mask_refined_region_base64)
-  maskContourW?: number;      // Original scan width % (before expansion/user resize)
-  maskContourH?: number;      // Original scan height % (before expansion/user resize)
+  maskContourBase64?: string;    // Per-block refined mask from detection API (mask_refined_region_base64)
+  maskContourW?: number;         // Original scan width % (before expansion/user resize)
+  maskContourH?: number;         // Original scan height % (before expansion/user resize)
   maskContourRects?: Array<{x: number; y: number; w: number; h: number}>; // BFS bounding rects, proportions (0–1) of mask image
+  maskContourDilatedBase64?: string; // Dilated mask image for pure-contour fill mode (粗一圈)
   fillMode?: 'rect' | 'contour'; // Baked in at fill time: rect = whole box, contour = text pixels only
 }
 
@@ -235,8 +236,10 @@ export interface AIConfig {
   useTextDetectionApi?: boolean; // Toggle Local OCR
   textDetectionApiUrl?: string;
   detectionExpansionRatio?: number; // New: 0.0 - 0.5 (Expansion rate for detected boxes)
-  usePreciseFill?: boolean; // Use text contour mask for fill instead of whole rect
-  showContourPreview?: boolean; // Show orange contour overlay in editor as reference
+  usePreciseFill?: boolean;       // Use text contour mask for fill instead of whole rect
+  showContourPreview?: boolean;   // Show orange contour overlay in editor as reference
+  useCharRects?: boolean;         // true = per-char bounding rects; false = dilated raw contour mask
+  preInpaintContour?: boolean;    // Pre-fill text contour onto source image before IOPaint API call
   enableDialogSnap?: boolean; // Snap AI bubbles to manual masks
   forceSnapSize?: boolean; // Force snapped bubbles to use mask size
   
