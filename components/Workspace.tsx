@@ -494,17 +494,64 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           {/* We ONLY render these if we are NOT painting. If painting, they are drawn on canvas. */}
           {showFilledMasks && maskRegions.map(region => (
               (region.isCleaned && region.method === 'fill') && (
+                  region.fillMode === 'contour' && region.maskContourBase64 ? (
+                      <div
+                          key={`filled-${region.id}`}
+                          className="absolute z-[1] pointer-events-none"
+                          style={{
+                              top: `${region.y}%`,
+                              left: `${region.x}%`,
+                              width: `${region.maskContourW ?? region.width}%`,
+                              height: `${region.maskContourH ?? region.height}%`,
+                              transform: `translate(-50%, -50%)`,
+                              WebkitMaskImage: `url(data:image/png;base64,${region.maskContourBase64})`,
+                              maskImage: `url(data:image/png;base64,${region.maskContourBase64})`,
+                              WebkitMaskSize: '100% 100%',
+                              maskSize: '100% 100%',
+                              WebkitMaskMode: 'luminance',
+                              maskMode: 'luminance',
+                              backgroundColor: region.fillColor || '#ffffff',
+                          } as React.CSSProperties}
+                      />
+                  ) : (
+                      <div
+                          key={`filled-${region.id}`}
+                          className="absolute z-[1]"
+                          style={{
+                              top: `${region.y}%`,
+                              left: `${region.x}%`,
+                              width: `${region.width}%`,
+                              height: `${region.height}%`,
+                              transform: `translate(-50%, -50%)`,
+                              backgroundColor: region.fillColor || '#ffffff',
+                          }}
+                      />
+                  )
+              )
+          ))}
+
+          {/* Contour Preview Overlay — orange tint on text pixels (only when usePreciseFill + showContourPreview) */}
+          {/* Not gated by showFilledMasks — contour preview is informational and shows on all layers except original */}
+          {activeLayer !== 'original' && aiConfig.usePreciseFill && aiConfig.showContourPreview && maskRegions.map(region => (
+              region.maskContourBase64 && (
                   <div
-                      key={`filled-${region.id}`}
-                      className="absolute z-[1]" 
+                      key={`contour-preview-${region.id}`}
+                      className="absolute z-[2] pointer-events-none"
                       style={{
                           top: `${region.y}%`,
                           left: `${region.x}%`,
-                          width: `${region.width}%`,
-                          height: `${region.height}%`,
-                          transform: `translate(-50%, -50%)`,
-                          backgroundColor: region.fillColor || '#ffffff',
-                      }}
+                          width: `${region.maskContourW ?? region.width}%`,
+                          height: `${region.maskContourH ?? region.height}%`,
+                          transform: 'translate(-50%, -50%)',
+                          WebkitMaskImage: `url(data:image/png;base64,${region.maskContourBase64})`,
+                          maskImage: `url(data:image/png;base64,${region.maskContourBase64})`,
+                          WebkitMaskSize: '100% 100%',
+                          maskSize: '100% 100%',
+                          WebkitMaskMode: 'luminance',
+                          maskMode: 'luminance',
+                          backgroundColor: '#FF6600',
+                          opacity: 0.65,
+                      } as React.CSSProperties}
                   />
               )
           ))}

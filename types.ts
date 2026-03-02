@@ -45,6 +45,10 @@ export interface MaskRegion {
   isCleaned?: boolean; // True if this region has been Inpainted or Filled
   method?: 'fill' | 'inpaint'; // New: Tag to determine batch processing method. Default is 'fill'.
   fillColor?: string; // New: Store color for instant rendering
+  maskContourBase64?: string; // Per-block refined mask from detection API (mask_refined_region_base64)
+  maskContourW?: number;      // Original scan width % (before expansion/user resize)
+  maskContourH?: number;      // Original scan height % (before expansion/user resize)
+  fillMode?: 'rect' | 'contour'; // Baked in at fill time: rect = whole box, contour = text pixels only
 }
 
 export interface DetectedBubble {
@@ -230,6 +234,8 @@ export interface AIConfig {
   useTextDetectionApi?: boolean; // Toggle Local OCR
   textDetectionApiUrl?: string;
   detectionExpansionRatio?: number; // New: 0.0 - 0.5 (Expansion rate for detected boxes)
+  usePreciseFill?: boolean; // Use text contour mask for fill instead of whole rect
+  showContourPreview?: boolean; // Show orange contour overlay in editor as reference
   enableDialogSnap?: boolean; // Snap AI bubbles to manual masks
   forceSnapSize?: boolean; // Force snapped bubbles to use mask size
   

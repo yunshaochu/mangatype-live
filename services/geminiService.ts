@@ -462,7 +462,7 @@ export const fetchAvailableModels = async (config: AIConfig): Promise<string[]> 
 // --- Detection API Helper ---
 
 export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: string): Promise<{
-    rects: {x:number, y:number, width:number, height:number}[],
+    rects: {x:number, y:number, width:number, height:number, maskContourBase64?: string}[],
     maskBase64?: string
 }> => {
     try {
@@ -502,7 +502,7 @@ export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: strin
             const w = (widthPx / imgW) * 100;
             const h = (heightPx / imgH) * 100;
             
-            return { x, y, width: w, height: h };
+            return { x, y, width: w, height: h, maskContourBase64: block.mask_refined_region_base64 ?? undefined };
         });
 
         return { rects, maskBase64: data.mask_refined_base64 };

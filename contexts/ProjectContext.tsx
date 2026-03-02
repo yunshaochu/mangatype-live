@@ -437,7 +437,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (!mask) return img;
 
         // Update masks status
-        const newMasks = (img.maskRegions || []).map(m => m.id === maskId ? { ...m, isCleaned: true, method: 'fill' as const, fillColor: color } : m);
+        const newMasks = (img.maskRegions || []).map(m => m.id === maskId ? { ...m, isCleaned: true, method: 'fill' as const, fillColor: color, fillMode: (aiConfig.usePreciseFill && m.maskContourBase64) ? 'contour' as const : undefined } : m);
 
         // Update overlapping bubbles to transparent
         const newBubbles = img.bubbles.map(b => {
@@ -460,7 +460,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         };
     }));
     setActiveLayer('clean');
-  }, [setImages, setActiveLayer]);
+  }, [setImages, setActiveLayer, aiConfig]);
 
   // Handle Batch Box Fill (OPTIMIZED: Metadata Update Only)
   const handleBatchBoxFill = useCallback(async (scope: 'current' | 'all', color: string) => {
@@ -483,7 +483,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         // Update masks status
         const filledIds = new Set(masksToFill.map(m => m.id));
-        const newMasks = (img.maskRegions || []).map(m => filledIds.has(m.id) ? { ...m, isCleaned: true, method: 'fill' as const, fillColor: color } : m);
+        const newMasks = (img.maskRegions || []).map(m => filledIds.has(m.id) ? { ...m, isCleaned: true, method: 'fill' as const, fillColor: color, fillMode: (aiConfig.usePreciseFill && m.maskContourBase64) ? 'contour' as const : undefined } : m);
 
         // Update bubbles overlapping with FILLED masks
         const newBubbles = img.bubbles.map(b => {
@@ -505,7 +505,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (scope === 'current' || (currentId && targetIds.has(currentId))) {
         setActiveLayer('clean');
     }
-  }, [currentId, historyRef, setImages, setActiveLayer]);
+  }, [currentId, historyRef, setImages, setActiveLayer, aiConfig]);
 
   // Restore Region
   const handleRestoreRegion = useCallback(async (imageId: string, regionId: string) => {

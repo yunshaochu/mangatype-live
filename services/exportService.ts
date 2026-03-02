@@ -576,16 +576,31 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
 
     // 2. Draw filled masks (manual fill regions)
     if (imageState.maskRegions) {
-        imageState.maskRegions.forEach(m => {
+        for (const m of imageState.maskRegions) {
             if (m.isCleaned && m.method === 'fill') {
                 const x = (m.x / 100) * width;
                 const y = (m.y / 100) * height;
                 const w = (m.width / 100) * width;
                 const h = (m.height / 100) * height;
-                ctx.fillStyle = m.fillColor || '#ffffff';
-                ctx.fillRect(x - w/2, y - h/2, w, h);
+
+                if (m.fillMode === 'contour' && m.maskContourBase64) {
+                    // Precise fill: draw contour mask to offscreen canvas, apply fill color via source-in
+                    const offscreen = document.createElement('canvas');
+                    offscreen.width = Math.ceil(w);
+                    offscreen.height = Math.ceil(h);
+                    const offCtx = offscreen.getContext('2d')!;
+                    const contourImg = await loadImage(`data:image/png;base64,${m.maskContourBase64}`);
+                    offCtx.drawImage(contourImg, 0, 0, offscreen.width, offscreen.height);
+                    offCtx.globalCompositeOperation = 'source-in';
+                    offCtx.fillStyle = m.fillColor || '#ffffff';
+                    offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
+                    ctx.drawImage(offscreen, x - w / 2, y - h / 2);
+                } else {
+                    ctx.fillStyle = m.fillColor || '#ffffff';
+                    ctx.fillRect(x - w/2, y - h/2, w, h);
+                }
             }
-        });
+        }
     }
 
     // 3. Create hidden DOM container for measuring text positions
@@ -944,16 +959,29 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
         // These are masks that are cleaned but NOT via inpainting (method='fill')
         // We must burn them into the exported image here because they exist only as metadata in the app.
         if (imageState.maskRegions) {
-            imageState.maskRegions.forEach(m => {
+            for (const m of imageState.maskRegions) {
                 if (m.isCleaned && m.method === 'fill') {
                     const x = (m.x / 100) * width;
                     const y = (m.y / 100) * height;
                     const w = (m.width / 100) * width;
                     const h = (m.height / 100) * height;
-                    ctx.fillStyle = m.fillColor || '#ffffff';
-                    ctx.fillRect(x - w/2, y - h/2, w, h);
+                    if (m.fillMode === 'contour' && m.maskContourBase64) {
+                        const offscreen = document.createElement('canvas');
+                        offscreen.width = Math.ceil(w);
+                        offscreen.height = Math.ceil(h);
+                        const offCtx = offscreen.getContext('2d')!;
+                        const contourImg = await loadImage(`data:image/png;base64,${m.maskContourBase64}`);
+                        offCtx.drawImage(contourImg, 0, 0, offscreen.width, offscreen.height);
+                        offCtx.globalCompositeOperation = 'source-in';
+                        offCtx.fillStyle = m.fillColor || '#ffffff';
+                        offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
+                        ctx.drawImage(offscreen, x - w / 2, y - h / 2);
+                    } else {
+                        ctx.fillStyle = m.fillColor || '#ffffff';
+                        ctx.fillRect(x - w/2, y - h/2, w, h);
+                    }
                 }
-            });
+            }
         }
         // --------------------------------------------
 
@@ -1194,13 +1222,27 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
             imageState.maskRegions.forEach(m => {
                 if (m.isCleaned && m.method === 'fill') {
                     const maskDiv = document.createElement('div');
-                    maskDiv.style.cssText = `
-                        position: absolute; z-index: 1;
-                        top: ${m.y}%; left: ${m.x}%;
-                        width: ${m.width}%; height: ${m.height}%;
-                        transform: translate(-50%, -50%);
-                        background-color: ${m.fillColor || '#ffffff'};
-                    `;
+                    if (m.fillMode === 'contour' && m.maskContourBase64) {
+                        maskDiv.style.cssText = `
+                            position: absolute; z-index: 1;
+                            top: ${m.y}%; left: ${m.x}%;
+                            width: ${m.width}%; height: ${m.height}%;
+                            transform: translate(-50%, -50%);
+                            -webkit-mask-image: url(data:image/png;base64,${m.maskContourBase64});
+                            mask-image: url(data:image/png;base64,${m.maskContourBase64});
+                            -webkit-mask-size: 100% 100%;
+                            mask-size: 100% 100%;
+                            background-color: ${m.fillColor || '#ffffff'};
+                        `;
+                    } else {
+                        maskDiv.style.cssText = `
+                            position: absolute; z-index: 1;
+                            top: ${m.y}%; left: ${m.x}%;
+                            width: ${m.width}%; height: ${m.height}%;
+                            transform: translate(-50%, -50%);
+                            background-color: ${m.fillColor || '#ffffff'};
+                        `;
+                    }
                     overlay.appendChild(maskDiv);
                 }
             });

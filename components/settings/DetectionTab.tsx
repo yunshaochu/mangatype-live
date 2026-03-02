@@ -147,6 +147,44 @@ export const DetectionTab: React.FC<TabProps> = ({ config, setConfig, lang }) =>
                 />
                 <p className="text-[10px] text-gray-500 mt-1">{t('detectionExpansionHint', lang)}</p>
               </div>
+
+              <div className="pt-2 border-t border-gray-700/50 space-y-3">
+                {/* Precise Contour Fill — main toggle */}
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h5 className="text-xs font-medium text-gray-300">{t('preciseFill', lang)}</h5>
+                    <p className="text-[10px] text-gray-500 mt-0.5">{t('preciseFillHint', lang)}</p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      checked={config.usePreciseFill || false}
+                      onChange={(e) => setConfig({...config, usePreciseFill: e.target.checked})}
+                    />
+                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
+                  </label>
+                </div>
+
+                {/* Show Contour Preview — sub toggle, only when usePreciseFill is on */}
+                {config.usePreciseFill && (
+                  <div className="flex justify-between items-center pl-3 border-l-2 border-orange-500/30 animate-fade-in-down">
+                    <div>
+                      <h5 className="text-xs font-medium text-gray-400">{t('showContourPreview', lang)}</h5>
+                      <p className="text-[10px] text-gray-500 mt-0.5">{t('showContourPreviewHint', lang)}</p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="sr-only peer"
+                        checked={config.showContourPreview || false}
+                        onChange={(e) => setConfig({...config, showContourPreview: e.target.checked})}
+                      />
+                      <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
+                    </label>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

@@ -979,16 +979,20 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
 
                             // Process Rects (Expansion Logic)
                             const expansion = aiConfig.detectionExpansionRatio || 0;
+                            const originalRects = data.rects;
                             const expandedRegions = data.rects.map(r => {
                                 const w = r.width * (1 + expansion);
                                 const h = r.height * (1 + expansion);
                                 return { ...r, width: w, height: h };
                             });
 
-                            const maskRegions: MaskRegion[] = expandedRegions.map(r => ({
+                            const maskRegions: MaskRegion[] = expandedRegions.map((r, i) => ({
                                 id: crypto.randomUUID(),
                                 x: r.x, y: r.y, width: r.width, height: r.height,
-                                method: 'fill' // Default local detection to fill
+                                method: 'fill', // Default local detection to fill
+                                maskContourBase64: r.maskContourBase64,
+                                maskContourW: originalRects[i].width,
+                                maskContourH: originalRects[i].height,
                             }));
 
                             // Process Mask (Refined Pixel Mask) - We store it but don't use it for auto-inpaint anymore
