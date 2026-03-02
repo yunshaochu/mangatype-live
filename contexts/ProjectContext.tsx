@@ -603,12 +603,33 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const region = img.maskRegions?.find(m => m.id === regionId);
       if (!region) return;
 
-      // If it was a 'fill' region, just metadata update (Instant)
+      // If it was a 'fill' region...
       if (region.method === 'fill') {
-          setImages(prev => prev.map(p => p.id === imageId ? {
-              ...p,
-              maskRegions: (p.maskRegions || []).map(m => m.id === regionId ? { ...m, isCleaned: false, fillColor: undefined } : m)
-          } : p));
+          if (region.fillMode === 'baked') {
+              // Precise fill: pixels were baked into the image, must restore from original
+              try {
+                  const restoredBase64 = await restoreImageRegion(img, regionId);
+                  if (restoredBase64) {
+                      setImages(prev => prev.map(p => p.id === imageId ? {
+                          ...p,
+                          base64: restoredBase64.replace(/^data:image\/\w+;base64,/, ""),
+                          url: restoredBase64,
+                          inpaintedUrl: restoredBase64,
+                          inpaintedBase64: restoredBase64.replace(/^data:image\/\w+;base64,/, ""),
+                          maskRegions: (p.maskRegions || []).map(m => m.id === regionId ? { ...m, isCleaned: false, fillColor: undefined, fillMode: undefined } : m)
+                      } : p));
+                      setActiveLayer('clean');
+                  }
+              } catch (e) {
+                  console.error("Restore baked fill failed", e);
+              }
+          } else {
+              // Rect fill: metadata-only, instant
+              setImages(prev => prev.map(p => p.id === imageId ? {
+                  ...p,
+                  maskRegions: (p.maskRegions || []).map(m => m.id === regionId ? { ...m, isCleaned: false, fillColor: undefined } : m)
+              } : p));
+          }
           return;
       }
 
