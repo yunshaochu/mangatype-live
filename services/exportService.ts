@@ -454,6 +454,18 @@ const luminanceMaskToAlpha = (maskImg: HTMLImageElement, W: number, H: number): 
     return c;
 };
 
+type ExportFillRenderMode = 'skip' | 'rect' | 'contour';
+
+/** Shared export decision: normalize fill semantics across all export paths. */
+const resolveExportFillRenderMode = (m: MaskRegion): ExportFillRenderMode => {
+    if (!m.isCleaned || m.method !== 'fill') return 'skip';
+    if (m.fillMode === 'baked') return 'skip';
+    if (m.fillMode === 'contour' && m.maskContourW !== undefined && m.maskContourH !== undefined) {
+        return 'contour';
+    }
+    return 'rect';
+};
+
 /** Shared helper: box-dilation on a binary Uint8Array mask (in-place → new array). */
 const _dilateBinary = (mask: Uint8Array, W: number, H: number, radius: number): Uint8Array => {
     const out = new Uint8Array(W * H);
@@ -852,13 +864,14 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
     // 2. Draw filled masks (manual fill regions)
     if (imageState.maskRegions) {
         for (const m of imageState.maskRegions) {
-            if (m.isCleaned && m.method === 'fill') {
+            const fillMode = resolveExportFillRenderMode(m);
+            if (fillMode === 'skip') continue;
                 const x = (m.x / 100) * width;
                 const y = (m.y / 100) * height;
                 const w = (m.width / 100) * width;
                 const h = (m.height / 100) * height;
 
-                if (m.fillMode === 'contour' && m.maskContourW !== undefined && m.maskContourH !== undefined) {
+                if (fillMode === 'contour') {
                     const maskW_px = (m.maskContourW / 100) * width;
                     const maskH_px = (m.maskContourH / 100) * height;
                     const maskOriginX = x - maskW_px / 2;
@@ -899,7 +912,6 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                     ctx.fillStyle = m.fillColor || '#ffffff';
                     ctx.fillRect(x - w/2, y - h/2, w, h);
                 }
-            }
         }
     }
 
@@ -1260,12 +1272,13 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
         // We must burn them into the exported image here because they exist only as metadata in the app.
         if (imageState.maskRegions) {
             for (const m of imageState.maskRegions) {
-                if (m.isCleaned && m.method === 'fill') {
+                const fillMode = resolveExportFillRenderMode(m);
+                if (fillMode === 'skip') continue;
                     const x = (m.x / 100) * width;
                     const y = (m.y / 100) * height;
                     const w = (m.width / 100) * width;
                     const h = (m.height / 100) * height;
-                    if (m.fillMode === 'contour' && m.maskContourRects && m.maskContourW !== undefined && m.maskContourH !== undefined) {
+                    if (fillMode === 'contour' && m.maskContourRects && m.maskContourW !== undefined && m.maskContourH !== undefined) {
                         ctx.fillStyle = m.fillColor || '#ffffff';
                         const maskW_px = (m.maskContourW / 100) * width;
                         const maskH_px = (m.maskContourH / 100) * height;
@@ -1283,7 +1296,6 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
                         ctx.fillStyle = m.fillColor || '#ffffff';
                         ctx.fillRect(x - w/2, y - h/2, w, h);
                     }
-                }
             }
         }
         // --------------------------------------------
@@ -1523,8 +1535,9 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
         // 4. Filled masks
         if (imageState.maskRegions) {
             imageState.maskRegions.forEach(m => {
-                if (m.isCleaned && m.method === 'fill') {
-                    if (m.fillMode === 'contour' && m.maskContourW !== undefined && m.maskContourH !== undefined) {
+                const fillMode = resolveExportFillRenderMode(m);
+                if (fillMode === 'skip') return;
+                if (fillMode === 'contour') {
                         const maskLeft = m.x - m.maskContourW / 2;
                         const maskTop  = m.y - m.maskContourH  / 2;
 
@@ -1569,17 +1582,16 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
                             }
                             overlay.appendChild(maskDiv);
                         }
-                    } else {
-                        const maskDiv = document.createElement('div');
-                        maskDiv.style.cssText = `
-                            position: absolute; z-index: 1;
-                            top: ${m.y}%; left: ${m.x}%;
-                            width: ${m.width}%; height: ${m.height}%;
-                            transform: translate(-50%, -50%);
-                            background-color: ${m.fillColor || '#ffffff'};
-                        `;
-                        overlay.appendChild(maskDiv);
-                    }
+                } else {
+                    const maskDiv = document.createElement('div');
+                    maskDiv.style.cssText = `
+                        position: absolute; z-index: 1;
+                        top: ${m.y}%; left: ${m.x}%;
+                        width: ${m.width}%; height: ${m.height}%;
+                        transform: translate(-50%, -50%);
+                        background-color: ${m.fillColor || '#ffffff'};
+                    `;
+                    overlay.appendChild(maskDiv);
                 }
             });
         }
