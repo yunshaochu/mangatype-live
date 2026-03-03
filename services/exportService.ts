@@ -1345,30 +1345,7 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
         // We must burn them into the exported image here because they exist only as metadata in the app.
         if (imageState.maskRegions) {
             for (const m of imageState.maskRegions) {
-                const fillMode = resolveExportFillRenderMode(m);
-                if (fillMode === 'skip') continue;
-                    const x = (m.x / 100) * width;
-                    const y = (m.y / 100) * height;
-                    const w = (m.width / 100) * width;
-                    const h = (m.height / 100) * height;
-                    if (fillMode === 'contour' && m.maskContourRects && m.maskContourW !== undefined && m.maskContourH !== undefined) {
-                        ctx.fillStyle = m.fillColor || '#ffffff';
-                        const maskW_px = (m.maskContourW / 100) * width;
-                        const maskH_px = (m.maskContourH / 100) * height;
-                        const maskOriginX = x - maskW_px / 2;
-                        const maskOriginY = y - maskH_px / 2;
-                        for (const r of m.maskContourRects) {
-                            ctx.fillRect(
-                                maskOriginX + r.x * maskW_px,
-                                maskOriginY + r.y * maskH_px,
-                                r.w * maskW_px,
-                                r.h * maskH_px
-                            );
-                        }
-                    } else {
-                        ctx.fillStyle = m.fillColor || '#ffffff';
-                        ctx.fillRect(x - w/2, y - h/2, w, h);
-                    }
+                await drawFillMaskOnCanvas(ctx, m, width, height);
             }
         }
         // --------------------------------------------
