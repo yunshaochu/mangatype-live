@@ -6,6 +6,7 @@ This guide documents fast rollback actions for recent changes.
 
 - Stop consistency gate (`runId` + stop rollback behavior)
 - Skipped export behavior toggle (`exportSkippedAsOriginal`)
+- Unified export fill semantics (`baked|rect|contour`)
 - Endpoint capability testing UI and service
 - Concurrency max-limit removal in UI
 
@@ -35,3 +36,14 @@ Use commit-level rollback if behavior regression is confirmed:
 2. Revert export split behavior if export output mismatch is observed.
 3. Revert stop consistency changes only if stop path introduces deadlock or status corruption.
 4. Keep concurrency UI unclamped unless provider constraints require temporary hard cap.
+
+## Export Fill Rollback Reference
+
+For export fill mismatch (`baked` showing full-rect white block), use:
+
+- `docs/export-fill-unified-strategy.md`
+
+Follow the "Minimal Rollback Path (Safe First)" section and re-run:
+
+- `npm run check:export-fill`
+- `npm run build`
