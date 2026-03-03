@@ -7,7 +7,17 @@ Scope: transparency semantic regression after MASK-000/010/020/030
 
 - Available npm scripts: `dev`, `build`, `preview`
 - No project e2e runner found (`playwright/cypress/vitest/jest` not configured in scripts)
-- Executed check: `npm run build` (pass)
+- Runtime baseline: `node v22.18.0`, `npm 10.9.3`
+- Executed check: `npm run build` (pass, 2026-03-03)
+
+## Unified Preflight Checklist (Do Not Skip)
+
+1. Install dependencies once with `npm install`.
+2. Start app with `npm run dev`.
+3. Open sample workspace page at `http://localhost:3001`.
+4. Use the same dataset/session for all cases and keep autosave/history enabled.
+5. Execute cases strictly in this order: `Case A -> Case B -> Case C -> Case D`.
+6. Do not switch branch/port/runtime config between cases; if changed, restart from Case A.
 
 ## Case A
 
