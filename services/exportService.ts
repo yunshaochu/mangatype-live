@@ -522,6 +522,70 @@ const drawFillMaskOnCanvas = async (
     ctx.fillRect(x - w/2, y - h/2, w, h);
 };
 
+const appendFillMaskOverlayToDom = (overlay: HTMLDivElement, m: MaskRegion): void => {
+    const fillMode = resolveExportFillRenderMode(m);
+    if (fillMode === 'skip') return;
+
+    if (fillMode === 'contour') {
+        const maskLeft = m.x - m.maskContourW! / 2;
+        const maskTop  = m.y - m.maskContourH! / 2;
+
+        if (m.maskContourRects && m.maskContourRects.length > 0) {
+            // useCharRects=true: per-character bounding rects
+            for (const r of m.maskContourRects) {
+                const rectDiv = document.createElement('div');
+                rectDiv.style.cssText = `
+                    position: absolute; z-index: 1;
+                    left: ${maskLeft + r.x * m.maskContourW!}%;
+                    top:  ${maskTop  + r.y * m.maskContourH!}%;
+                    width: ${r.w * m.maskContourW!}%;
+                    height: ${r.h * m.maskContourH!}%;
+                    background-color: ${m.fillColor || '#ffffff'};
+                `;
+                overlay.appendChild(rectDiv);
+            }
+            return;
+        }
+
+        // useCharRects=false: dilated contour mask via CSS mask-image
+        const contourSrc = m.maskContourDilatedBase64 || m.maskContourBase64;
+        const maskDiv = document.createElement('div');
+        if (contourSrc) {
+            maskDiv.style.cssText = `
+                position: absolute; z-index: 1;
+                top: ${m.y}%; left: ${m.x}%;
+                width: ${m.maskContourW}%; height: ${m.maskContourH}%;
+                transform: translate(-50%, -50%);
+                -webkit-mask-image: url(data:image/png;base64,${contourSrc});
+                mask-image: url(data:image/png;base64,${contourSrc});
+                -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+                -webkit-mask-mode: luminance; mask-mode: luminance;
+                background-color: ${m.fillColor || '#ffffff'};
+            `;
+        } else {
+            maskDiv.style.cssText = `
+                position: absolute; z-index: 1;
+                top: ${m.y}%; left: ${m.x}%;
+                width: ${m.width}%; height: ${m.height}%;
+                transform: translate(-50%, -50%);
+                background-color: ${m.fillColor || '#ffffff'};
+            `;
+        }
+        overlay.appendChild(maskDiv);
+        return;
+    }
+
+    const maskDiv = document.createElement('div');
+    maskDiv.style.cssText = `
+        position: absolute; z-index: 1;
+        top: ${m.y}%; left: ${m.x}%;
+        width: ${m.width}%; height: ${m.height}%;
+        transform: translate(-50%, -50%);
+        background-color: ${m.fillColor || '#ffffff'};
+    `;
+    overlay.appendChild(maskDiv);
+};
+
 /** Shared helper: box-dilation on a binary Uint8Array mask (in-place → new array). */
 const _dilateBinary = (mask: Uint8Array, W: number, H: number, radius: number): Uint8Array => {
     const out = new Uint8Array(W * H);
@@ -1544,64 +1608,7 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
         // 4. Filled masks
         if (imageState.maskRegions) {
             imageState.maskRegions.forEach(m => {
-                const fillMode = resolveExportFillRenderMode(m);
-                if (fillMode === 'skip') return;
-                if (fillMode === 'contour') {
-                        const maskLeft = m.x - m.maskContourW / 2;
-                        const maskTop  = m.y - m.maskContourH  / 2;
-
-                        if (m.maskContourRects && m.maskContourRects.length > 0) {
-                            // useCharRects=true: per-character bounding rects
-                            for (const r of m.maskContourRects) {
-                                const rectDiv = document.createElement('div');
-                                rectDiv.style.cssText = `
-                                    position: absolute; z-index: 1;
-                                    left: ${maskLeft + r.x * m.maskContourW}%;
-                                    top:  ${maskTop  + r.y * m.maskContourH}%;
-                                    width: ${r.w * m.maskContourW}%;
-                                    height: ${r.h * m.maskContourH}%;
-                                    background-color: ${m.fillColor || '#ffffff'};
-                                `;
-                                overlay.appendChild(rectDiv);
-                            }
-                        } else {
-                            // useCharRects=false: dilated contour mask via CSS mask-image
-                            const contourSrc = m.maskContourDilatedBase64 || m.maskContourBase64;
-                            const maskDiv = document.createElement('div');
-                            if (contourSrc) {
-                                maskDiv.style.cssText = `
-                                    position: absolute; z-index: 1;
-                                    top: ${m.y}%; left: ${m.x}%;
-                                    width: ${m.maskContourW}%; height: ${m.maskContourH}%;
-                                    transform: translate(-50%, -50%);
-                                    -webkit-mask-image: url(data:image/png;base64,${contourSrc});
-                                    mask-image: url(data:image/png;base64,${contourSrc});
-                                    -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
-                                    -webkit-mask-mode: luminance; mask-mode: luminance;
-                                    background-color: ${m.fillColor || '#ffffff'};
-                                `;
-                            } else {
-                                maskDiv.style.cssText = `
-                                    position: absolute; z-index: 1;
-                                    top: ${m.y}%; left: ${m.x}%;
-                                    width: ${m.width}%; height: ${m.height}%;
-                                    transform: translate(-50%, -50%);
-                                    background-color: ${m.fillColor || '#ffffff'};
-                                `;
-                            }
-                            overlay.appendChild(maskDiv);
-                        }
-                } else {
-                    const maskDiv = document.createElement('div');
-                    maskDiv.style.cssText = `
-                        position: absolute; z-index: 1;
-                        top: ${m.y}%; left: ${m.x}%;
-                        width: ${m.width}%; height: ${m.height}%;
-                        transform: translate(-50%, -50%);
-                        background-color: ${m.fillColor || '#ffffff'};
-                    `;
-                    overlay.appendChild(maskDiv);
-                }
+                appendFillMaskOverlayToDom(overlay, m);
             });
         }
 
