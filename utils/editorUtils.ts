@@ -47,3 +47,18 @@ export const isBubbleInsideMask = (
     bx: number, by: number,
     mx: number, my: number, mw: number, mh: number
 ): boolean => Math.abs(bx - mx) <= mw / 2 && Math.abs(by - my) <= mh / 2;
+
+/**
+ * isCleaned only represents semantic "cleaned/transparent-eligible" state.
+ * UI overlay visibility must be derived from fillMode (legacy undefined => rect).
+ */
+export const isMaskCleaned = (mask: Pick<MaskRegion, 'isCleaned'>): boolean => mask.isCleaned === true;
+
+export const getFillOverlayMode = (
+    mask: Pick<MaskRegion, 'isCleaned' | 'method' | 'fillMode'>
+): 'hidden' | 'rect' | 'contour' => {
+    if (!isMaskCleaned(mask) || mask.method !== 'fill') return 'hidden';
+    if (mask.fillMode === 'baked') return 'hidden';
+    if (mask.fillMode === 'contour') return 'contour';
+    return 'rect';
+};

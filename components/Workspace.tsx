@@ -6,6 +6,7 @@ import { HandleType } from '../types';
 import { Maximize, Layers, Image as ImageIcon, Eraser, Trash2, Brush, MousePointerClick, Square } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
+import { getFillOverlayMode } from '../utils/editorUtils';
 
 interface WorkspaceProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -118,8 +119,8 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               // so we only need to handle rect-mode metadata fills here.
               if (currentImage.maskRegions) {
                   currentImage.maskRegions.forEach(region => {
-                      if (region.isCleaned && region.method === 'fill' && !region.fillMode) {
-                          // Only rect-mode fills reach here (fillMode is undefined for rect, 'baked' skips CSS overlay)
+                      if (getFillOverlayMode(region) === 'rect') {
+                          // Only rect-mode overlay fills are composited before brush save.
                           const x = (region.x / 100) * canvas.width;
                           const y = (region.y / 100) * canvas.height;
                           const w = (region.width / 100) * canvas.width;
@@ -493,9 +494,11 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           
           {/* Filled Masks (Instant Render) - z-1: Above image, below everything else */}
           {/* We ONLY render these if we are NOT painting. If painting, they are drawn on canvas. */}
-          {showFilledMasks && maskRegions.map(region => (
-              (region.isCleaned && region.method === 'fill' && region.fillMode !== 'baked') && (
-                  region.fillMode === 'contour' && region.maskContourW !== undefined && region.maskContourH !== undefined ? (
+          {showFilledMasks && maskRegions.map(region => {
+              const overlayMode = getFillOverlayMode(region);
+              return (
+                overlayMode !== 'hidden' && (
+                  overlayMode === 'contour' && region.maskContourW !== undefined && region.maskContourH !== undefined ? (
                       region.maskContourRects && region.maskContourRects.length > 0 ? (
                           // useCharRects=true: per-character bounding rects
                           <React.Fragment key={`filled-${region.id}`}>
@@ -570,8 +573,9 @@ export const Workspace: React.FC<WorkspaceProps> = ({
                           }}
                       />
                   )
-              )
-          ))}
+                )
+              );
+          })}
 
           {/* Contour Preview Overlay — orange tint on text pixels (only when usePreciseFill + showContourPreview) */}
           {/* Not gated by showFilledMasks — contour preview is informational and shows on all layers except original */}

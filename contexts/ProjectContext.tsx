@@ -3,7 +3,7 @@ import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion, norma
 import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
-import { isBubbleInsideMask } from '../utils/editorUtils';
+import { isBubbleInsideMask, isMaskCleaned } from '../utils/editorUtils';
 import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage, initScreenshotContainer, destroyScreenshotContainer, computeContourRects, dilateMaskImage, applyContourPreFill, bakeContourFillsIntoImage } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 
@@ -657,12 +657,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setImages(prev => prev.map(p => {
           if (p.id !== imageId) return p;
 
-          // When we save the paint canvas, any 'filled' masks (Box Tool) that were visible 
-          // are now baked into the pixels. We must disable their virtual DOM rendering 
-          // to prevent them from appearing on top of the restored areas.
+          // Paint-save bakes visible fill overlays into pixels.
+          // Keep isCleaned semantic state for transparency, hide overlay via fillMode='baked'.
           const newMasks = (p.maskRegions || []).map(m => {
-              if (m.method === 'fill' && m.isCleaned) {
-                  return { ...m, isCleaned: false, fillColor: undefined };
+              if (m.method === 'fill' && isMaskCleaned(m) && m.fillMode !== 'baked') {
+                  return { ...m, fillMode: 'baked' as const };
               }
               return m;
           });
@@ -692,7 +691,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               const bubble = imgState.bubbles.find(b => b.id === bubbleId);
               if (bubble && bubble.width >= 1 && bubble.height >= 1) {
                   // Check if bubble center is inside any cleaned mask region — if so, force transparent
-                  const cleanedMasks = (imgState.maskRegions || []).filter(m => m.isCleaned);
+                  const cleanedMasks = (imgState.maskRegions || []).filter(isMaskCleaned);
                   const insideCleanedMask = cleanedMasks.some(m => {
                       const xDiff = Math.abs(bubble.x - m.x);
                       const yDiff = Math.abs(bubble.y - m.y);
@@ -733,7 +732,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const bubble = currentImg.bubbles.find(b => b.id === bubbleId);
         if (bubble) {
             const tempBubble = { ...bubble, ...finalUpdates };
-            const cleanedMasks = (currentImg.maskRegions || []).filter(m => m.isCleaned);
+            const cleanedMasks = (currentImg.maskRegions || []).filter(isMaskCleaned);
             
             // Overlap logic: Check if bubble center is inside mask region
             const overlaps = cleanedMasks.some(m => isBubbleInsideMask(tempBubble.x, tempBubble.y, m.x, m.y, m.width, m.height));

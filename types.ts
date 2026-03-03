@@ -42,7 +42,7 @@ export interface MaskRegion {
   y: number;
   width: number;
   height: number;
-  isCleaned?: boolean; // True if this region has been Inpainted or Filled
+  isCleaned?: boolean; // Semantic flag only: region has been cleaned and should participate in transparency decisions
   method?: 'fill' | 'inpaint'; // New: Tag to determine batch processing method. Default is 'fill'.
   fillColor?: string; // New: Store color for instant rendering
   maskContourBase64?: string;    // Per-block refined mask from detection API (mask_refined_region_base64)
@@ -50,7 +50,7 @@ export interface MaskRegion {
   maskContourH?: number;         // Original scan height % (before expansion/user resize)
   maskContourRects?: Array<{x: number; y: number; w: number; h: number}>; // BFS bounding rects, proportions (0–1) of mask image
   maskContourDilatedBase64?: string; // Dilated mask image for pure-contour fill mode (粗一圈)
-  fillMode?: 'rect' | 'contour' | 'baked'; // Baked in at fill time: rect = whole box, contour = text pixels only, baked = pixels already written to image
+  fillMode?: 'rect' | 'contour' | 'baked'; // Overlay control: rect/contour render DOM overlay, baked hides overlay because pixels are already in image
 }
 
 export interface DetectedBubble {
