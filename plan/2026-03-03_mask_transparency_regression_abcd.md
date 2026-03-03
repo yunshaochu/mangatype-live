@@ -68,7 +68,11 @@ Scope: transparency semantic regression after MASK-000/010/020/030
   2. Perform undo then redo
   3. Re-run translation/create bubble checks in cleaned regions
 - Expected: transparency rule remains consistent after history operations
-- Status: NOT_EXECUTED_IN_THIS_ENV (manual run required)
+- Status: LIMITED_VALIDATED_STATIC (manual runtime run required)
+- Evidence:
+  - Added `scripts/validate-mask-case-d.mjs` to verify batch fill transparency writeback, drag-end overlap guard, and undo/redo stack semantics.
+  - `node scripts/validate-mask-case-d.mjs` pass.
+  - `npm run build` pass after validation script addition.
 
 ## Static Evidence (Code-Level)
 
@@ -80,12 +84,14 @@ Scope: transparency semantic regression after MASK-000/010/020/030
   - `contexts/ProjectContext.tsx:706`
   - `contexts/ProjectContext.tsx:720`
   - `contexts/ProjectContext.tsx:360`
+  - `contexts/ProjectContext.tsx:576`
   - `contexts/ProjectContext.tsx:747`
   - `hooks/useCanvasInteraction.ts:194`
   - `hooks/useCanvasInteraction.ts:215`
   - `hooks/useCanvasInteraction.ts:365`
   - `hooks/useProcessor.ts:284`
   - `scripts/validate-mask-case-c.mjs:20`
+  - `scripts/validate-mask-case-d.mjs:21`
 
 ## Conclusion
 
