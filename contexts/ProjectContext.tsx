@@ -492,6 +492,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             if (!mask) return img;
             const newMasks = (img.maskRegions || []).map(m => m.id === maskId ? {
                 ...m, isCleaned: true, method: 'fill' as const, fillColor: color,
+                fillMode: 'rect' as const,
             } : m);
             const newBubbles = img.bubbles.map(b => {
                 const overlaps = Math.abs(b.x - mask.x) <= mask.width / 2 && Math.abs(b.y - mask.y) <= mask.height / 2;
@@ -556,10 +557,21 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             const baked = bakedImages.get(img.id);
             const masksToFill = (img.maskRegions || []).filter(m => m.method !== 'inpaint' && !m.isCleaned);
             if (masksToFill.length === 0) return img;
-            const filledIds = new Set(masksToFill.map(m => m.id));
-            const newMasks = (img.maskRegions || []).map(m =>
-                filledIds.has(m.id) ? { ...m, isCleaned: true, method: 'fill' as const, fillColor: color, fillMode: 'baked' as const } : m
+            const bakedMaskIds = new Set(
+                (img.maskRegions || [])
+                    .filter(m => m.method !== 'inpaint' && !m.isCleaned && m.maskContourBase64)
+                    .map(m => m.id)
             );
+            const overlayMaskIds = new Set(masksToFill.filter(m => !bakedMaskIds.has(m.id)).map(m => m.id));
+            const newMasks = (img.maskRegions || []).map(m => {
+                if (bakedMaskIds.has(m.id)) {
+                    return { ...m, isCleaned: true, method: 'fill' as const, fillColor: color, fillMode: 'baked' as const };
+                }
+                if (overlayMaskIds.has(m.id)) {
+                    return { ...m, isCleaned: true, method: 'fill' as const, fillColor: color, fillMode: 'rect' as const };
+                }
+                return m;
+            });
             const newBubbles = img.bubbles.map(b => {
                 const overlaps = masksToFill.some(mask => isBubbleInsideMask(b.x, b.y, mask.x, mask.y, mask.width, mask.height));
                 return overlaps ? { ...b, backgroundColor: 'transparent', autoDetectBackground: false } : b;
@@ -580,7 +592,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             if (masksToFill.length === 0) return img;
             const filledIds = new Set(masksToFill.map(m => m.id));
             const newMasks = (img.maskRegions || []).map(m =>
-                filledIds.has(m.id) ? { ...m, isCleaned: true, method: 'fill' as const, fillColor: color } : m
+                filledIds.has(m.id) ? { ...m, isCleaned: true, method: 'fill' as const, fillColor: color, fillMode: 'rect' as const } : m
             );
             const newBubbles = img.bubbles.map(b => {
                 const overlaps = masksToFill.some(mask => isBubbleInsideMask(b.x, b.y, mask.x, mask.y, mask.width, mask.height));
@@ -624,10 +636,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   console.error("Restore baked fill failed", e);
               }
           } else {
-              // Rect fill: metadata-only, instant
+              // Metadata-only fill (rect/legacy contour): clear semantic and overlay fields.
               setImages(prev => prev.map(p => p.id === imageId ? {
                   ...p,
-                  maskRegions: (p.maskRegions || []).map(m => m.id === regionId ? { ...m, isCleaned: false, fillColor: undefined } : m)
+                  maskRegions: (p.maskRegions || []).map(m => m.id === regionId ? { ...m, isCleaned: false, fillColor: undefined, fillMode: undefined } : m)
               } : p));
           }
           return;
