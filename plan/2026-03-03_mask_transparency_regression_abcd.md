@@ -40,7 +40,11 @@ Scope: transparency semantic regression after MASK-000/010/020/030
   2. Enter brush mode and save canvas
   3. Trigger translation or create new bubble in same region
 - Expected: bubble remains transparent; no duplicated overlay after save
-- Status: NOT_EXECUTED_IN_THIS_ENV (manual run required)
+- Status: LIMITED_VALIDATED_STATIC (manual runtime run required)
+- Evidence:
+  - Added `scripts/validate-mask-case-b.mjs` to assert `handlePaintSave` keeps cleaned semantics and only bakes rect overlays.
+  - `node scripts/validate-mask-case-b.mjs` pass.
+  - `npm run build` pass after validation script addition.
 
 ## Case C
 
@@ -67,6 +71,7 @@ Scope: transparency semantic regression after MASK-000/010/020/030
 - `handlePaintSave` no longer resets `isCleaned` for fill overlays:
   - `contexts/ProjectContext.tsx:668`
   - `contexts/ProjectContext.tsx:675`
+  - `scripts/validate-mask-case-b.mjs:20`
 - Transparency checks use semantic cleaned helper in all target entry points:
   - `contexts/ProjectContext.tsx:706`
   - `contexts/ProjectContext.tsx:720`
