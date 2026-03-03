@@ -92,9 +92,13 @@ Scope: transparency semantic regression after MASK-000/010/020/030
   - `hooks/useProcessor.ts:284`
   - `scripts/validate-mask-case-c.mjs:20`
   - `scripts/validate-mask-case-d.mjs:21`
+- Entry-point static audit:
+  - `scripts/validate-mask-entrypoints.mjs:15`
+  - Result: no cleaned-semantic entry point found to overwrite cleaned-region bubbles to non-transparent.
 
 ## Conclusion
 
 - Automated e2e execution is limited by current repo test setup.
 - Build check passes, and static code path review matches the expected semantic contract.
+- Static audit scripts (`case-b/c/d + entrypoints`) pass in the current branch.
 - Manual A/B/C/D UI execution remains required to fully close runtime regression risk.
