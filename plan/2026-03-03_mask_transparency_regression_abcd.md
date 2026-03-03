@@ -54,7 +54,11 @@ Scope: transparency semantic regression after MASK-000/010/020/030
   2. Enter brush mode and save canvas
   3. Trigger translation or create new bubble in same region
 - Expected: bubble remains transparent
-- Status: NOT_EXECUTED_IN_THIS_ENV (manual run required)
+- Status: LIMITED_VALIDATED_STATIC (manual runtime run required)
+- Evidence:
+  - Added `scripts/validate-mask-case-c.mjs` to assert inpaint flow writes `method='inpaint' + isCleaned=true` and overlapping bubbles stay transparent.
+  - `node scripts/validate-mask-case-c.mjs` pass.
+  - `npm run build` pass after validation script addition.
 
 ## Case D
 
@@ -75,11 +79,13 @@ Scope: transparency semantic regression after MASK-000/010/020/030
 - Transparency checks use semantic cleaned helper in all target entry points:
   - `contexts/ProjectContext.tsx:706`
   - `contexts/ProjectContext.tsx:720`
+  - `contexts/ProjectContext.tsx:360`
   - `contexts/ProjectContext.tsx:747`
   - `hooks/useCanvasInteraction.ts:194`
   - `hooks/useCanvasInteraction.ts:215`
   - `hooks/useCanvasInteraction.ts:365`
   - `hooks/useProcessor.ts:284`
+  - `scripts/validate-mask-case-c.mjs:20`
 
 ## Conclusion
 
