@@ -3,7 +3,7 @@ import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion, norma
 import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
-import { isBubbleInsideMask, isMaskCleaned } from '../utils/editorUtils';
+import { getFillOverlayMode, isBubbleInsideMask, isMaskCleaned } from '../utils/editorUtils';
 import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage, initScreenshotContainer, destroyScreenshotContainer, computeContourRects, dilateMaskImage, applyContourPreFill, bakeContourFillsIntoImage } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 
@@ -657,10 +657,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       setImages(prev => prev.map(p => {
           if (p.id !== imageId) return p;
 
-          // Paint-save bakes visible fill overlays into pixels.
-          // Keep isCleaned semantic state for transparency, hide overlay via fillMode='baked'.
+          // Paint-save only bakes overlays that are actually composited into brush canvas (rect mode).
+          // Keep isCleaned semantic state for transparency.
           const newMasks = (p.maskRegions || []).map(m => {
-              if (m.method === 'fill' && isMaskCleaned(m) && m.fillMode !== 'baked') {
+              if (getFillOverlayMode(m) === 'rect') {
                   return { ...m, fillMode: 'baked' as const };
               }
               return m;
