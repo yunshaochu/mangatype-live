@@ -3,7 +3,7 @@ import { ImageState, AIConfig, APIEndpoint, MaskRegion, Bubble, mergeEndpointCon
 import { detectAndTypesetComic, fetchRawDetectedRegions } from '../services/geminiService';
 import { generateMaskedImage, generateAnnotatedImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
-import { isBubbleInsideMask } from '../utils/editorUtils';
+import { isBubbleInsideMask, isMaskCleaned } from '../utils/editorUtils';
 import {
     EndpointFailureCode,
     EndpointProtectionEventType,
@@ -281,7 +281,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             }
 
             // Check for cleaned masks BEFORE color detection to avoid unnecessary work
-            const cleanedMasks = (img.maskRegions || []).filter(m => m.isCleaned);
+            const cleanedMasks = (img.maskRegions || []).filter(isMaskCleaned);
 
             const processedBubbles = await Promise.all(finalDetected.map(async (d) => {
                 // First check if this bubble overlaps with any cleaned mask

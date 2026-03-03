@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useCallback } from 'react';
-import { ImageState, HandleType, AIConfig, Bubble } from '../types';
-import { createBubble, createMaskRegion, clamp, isBubbleInsideMask } from '../utils/editorUtils';
+import { ImageState, HandleType, AIConfig, Bubble, MaskRegion } from '../types';
+import { createBubble, createMaskRegion, clamp, isBubbleInsideMask, isMaskCleaned } from '../utils/editorUtils';
 
 interface DragState {
     mode: 'move' | 'resize' | 'drawing' | 'pending';
@@ -191,7 +191,7 @@ export const useCanvasInteraction = ({
                 setImages(prev => {
                     const img = prev.find(i => i.id === currentId);
                     if (!img) return prev;
-                    const cleanedMasks = (img.maskRegions || []).filter(m => m.isCleaned);
+                    const cleanedMasks = (img.maskRegions || []).filter(isMaskCleaned);
                     if (cleanedMasks.some(m => isBubbleInsideMask(newBubble.x, newBubble.y, m.x, m.y, m.width, m.height))) {
                         newBubble.backgroundColor = 'transparent';
                         newBubble.autoDetectBackground = false;
@@ -211,8 +211,8 @@ export const useCanvasInteraction = ({
             return; // Process drawing on next frame
         }
 
-        const checkOverlap = (bubble: Bubble, maskRegions: any[]) => {
-            const cleanedMasks = maskRegions.filter(m => m.isCleaned);
+        const checkOverlap = (bubble: Bubble, maskRegions: MaskRegion[]) => {
+            const cleanedMasks = maskRegions.filter(isMaskCleaned);
             return cleanedMasks.some(m => isBubbleInsideMask(bubble.x, bubble.y, m.x, m.y, m.width, m.height));
         };
 
@@ -362,7 +362,7 @@ export const useCanvasInteraction = ({
                 const bubble = img.bubbles.find(b => b.id === id);
                 if (!bubble) return prev;
 
-                const cleanedMasks = (img.maskRegions || []).filter(m => m.isCleaned);
+                const cleanedMasks = (img.maskRegions || []).filter(isMaskCleaned);
                 const overlaps = cleanedMasks.some(m => isBubbleInsideMask(bubble.x, bubble.y, m.x, m.y, m.width, m.height));
 
                 if (overlaps && bubble.backgroundColor !== 'transparent') {
