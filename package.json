@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "check:export-fill": "node scripts/validate-export-fill-guards.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
