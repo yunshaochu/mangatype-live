@@ -27,7 +27,10 @@ Scope: transparency semantic regression after MASK-000/010/020/030
   2. Draw mask box and run box fill
   3. Trigger translation or create new bubble in filled area
 - Expected: bubble background is transparent inside cleaned region
-- Status: NOT_EXECUTED_IN_THIS_ENV (manual run required)
+- Status: LIMITED_VALIDATED_STATIC (manual runtime run required)
+- Evidence:
+  - Guarded async auto-color writeback to re-check latest cleaned overlap before applying detected color.
+  - `npm run build` pass after change.
 
 ## Case B
 
@@ -66,6 +69,7 @@ Scope: transparency semantic regression after MASK-000/010/020/030
   - `contexts/ProjectContext.tsx:675`
 - Transparency checks use semantic cleaned helper in all target entry points:
   - `contexts/ProjectContext.tsx:706`
+  - `contexts/ProjectContext.tsx:720`
   - `contexts/ProjectContext.tsx:747`
   - `hooks/useCanvasInteraction.ts:194`
   - `hooks/useCanvasInteraction.ts:215`

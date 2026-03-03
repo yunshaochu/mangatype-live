@@ -717,7 +717,23 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
                   const shouldDetect = bubble.autoDetectBackground !== undefined ? bubble.autoDetectBackground : aiConfigRef.current.autoDetectBackground;
                   if (shouldDetect === false) return;
                   const detectedColor = await detectBubbleColor(imgState.url || `data:image/png;base64,${imgState.base64}`, bubble.x, bubble.y, bubble.width, bubble.height);
-                  setImages(prev => prev.map(img => img.id === currentId ? { ...img, bubbles: img.bubbles.map(b => b.id === bubbleId ? { ...b, backgroundColor: detectedColor } : b) } : img));
+                  setImages(prev => prev.map(img => {
+                      if (img.id !== currentId) return img;
+                      const latestCleanedMasks = (img.maskRegions || []).filter(isMaskCleaned);
+                      return {
+                          ...img,
+                          bubbles: img.bubbles.map(b => {
+                              if (b.id !== bubbleId) return b;
+                              const stillInsideCleanedMask = latestCleanedMasks.some(m => isBubbleInsideMask(b.x, b.y, m.x, m.y, m.width, m.height));
+                              if (stillInsideCleanedMask) {
+                                  return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
+                              }
+                              const stillShouldDetect = b.autoDetectBackground !== undefined ? b.autoDetectBackground : aiConfigRef.current.autoDetectBackground;
+                              if (stillShouldDetect === false) return b;
+                              return { ...b, backgroundColor: detectedColor };
+                          })
+                      };
+                  }));
               }
           }
       }, 300);
