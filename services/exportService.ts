@@ -466,6 +466,62 @@ const resolveExportFillRenderMode = (m: MaskRegion): ExportFillRenderMode => {
     return 'rect';
 };
 
+const drawFillMaskOnCanvas = async (
+    ctx: CanvasRenderingContext2D,
+    m: MaskRegion,
+    width: number,
+    height: number
+): Promise<void> => {
+    const fillMode = resolveExportFillRenderMode(m);
+    if (fillMode === 'skip') return;
+
+    const x = (m.x / 100) * width;
+    const y = (m.y / 100) * height;
+    const w = (m.width / 100) * width;
+    const h = (m.height / 100) * height;
+
+    if (fillMode === 'contour') {
+        const maskW_px = (m.maskContourW! / 100) * width;
+        const maskH_px = (m.maskContourH! / 100) * height;
+        const maskOriginX = x - maskW_px / 2;
+        const maskOriginY = y - maskH_px / 2;
+
+        if (m.maskContourRects && m.maskContourRects.length > 0) {
+            // useCharRects=true: per-character bounding rects
+            ctx.fillStyle = m.fillColor || '#ffffff';
+            for (const r of m.maskContourRects) {
+                ctx.fillRect(
+                    maskOriginX + r.x * maskW_px,
+                    maskOriginY + r.y * maskH_px,
+                    r.w * maskW_px,
+                    r.h * maskH_px
+                );
+            }
+            return;
+        }
+
+        // useCharRects=false: dilated contour mask via source-in
+        const contourSrc = m.maskContourDilatedBase64 || m.maskContourBase64;
+        if (contourSrc) {
+            const offscreen = document.createElement('canvas');
+            offscreen.width = Math.ceil(maskW_px);
+            offscreen.height = Math.ceil(maskH_px);
+            const offCtx = offscreen.getContext('2d')!;
+            const contourImg = await loadImage(`data:image/png;base64,${contourSrc}`);
+            const alphaCanvas = luminanceMaskToAlpha(contourImg, offscreen.width, offscreen.height);
+            offCtx.drawImage(alphaCanvas, 0, 0);
+            offCtx.globalCompositeOperation = 'source-in';
+            offCtx.fillStyle = m.fillColor || '#ffffff';
+            offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
+            ctx.drawImage(offscreen, maskOriginX, maskOriginY);
+            return;
+        }
+    }
+
+    ctx.fillStyle = m.fillColor || '#ffffff';
+    ctx.fillRect(x - w/2, y - h/2, w, h);
+};
+
 /** Shared helper: box-dilation on a binary Uint8Array mask (in-place → new array). */
 const _dilateBinary = (mask: Uint8Array, W: number, H: number, radius: number): Uint8Array => {
     const out = new Uint8Array(W * H);
@@ -864,54 +920,7 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
     // 2. Draw filled masks (manual fill regions)
     if (imageState.maskRegions) {
         for (const m of imageState.maskRegions) {
-            const fillMode = resolveExportFillRenderMode(m);
-            if (fillMode === 'skip') continue;
-                const x = (m.x / 100) * width;
-                const y = (m.y / 100) * height;
-                const w = (m.width / 100) * width;
-                const h = (m.height / 100) * height;
-
-                if (fillMode === 'contour') {
-                    const maskW_px = (m.maskContourW / 100) * width;
-                    const maskH_px = (m.maskContourH / 100) * height;
-                    const maskOriginX = x - maskW_px / 2;
-                    const maskOriginY = y - maskH_px / 2;
-
-                    if (m.maskContourRects && m.maskContourRects.length > 0) {
-                        // useCharRects=true: per-character bounding rects
-                        ctx.fillStyle = m.fillColor || '#ffffff';
-                        for (const r of m.maskContourRects) {
-                            ctx.fillRect(
-                                maskOriginX + r.x * maskW_px,
-                                maskOriginY + r.y * maskH_px,
-                                r.w * maskW_px,
-                                r.h * maskH_px
-                            );
-                        }
-                    } else {
-                        // useCharRects=false: dilated contour mask via source-in
-                        const contourSrc = m.maskContourDilatedBase64 || m.maskContourBase64;
-                        if (contourSrc) {
-                            const offscreen = document.createElement('canvas');
-                            offscreen.width = Math.ceil(maskW_px);
-                            offscreen.height = Math.ceil(maskH_px);
-                            const offCtx = offscreen.getContext('2d')!;
-                            const contourImg = await loadImage(`data:image/png;base64,${contourSrc}`);
-                            const alphaCanvas = luminanceMaskToAlpha(contourImg, offscreen.width, offscreen.height);
-                            offCtx.drawImage(alphaCanvas, 0, 0);
-                            offCtx.globalCompositeOperation = 'source-in';
-                            offCtx.fillStyle = m.fillColor || '#ffffff';
-                            offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
-                            ctx.drawImage(offscreen, maskOriginX, maskOriginY);
-                        } else {
-                            ctx.fillStyle = m.fillColor || '#ffffff';
-                            ctx.fillRect(x - w/2, y - h/2, w, h);
-                        }
-                    }
-                } else {
-                    ctx.fillStyle = m.fillColor || '#ffffff';
-                    ctx.fillRect(x - w/2, y - h/2, w, h);
-                }
+            await drawFillMaskOnCanvas(ctx, m, width, height);
         }
     }
 
