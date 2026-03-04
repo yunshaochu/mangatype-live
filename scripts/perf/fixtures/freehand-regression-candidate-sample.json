@@ -1,0 +1,68 @@
+{
+  "meta": {
+    "capturedAt": "2026-03-04T13:20:00Z",
+    "browser": "Fixture-Only",
+    "machine": "Fixture-Only",
+    "scriptId": "freehand-standard-zigzag-v1"
+  },
+  "scenarios": {
+    "4mp": [
+      {
+        "runId": "4mp-run-1",
+        "durationSec": 30,
+        "avgFps": 56,
+        "p95PenUpBlockMs": 10.7,
+        "peakMemoryMb": 635,
+        "exportMs": 170
+      },
+      {
+        "runId": "4mp-run-2",
+        "durationSec": 30,
+        "avgFps": 55,
+        "p95PenUpBlockMs": 11.0,
+        "peakMemoryMb": 642,
+        "exportMs": 173
+      },
+      {
+        "runId": "4mp-run-3",
+        "durationSec": 30,
+        "avgFps": 55,
+        "p95PenUpBlockMs": 10.8,
+        "peakMemoryMb": 639,
+        "exportMs": 171
+      }
+    ],
+    "8mp": [
+      {
+        "runId": "8mp-run-1",
+        "durationSec": 30,
+        "avgFps": 42,
+        "p95PenUpBlockMs": 17.6,
+        "peakMemoryMb": 858,
+        "exportMs": 304
+      },
+      {
+        "runId": "8mp-run-2",
+        "durationSec": 30,
+        "avgFps": 41,
+        "p95PenUpBlockMs": 18.1,
+        "peakMemoryMb": 867,
+        "exportMs": 310
+      },
+      {
+        "runId": "8mp-run-3",
+        "durationSec": 30,
+        "avgFps": 41,
+        "p95PenUpBlockMs": 18.4,
+        "peakMemoryMb": 863,
+        "exportMs": 308
+      }
+    ]
+  },
+  "regressionSignals": {
+    "pixelDiffRate": 0.22,
+    "eyedropperMaxRgbDelta": 1,
+    "p0RegressionCount": 0,
+    "monitoringStableHours": 24
+  }
+}

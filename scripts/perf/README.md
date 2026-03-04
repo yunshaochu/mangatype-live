@@ -8,9 +8,12 @@ the freehand performance workstream.
 - `freehand-baseline-scenarios.json`: canonical 4MP/8MP scenario config
 - `freehand-baseline-results.template.json`: result schema template for real runs
 - `check-freehand-baseline.mjs`: validator and summary generator
+- `compare-freehand-baseline.mjs`: rollout gate comparator (baseline vs candidate)
 - `generate-freehand-samples.ps1`: deterministic 4MP/8MP image generator
 - `freehand-baseline-runbook.md`: standard benchmark procedure
+- `freehand-rollout-playbook.md`: phase rollout/rollback policy
 - `fixtures/freehand-baseline-sample.json`: fixture for script sanity checks
+- `fixtures/freehand-regression-candidate-sample.json`: fixture for rollout gate checks
 
 ## Capture Requirements
 
@@ -30,6 +33,12 @@ Run against fixture data:
 
 ```bash
 npm run perf:freehand:check -- --input scripts/perf/fixtures/freehand-baseline-sample.json
+```
+
+Run rollout gate against fixture baseline/candidate:
+
+```bash
+npm run perf:freehand:gate -- --baseline scripts/perf/fixtures/freehand-baseline-sample.json --candidate scripts/perf/fixtures/freehand-regression-candidate-sample.json --phase phase1
 ```
 
 Generate fixed benchmark sample images:

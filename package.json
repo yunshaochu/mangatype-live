@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "check:export-fill": "node scripts/validate-export-fill-guards.mjs",
-    "perf:freehand:check": "node scripts/perf/check-freehand-baseline.mjs"
+    "perf:freehand:check": "node scripts/perf/check-freehand-baseline.mjs",
+    "perf:freehand:gate": "node scripts/perf/compare-freehand-baseline.mjs"
   },
   "dependencies": {
     "@google/genai": "^1.38.0",
