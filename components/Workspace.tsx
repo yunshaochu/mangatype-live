@@ -34,9 +34,13 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   // Paint Canvas Ref
   const paintCanvasRef = useRef<HTMLCanvasElement>(null);
   const originalImageRef = useRef<HTMLImageElement | null>(null); // Store original image for restoring
+  const readbackCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const readbackCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const brushCursorRef = useRef<HTMLDivElement>(null);
+  const brushCursorRafRef = useRef<number | null>(null);
+  const brushCursorPendingRef = useRef<{ x: number; y: number; d: number } | null>(null);
   const [isPainting, setIsPainting] = useState(false);
   const lastPos = useRef<{x: number, y: number} | null>(null);
-  const [brushCursorPos, setBrushCursorPos] = useState<{ x: number; y: number; d: number } | null>(null);
 
   // --- Zoom / Pan State ---
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -101,7 +105,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   useEffect(() => {
       if (showPaintCanvas && currentImage && paintCanvasRef.current) {
           const canvas = paintCanvasRef.current;
-          const ctx = canvas.getContext('2d', { willReadFrequently: true });
+          const ctx = canvas.getContext('2d');
           if (!ctx) return;
 
           // 1. Load the current "Clean" layer as the base for the canvas
@@ -166,6 +170,67 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       return brushColor;
   };
 
+  const hideBrushCursor = useCallback(() => {
+      brushCursorPendingRef.current = null;
+      if (brushCursorRafRef.current !== null) {
+          cancelAnimationFrame(brushCursorRafRef.current);
+          brushCursorRafRef.current = null;
+      }
+      const cursorEl = brushCursorRef.current;
+      if (cursorEl) {
+          cursorEl.style.display = 'none';
+      }
+  }, []);
+
+  const queueBrushCursorUpdate = useCallback((nextPos: { x: number; y: number; d: number }) => {
+      brushCursorPendingRef.current = nextPos;
+      if (brushCursorRafRef.current !== null) return;
+      brushCursorRafRef.current = requestAnimationFrame(() => {
+          brushCursorRafRef.current = null;
+          const cursorEl = brushCursorRef.current;
+          const pending = brushCursorPendingRef.current;
+          if (!cursorEl || !pending) return;
+          cursorEl.style.display = 'block';
+          cursorEl.style.width = `${pending.d}px`;
+          cursorEl.style.height = `${pending.d}px`;
+          cursorEl.style.transform = `translate(${pending.x}px, ${pending.y}px) translate(-50%, -50%)`;
+      });
+  }, []);
+
+  const samplePaintPixel = useCallback((x: number, y: number) => {
+      const sourceCanvas = paintCanvasRef.current;
+      if (!sourceCanvas) return null;
+
+      if (!readbackCanvasRef.current) {
+          readbackCanvasRef.current = document.createElement('canvas');
+          readbackCanvasRef.current.width = 1;
+          readbackCanvasRef.current.height = 1;
+      }
+      if (!readbackCtxRef.current) {
+          readbackCtxRef.current = readbackCanvasRef.current.getContext('2d', { willReadFrequently: true });
+      }
+      const readCtx = readbackCtxRef.current;
+      if (!readCtx) return null;
+
+      const px = Math.max(0, Math.min(sourceCanvas.width - 1, Math.floor(x)));
+      const py = Math.max(0, Math.min(sourceCanvas.height - 1, Math.floor(y)));
+      readCtx.clearRect(0, 0, 1, 1);
+      readCtx.drawImage(sourceCanvas, px, py, 1, 1, 0, 0, 1, 1);
+      return readCtx.getImageData(0, 0, 1, 1).data;
+  }, []);
+
+  useEffect(() => {
+      if (!showPaintCanvas) {
+          hideBrushCursor();
+      }
+  }, [showPaintCanvas, hideBrushCursor]);
+
+  useEffect(() => () => {
+      hideBrushCursor();
+      readbackCtxRef.current = null;
+      readbackCanvasRef.current = null;
+  }, [hideBrushCursor]);
+
   const handlePaintStart = (e: React.MouseEvent) => {
       if (!showPaintCanvas) return;
       
@@ -175,7 +240,8 @@ export const Workspace: React.FC<WorkspaceProps> = ({
 
       // If Alt key is pressed, use Eyedropper behavior
       if (e.altKey && brushType === 'paint') {
-          const pixel = ctx.getImageData(x, y, 1, 1).data;
+          const pixel = samplePaintPixel(x, y);
+          if (!pixel) return;
           const hex = "#" + ((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1);
           setBrushColor(hex);
           return;
@@ -205,7 +271,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       if (paintCanvasRef.current) {
           const rect = paintCanvasRef.current.getBoundingClientRect();
           const scale = rect.width > 0 ? paintCanvasRef.current.width / rect.width : 1;
-          setBrushCursorPos({ x: e.clientX, y: e.clientY, d: Math.max(4, brushSize / scale) });
+          queueBrushCursorUpdate({ x: e.clientX, y: e.clientY, d: Math.max(4, brushSize / scale) });
       }
       // Only paint if in brush mode
       if (!isPainting || !showPaintCanvas || !paintCanvasRef.current || paintMode !== 'brush') return;
@@ -477,7 +543,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
                 onMouseDown={handlePaintStart}
                 onMouseMove={handlePaintMove}
                 onMouseUp={handlePaintEnd}
-                onMouseLeave={() => { handlePaintEnd(); setBrushCursorPos(null); }}
+                onMouseLeave={() => { handlePaintEnd(); hideBrushCursor(); }}
             />
         ) : (
             <img
@@ -644,19 +710,21 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       </div>
 
       {/* Brush cursor ring */}
-      {showPaintCanvas && brushCursorPos && (
-        <div style={{
+      {showPaintCanvas && (
+        <div ref={brushCursorRef} style={{
           position: 'fixed',
-          left: brushCursorPos.x,
-          top: brushCursorPos.y,
-          width: brushCursorPos.d,
-          height: brushCursorPos.d,
+          left: 0,
+          top: 0,
+          width: 0,
+          height: 0,
+          display: 'none',
           transform: 'translate(-50%, -50%)',
           borderRadius: '50%',
           border: '1px solid rgba(255,255,255,0.9)',
           boxShadow: '0 0 0 1px rgba(0,0,0,0.7)',
           pointerEvents: 'none',
           zIndex: 9999,
+          willChange: 'transform,width,height',
         }} />
       )}
 
