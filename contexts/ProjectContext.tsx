@@ -130,6 +130,8 @@ interface ProjectContextType {
   isInpainting: boolean;
   handleRestoreRegion: (imageId: string, regionId: string) => Promise<void>;
   handlePaintSave: (imageId: string, newBase64: string) => void;
+  registerPaintFlushHandler: (imageId: string, handler: (() => Promise<void>) | null) => void;
+  flushPendingCommands: (imageId?: string) => Promise<void>;
   handleBoxFill: (imageId: string, maskId: string, color: string) => Promise<void>;
   handleBatchBoxFill: (scope: 'current' | 'all', color: string) => Promise<void>;
 
@@ -295,6 +297,27 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [brushSize, setBrushSize] = useState(20);
   const [paintMode, setPaintMode] = useState<'brush' | 'box'>('brush');
   const [brushType, setBrushType] = useState<'paint' | 'restore'>('paint');
+  const paintFlushHandlersRef = useRef<Map<string, () => Promise<void>>>(new Map());
+
+  const registerPaintFlushHandler = useCallback((imageId: string, handler: (() => Promise<void>) | null) => {
+      if (!imageId) return;
+      if (handler) {
+          paintFlushHandlersRef.current.set(imageId, handler);
+      } else {
+          paintFlushHandlersRef.current.delete(imageId);
+      }
+  }, []);
+
+  const flushPendingCommands = useCallback(async (imageId?: string) => {
+      if (imageId) {
+          const handler = paintFlushHandlersRef.current.get(imageId);
+          if (handler) await handler();
+          return;
+      }
+      for (const handler of paintFlushHandlersRef.current.values()) {
+          await handler();
+      }
+  }, []);
 
   // Update endpoint helper for API protection
   const updateEndpoint = useCallback((endpointId: string, updates: Partial<APIEndpoint>) => {
@@ -878,6 +901,8 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     isInpainting,
     handleRestoreRegion,
     handlePaintSave,
+    registerPaintFlushHandler,
+    flushPendingCommands,
     handleBoxFill,
     handleBatchBoxFill,
     // Brush

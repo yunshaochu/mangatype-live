@@ -24,6 +24,7 @@ export const ControlPanel: React.FC = () => {
     zipProgress, setZipProgress,
     zipCancelRequested, requestZipCancel, resetZipCancel,
     setShowManualJson,
+    flushPendingCommands,
     // Brush
     brushColor, setBrushColor, brushSize, setBrushSize,
     paintMode, setPaintMode,
@@ -101,6 +102,7 @@ export const ControlPanel: React.FC = () => {
     if (!currentImage || currentImage.bubbles.length === 0) return;
     setIsMerging(true);
     try {
+        await flushPendingCommands(currentImage.id);
         const blob = await compositeDispatch(currentImage, getExportOptions());
         if (blob) {
             const newUrl = URL.createObjectURL(blob);
@@ -129,6 +131,12 @@ export const ControlPanel: React.FC = () => {
     } catch (e) { console.error("Merge failed", e); alert("Failed to merge layers."); } finally { setIsMerging(false); }
   };
 
+  const onSingleDownload = async () => {
+    if (!currentImage) return;
+    await flushPendingCommands(currentImage.id);
+    await downloadSingleImage(currentImage, getExportOptions());
+  };
+
   const onZipDownload = async () => {
     if (images.length === 0 || isZipping) return;
     zipCancelRef.current = false;
@@ -138,6 +146,7 @@ export const ControlPanel: React.FC = () => {
     resetZipCancel();
 
     try {
+      await flushPendingCommands();
       await downloadAllAsZip(
         images,
         (curr, total) => { setZipProgress({ current: curr, total }); },
@@ -531,7 +540,7 @@ export const ControlPanel: React.FC = () => {
               {isMerging ? <Loader2 className="animate-spin" size={16} /> : <FileStack size={16} />}
             </button>
             <button
-              onClick={() => currentImage && downloadSingleImage(currentImage, getExportOptions())}
+              onClick={onSingleDownload}
               disabled={!currentImage}
               className="p-2 text-gray-300 hover:text-white hover:bg-gray-800 rounded disabled:opacity-30 transition-colors"
               title={t('saveImage', lang)}

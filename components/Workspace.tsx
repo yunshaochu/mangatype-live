@@ -32,6 +32,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
     setImages, currentId, setSelectedMaskId, setSelectedBubbleId,
     updateBubble, triggerAutoColorDetection,
     updateMaskRegion, // Added
+    registerPaintFlushHandler,
     // Brush
     brushColor, brushSize, setBrushColor, handlePaintSave, paintMode, setPaintMode,
     brushType, // 'paint' | 'restore'
@@ -376,6 +377,15 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       }
   }, [phase2Enabled, processReplayQueue]);
 
+  useEffect(() => {
+      if (!currentImage?.id) return;
+      const handler = phase2Enabled ? flushPendingCommandsLocal : null;
+      registerPaintFlushHandler(currentImage.id, handler);
+      return () => {
+          registerPaintFlushHandler(currentImage.id, null);
+      };
+  }, [currentImage?.id, flushPendingCommandsLocal, phase2Enabled, registerPaintFlushHandler]);
+
   const hideBrushCursor = useCallback(() => {
       brushCursorPendingRef.current = null;
       if (brushCursorRafRef.current !== null) {
@@ -403,9 +413,9 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       });
   }, []);
 
-  const samplePaintPixel = useCallback((x: number, y: number) => {
-      const sourceCanvas = paintCanvasRef.current;
-      if (!sourceCanvas) return null;
+  const samplePaintPixel = useCallback((x: number, y: number, source: 'preview' | 'workingHigh' | 'sourceHigh' = 'preview') => {
+      const previewCanvas = paintCanvasRef.current;
+      if (!previewCanvas) return null;
 
       if (!readbackCanvasRef.current) {
           readbackCanvasRef.current = document.createElement('canvas');
@@ -418,12 +428,30 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       const readCtx = readbackCtxRef.current;
       if (!readCtx) return null;
 
-      const px = Math.max(0, Math.min(sourceCanvas.width - 1, Math.floor(x)));
-      const py = Math.max(0, Math.min(sourceCanvas.height - 1, Math.floor(y)));
+      if (source === 'sourceHigh' && originalImageRef.current) {
+          const samplePoint = toWorkingCoords({ x, y });
+          const px = Math.max(0, Math.min(originalImageRef.current.width - 1, Math.floor(samplePoint.x)));
+          const py = Math.max(0, Math.min(originalImageRef.current.height - 1, Math.floor(samplePoint.y)));
+          readCtx.clearRect(0, 0, 1, 1);
+          readCtx.drawImage(originalImageRef.current, px, py, 1, 1, 0, 0, 1, 1);
+          return readCtx.getImageData(0, 0, 1, 1).data;
+      }
+
+      if (source === 'workingHigh' && workingCanvasRef.current) {
+          const samplePoint = toWorkingCoords({ x, y });
+          const px = Math.max(0, Math.min(workingCanvasRef.current.width - 1, Math.floor(samplePoint.x)));
+          const py = Math.max(0, Math.min(workingCanvasRef.current.height - 1, Math.floor(samplePoint.y)));
+          readCtx.clearRect(0, 0, 1, 1);
+          readCtx.drawImage(workingCanvasRef.current, px, py, 1, 1, 0, 0, 1, 1);
+          return readCtx.getImageData(0, 0, 1, 1).data;
+      }
+
+      const px = Math.max(0, Math.min(previewCanvas.width - 1, Math.floor(x)));
+      const py = Math.max(0, Math.min(previewCanvas.height - 1, Math.floor(y)));
       readCtx.clearRect(0, 0, 1, 1);
-      readCtx.drawImage(sourceCanvas, px, py, 1, 1, 0, 0, 1, 1);
+      readCtx.drawImage(previewCanvas, px, py, 1, 1, 0, 0, 1, 1);
       return readCtx.getImageData(0, 0, 1, 1).data;
-  }, []);
+  }, [toWorkingCoords]);
 
   useEffect(() => {
       if (!showPaintCanvas) {
@@ -519,7 +547,12 @@ export const Workspace: React.FC<WorkspaceProps> = ({
 
       // If Alt key is pressed, use Eyedropper behavior
       if (e.altKey && brushType === 'paint') {
-          const pixel = phase1Enabled ? samplePaintPixel(x, y) : ctx.getImageData(x, y, 1, 1).data;
+          const sampleSource = phase2Enabled
+              ? (e.shiftKey ? 'sourceHigh' : 'workingHigh')
+              : 'preview';
+          const pixel = phase1Enabled
+              ? samplePaintPixel(x, y, sampleSource)
+              : ctx.getImageData(x, y, 1, 1).data;
           if (!pixel) return;
           const hex = "#" + ((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1);
           setBrushColor(hex);
