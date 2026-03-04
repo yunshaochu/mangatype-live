@@ -85,6 +85,57 @@ export const AdvancedTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
           )}
         </div>
 
+        {/* Freehand Perf Rollout Flags */}
+        <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-amber-500/30 rounded-xl transition-colors group">
+          <div className="flex justify-between items-start gap-4">
+            <div className="flex gap-3">
+              <div className="mt-1 p-1.5 bg-amber-500/10 rounded text-amber-400"><RotateCw size={18}/></div>
+              <div>
+                <h4 className="text-sm font-medium text-white mb-1">
+                  {lang === 'zh' ? 'Freehand 性能阶段开关' : 'Freehand Perf Phase Flags'}
+                </h4>
+                <p className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors leading-relaxed">
+                  {lang === 'zh'
+                    ? 'Phase1 可回退到旧直画链路；Phase2 预留灰度开关。'
+                    : 'Phase1 can rollback to legacy full-res path; Phase2 is rollout gate for future runtime.'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 space-y-3">
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-gray-700/70 bg-gray-900/40 px-3 py-2">
+              <div>
+                <p className="text-xs font-semibold text-gray-200">Phase1</p>
+                <p className="text-[11px] text-gray-500">
+                  {lang === 'zh' ? '热路径优化 + 异步保存 + history 合并' : 'Hot-path + async save + history merge'}
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-amber-500"
+                checked={config.freehandPerfPhase1Enabled !== false}
+                onChange={(e) => setConfig({ ...config, freehandPerfPhase1Enabled: e.target.checked })}
+              />
+            </label>
+
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-gray-700/70 bg-gray-900/40 px-3 py-2">
+              <div>
+                <p className="text-xs font-semibold text-gray-200">Phase2</p>
+                <p className="text-[11px] text-gray-500">
+                  {lang === 'zh' ? '预览/高清双层运行时（灰度预留）' : 'preview/working dual runtime (rollout gate)'}
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-amber-500"
+                checked={config.freehandPerfPhase2Enabled === true}
+                onChange={(e) => setConfig({ ...config, freehandPerfPhase2Enabled: e.target.checked })}
+              />
+            </label>
+          </div>
+        </div>
+
         {/* Skipped Export Behavior */}
         <div className="p-4 bg-gray-800/30 border border-gray-800 hover:border-emerald-500/30 rounded-xl transition-colors group">
           <div className="flex justify-between items-start">

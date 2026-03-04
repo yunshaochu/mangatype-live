@@ -42,6 +42,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   const paintSaveSeqRef = useRef(0);
   const [isPainting, setIsPainting] = useState(false);
   const [paintSaveError, setPaintSaveError] = useState<string | null>(null);
+  const [legacyBrushCursorPos, setLegacyBrushCursorPos] = useState<{ x: number; y: number; d: number } | null>(null);
   const lastPos = useRef<{x: number, y: number} | null>(null);
 
   // --- Zoom / Pan State ---
@@ -59,6 +60,9 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   panRef.current = { x: panX, y: panY };
 
   const lang = aiConfig.language;
+  const phase1Enabled = aiConfig.freehandPerfPhase1Enabled !== false;
+  const phase2Enabled = aiConfig.freehandPerfPhase2Enabled === true;
+  const perfFlagsRef = useRef({ phase1Enabled, phase2Enabled });
   const bubbles = currentImage?.bubbles || [];
   const maskRegions = currentImage?.maskRegions || [];
 
@@ -101,13 +105,32 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       showFilledMasks = false;
   }
 
+  useEffect(() => {
+      const prev = perfFlagsRef.current;
+      if (prev.phase1Enabled !== phase1Enabled || prev.phase2Enabled !== phase2Enabled) {
+          console.info('[freehand-perf] flags:changed', {
+              phase1Enabled,
+              phase2Enabled,
+              rollbackToLegacy: !phase1Enabled,
+          });
+      }
+      if (phase2Enabled) {
+          console.warn('[freehand-perf] replay:failed', {
+              reason: 'phase2 runtime not implemented yet; fallback to phase1 path',
+          });
+      }
+      perfFlagsRef.current = { phase1Enabled, phase2Enabled };
+  }, [phase1Enabled, phase2Enabled]);
+
   // --- PAINTING LOGIC (Freehand Brush Only) ---
   
   // Initialize canvas with current image when entering brush mode
   useEffect(() => {
       if (showPaintCanvas && currentImage && paintCanvasRef.current) {
           const canvas = paintCanvasRef.current;
-          const ctx = canvas.getContext('2d');
+          const ctx = phase1Enabled
+              ? canvas.getContext('2d')
+              : canvas.getContext('2d', { willReadFrequently: true });
           if (!ctx) return;
 
           // 1. Load the current "Clean" layer as the base for the canvas
@@ -149,7 +172,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               };
           }
       }
-  }, [showPaintCanvas, currentImage?.id, displayUrl]); // Re-init when visibility or image changes
+  }, [showPaintCanvas, currentImage?.id, displayUrl, phase1Enabled]); // Re-init when visibility or image/phase changes
 
   const getCanvasCoords = (e: React.MouseEvent) => {
       if (!paintCanvasRef.current) return { x: 0, y: 0 };
@@ -224,6 +247,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   useEffect(() => {
       if (!showPaintCanvas) {
           hideBrushCursor();
+          setLegacyBrushCursorPos(null);
       }
   }, [showPaintCanvas, hideBrushCursor]);
 
@@ -262,6 +286,8 @@ export const Workspace: React.FC<WorkspaceProps> = ({
 
   const startPaintSave = useCallback((imageId: string, canvas: HTMLCanvasElement) => {
       const saveSeq = ++paintSaveSeqRef.current;
+      const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      console.info('[freehand-perf] flush:start', { imageId, saveSeq, phase1Enabled });
       setPaintSaveError(null);
       setImages(prev => prev.map(img => img.id === imageId ? { ...img, inpaintingStatus: 'processing' } : img));
       void (async () => {
@@ -271,14 +297,26 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               if (saveSeq !== paintSaveSeqRef.current) return;
               handlePaintSave(imageId, newBase64);
               setPaintSaveError(null);
+              const finishedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+              console.info('[freehand-perf] flush:done', {
+                  imageId,
+                  saveSeq,
+                  durationMs: Math.round(finishedAt - startedAt),
+              });
           } catch (err) {
               if (saveSeq !== paintSaveSeqRef.current) return;
-              console.error('Paint save failed', err);
+              const failedAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+              console.error('[freehand-perf] flush:failed', {
+                  imageId,
+                  saveSeq,
+                  durationMs: Math.round(failedAt - startedAt),
+                  reason: err instanceof Error ? err.message : String(err),
+              });
               setImages(prev => prev.map(img => img.id === imageId ? { ...img, inpaintingStatus: 'error' } : img));
               setPaintSaveError('Paint save failed. Please retry.');
           }
       })();
-  }, [blobToDataUrl, canvasToPngBlob, handlePaintSave, setImages]);
+  }, [blobToDataUrl, canvasToPngBlob, handlePaintSave, phase1Enabled, setImages]);
 
   const handlePaintStart = (e: React.MouseEvent) => {
       if (!showPaintCanvas) return;
@@ -289,7 +327,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
 
       // If Alt key is pressed, use Eyedropper behavior
       if (e.altKey && brushType === 'paint') {
-          const pixel = samplePaintPixel(x, y);
+          const pixel = phase1Enabled ? samplePaintPixel(x, y) : ctx.getImageData(x, y, 1, 1).data;
           if (!pixel) return;
           const hex = "#" + ((1 << 24) + (pixel[0] << 16) + (pixel[1] << 8) + pixel[2]).toString(16).slice(1);
           setBrushColor(hex);
@@ -320,7 +358,12 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       if (paintCanvasRef.current) {
           const rect = paintCanvasRef.current.getBoundingClientRect();
           const scale = rect.width > 0 ? paintCanvasRef.current.width / rect.width : 1;
-          queueBrushCursorUpdate({ x: e.clientX, y: e.clientY, d: Math.max(4, brushSize / scale) });
+          const nextCursor = { x: e.clientX, y: e.clientY, d: Math.max(4, brushSize / scale) };
+          if (phase1Enabled) {
+              queueBrushCursorUpdate(nextCursor);
+          } else {
+              setLegacyBrushCursorPos(nextCursor);
+          }
       }
       // Only paint if in brush mode
       if (!isPainting || !showPaintCanvas || !paintCanvasRef.current || paintMode !== 'brush') return;
@@ -348,8 +391,15 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       if (isPainting && currentImage && paintCanvasRef.current) {
           setIsPainting(false);
           lastPos.current = null;
-          // Save asynchronously to avoid blocking the main thread on pen-up.
-          startPaintSave(currentImage.id, paintCanvasRef.current);
+          if (phase1Enabled) {
+              // Save asynchronously to avoid blocking the main thread on pen-up.
+              startPaintSave(currentImage.id, paintCanvasRef.current);
+          } else {
+              console.info('[freehand-perf] flush:legacy-sync', { imageId: currentImage.id });
+              const newBase64 = paintCanvasRef.current.toDataURL('image/png');
+              handlePaintSave(currentImage.id, newBase64);
+              setPaintSaveError(null);
+          }
       }
   };
 
@@ -591,7 +641,14 @@ export const Workspace: React.FC<WorkspaceProps> = ({
                 onMouseDown={handlePaintStart}
                 onMouseMove={handlePaintMove}
                 onMouseUp={handlePaintEnd}
-                onMouseLeave={() => { handlePaintEnd(); hideBrushCursor(); }}
+                onMouseLeave={() => {
+                  handlePaintEnd();
+                  if (phase1Enabled) {
+                    hideBrushCursor();
+                  } else {
+                    setLegacyBrushCursorPos(null);
+                  }
+                }}
             />
         ) : (
             <img
@@ -758,7 +815,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       </div>
 
       {/* Brush cursor ring */}
-      {showPaintCanvas && (
+      {showPaintCanvas && phase1Enabled && (
         <div ref={brushCursorRef} style={{
           position: 'fixed',
           left: 0,
@@ -773,6 +830,22 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           pointerEvents: 'none',
           zIndex: 9999,
           willChange: 'transform,width,height',
+        }} />
+      )}
+
+      {showPaintCanvas && !phase1Enabled && legacyBrushCursorPos && (
+        <div style={{
+          position: 'fixed',
+          left: legacyBrushCursorPos.x,
+          top: legacyBrushCursorPos.y,
+          width: legacyBrushCursorPos.d,
+          height: legacyBrushCursorPos.d,
+          transform: 'translate(-50%, -50%)',
+          borderRadius: '50%',
+          border: '1px solid rgba(255,255,255,0.9)',
+          boxShadow: '0 0 0 1px rgba(0,0,0,0.7)',
+          pointerEvents: 'none',
+          zIndex: 9999,
         }} />
       )}
 

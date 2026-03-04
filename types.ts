@@ -294,6 +294,10 @@ export interface AIConfig {
   // Export
   exportMethod?: 'canvas' | 'screenshot'; // Default: 'canvas'
   exportSkippedAsOriginal?: boolean; // If true, skipped images export as original image
+
+  // Freehand Performance Rollout
+  freehandPerfPhase1Enabled?: boolean; // Phase 1: hot-path + async save + history merge
+  freehandPerfPhase2Enabled?: boolean; // Phase 2: preview/working split (future rollout gate)
 }
 
 // Add EyeDropper API type definition

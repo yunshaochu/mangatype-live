@@ -89,6 +89,8 @@ const DEFAULT_CONFIG: AIConfig = {
   apiProtectionDurations: [30, 60, 120, 300, 600],
   apiProtectionDisableThreshold: 5,
   exportSkippedAsOriginal: false,
+  freehandPerfPhase1Enabled: true,
+  freehandPerfPhase2Enabled: false,
 };
 
 interface ProjectContextType {
@@ -664,6 +666,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
   }, [setImages, historyRef, setActiveLayer]);
 
+  const phase1Enabled = aiConfig.freehandPerfPhase1Enabled !== false;
   const PAINT_HISTORY_MERGE_WINDOW_MS = 700;
   const paintHistoryMergeRef = useRef<{ imageId: string | null; lastCommitAt: number }>({
       imageId: null,
@@ -674,6 +677,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const handlePaintSave = useCallback((imageId: string, newBase64: string) => {
       const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
       const shouldMergeHistory =
+          phase1Enabled &&
           paintHistoryMergeRef.current.imageId === imageId &&
           (now - paintHistoryMergeRef.current.lastCommitAt) <= PAINT_HISTORY_MERGE_WINDOW_MS;
 
@@ -704,7 +708,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
           imageId,
           lastCommitAt: now,
       };
-  }, [setImages]);
+  }, [phase1Enabled, setImages]);
 
   // 6. Shared Actions
   const detectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
