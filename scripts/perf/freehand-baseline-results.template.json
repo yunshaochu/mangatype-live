@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "capturedAt": "YYYY-MM-DDTHH:mm:ssZ",
+    "browser": "Chrome 123.0.0.0",
+    "machine": "CPU/GPU/RAM summary",
+    "scriptId": "freehand-standard-zigzag-v1"
+  },
+  "scenarios": {
+    "4mp": [
+      {
+        "runId": "4mp-run-1",
+        "durationSec": 30,
+        "avgFps": 0,
+        "p95PenUpBlockMs": 0,
+        "peakMemoryMb": 0,
+        "exportMs": 0
+      }
+    ],
+    "8mp": [
+      {
+        "runId": "8mp-run-1",
+        "durationSec": 30,
+        "avgFps": 0,
+        "p95PenUpBlockMs": 0,
+        "peakMemoryMb": 0,
+        "exportMs": 0
+      }
+    ]
+  }
+}
