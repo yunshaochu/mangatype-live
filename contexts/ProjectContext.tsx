@@ -664,8 +664,19 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
   }, [setImages, historyRef, setActiveLayer]);
 
+  const PAINT_HISTORY_MERGE_WINDOW_MS = 700;
+  const paintHistoryMergeRef = useRef<{ imageId: string | null; lastCommitAt: number }>({
+      imageId: null,
+      lastCommitAt: 0,
+  });
+
   // Save manual paint result
   const handlePaintSave = useCallback((imageId: string, newBase64: string) => {
+      const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      const shouldMergeHistory =
+          paintHistoryMergeRef.current.imageId === imageId &&
+          (now - paintHistoryMergeRef.current.lastCommitAt) <= PAINT_HISTORY_MERGE_WINDOW_MS;
+
       setImages(prev => prev.map(p => {
           if (p.id !== imageId) return p;
 
@@ -687,7 +698,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
               inpaintingStatus: 'done',
               maskRegions: newMasks
           };
-      }));
+      }), shouldMergeHistory);
+
+      paintHistoryMergeRef.current = {
+          imageId,
+          lastCommitAt: now,
+      };
   }, [setImages]);
 
   // 6. Shared Actions
