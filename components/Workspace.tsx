@@ -34,6 +34,10 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   // Paint Canvas Ref
   const paintCanvasRef = useRef<HTMLCanvasElement>(null);
   const originalImageRef = useRef<HTMLImageElement | null>(null); // Store original image for restoring
+  const originalPreviewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const workingCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const workingCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+  const phase2ScaleRef = useRef(1);
   const readbackCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const readbackCtxRef = useRef<CanvasRenderingContext2D | null>(null);
   const brushCursorRef = useRef<HTMLDivElement>(null);
@@ -65,6 +69,8 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   const perfFlagsRef = useRef({ phase1Enabled, phase2Enabled });
   const bubbles = currentImage?.bubbles || [];
   const maskRegions = currentImage?.maskRegions || [];
+  const PHASE2_LOWRES_THRESHOLD_PIXELS = 4_000_000;
+  const PHASE2_PREVIEW_TARGET_PIXELS = 1_500_000;
 
   // Determine display URL based strictly on Active Layer
   let displayUrl = currentImage ? (currentImage.originalUrl || currentImage.url) : '';
@@ -114,11 +120,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               rollbackToLegacy: !phase1Enabled,
           });
       }
-      if (phase2Enabled) {
-          console.warn('[freehand-perf] replay:failed', {
-              reason: 'phase2 runtime not implemented yet; fallback to phase1 path',
-          });
-      }
       perfFlagsRef.current = { phase1Enabled, phase2Enabled };
   }, [phase1Enabled, phase2Enabled]);
 
@@ -133,14 +134,41 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               : canvas.getContext('2d', { willReadFrequently: true });
           if (!ctx) return;
 
+          workingCanvasRef.current = null;
+          workingCtxRef.current = null;
+          originalPreviewCanvasRef.current = null;
+          phase2ScaleRef.current = 1;
+
           // 1. Load the current "Clean" layer as the base for the canvas
           const img = new Image();
           img.crossOrigin = "Anonymous";
           img.src = displayUrl;
           img.onload = () => {
-              canvas.width = img.width;
-              canvas.height = img.height;
-              ctx.drawImage(img, 0, 0);
+              const sourcePixels = img.width * img.height;
+              const usePhase2LowRes = phase2Enabled && sourcePixels > PHASE2_LOWRES_THRESHOLD_PIXELS;
+              const previewScale = usePhase2LowRes
+                  ? Math.max(0.2, Math.min(1, Math.sqrt(PHASE2_PREVIEW_TARGET_PIXELS / sourcePixels)))
+                  : 1;
+
+              const previewWidth = Math.max(1, Math.round(img.width * previewScale));
+              const previewHeight = Math.max(1, Math.round(img.height * previewScale));
+              phase2ScaleRef.current = previewScale;
+
+              canvas.width = previewWidth;
+              canvas.height = previewHeight;
+              ctx.drawImage(img, 0, 0, previewWidth, previewHeight);
+
+              if (phase2Enabled) {
+                  const workingCanvas = document.createElement('canvas');
+                  workingCanvas.width = img.width;
+                  workingCanvas.height = img.height;
+                  const workingCtx = workingCanvas.getContext('2d');
+                  if (workingCtx) {
+                      workingCtx.drawImage(img, 0, 0);
+                      workingCanvasRef.current = workingCanvas;
+                      workingCtxRef.current = workingCtx;
+                  }
+              }
 
               // 2. COMPOSITE METADATA FILLS ONTO CANVAS
               // This allows the brush to see and paint over "Box Tool" fills.
@@ -156,6 +184,15 @@ export const Workspace: React.FC<WorkspaceProps> = ({
                           const h = (region.height / 100) * canvas.height;
                           ctx.fillStyle = region.fillColor || '#ffffff';
                           ctx.fillRect(x - w / 2, y - h / 2, w, h);
+
+                          if (workingCtxRef.current) {
+                              const wx = (region.x / 100) * workingCtxRef.current.canvas.width;
+                              const wy = (region.y / 100) * workingCtxRef.current.canvas.height;
+                              const ww = (region.width / 100) * workingCtxRef.current.canvas.width;
+                              const wh = (region.height / 100) * workingCtxRef.current.canvas.height;
+                              workingCtxRef.current.fillStyle = region.fillColor || '#ffffff';
+                              workingCtxRef.current.fillRect(wx - ww / 2, wy - wh / 2, ww, wh);
+                          }
                       }
                   });
               }
@@ -169,10 +206,20 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               orig.src = currentImage.originalUrl || currentImage.url;
               orig.onload = () => {
                   originalImageRef.current = orig;
+                  if (phase2Enabled && phase2ScaleRef.current < 1) {
+                      const previewOriginalCanvas = document.createElement('canvas');
+                      previewOriginalCanvas.width = Math.max(1, Math.round(orig.width * phase2ScaleRef.current));
+                      previewOriginalCanvas.height = Math.max(1, Math.round(orig.height * phase2ScaleRef.current));
+                      const previewOriginalCtx = previewOriginalCanvas.getContext('2d');
+                      if (previewOriginalCtx) {
+                          previewOriginalCtx.drawImage(orig, 0, 0, previewOriginalCanvas.width, previewOriginalCanvas.height);
+                          originalPreviewCanvasRef.current = previewOriginalCanvas;
+                      }
+                  }
               };
           }
       }
-  }, [showPaintCanvas, currentImage?.id, displayUrl, phase1Enabled]); // Re-init when visibility or image/phase changes
+  }, [showPaintCanvas, currentImage?.id, displayUrl, phase1Enabled, phase2Enabled]); // Re-init when visibility or image/phase changes
 
   const getCanvasCoords = (e: React.MouseEvent) => {
       if (!paintCanvasRef.current) return { x: 0, y: 0 };
@@ -185,8 +232,11 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       };
   };
 
-  const getBrushStyle = (ctx: CanvasRenderingContext2D) => {
+  const getBrushStyle = (ctx: CanvasRenderingContext2D, target: 'preview' | 'working' = 'preview') => {
       if (brushType === 'restore' && originalImageRef.current) {
+          if (target === 'preview' && phase2Enabled && originalPreviewCanvasRef.current) {
+              return ctx.createPattern(originalPreviewCanvasRef.current, 'no-repeat');
+          }
           // Create a pattern from the original image. 
           // Since the canvas size matches the image size 1:1, 'no-repeat' draws it aligned at 0,0.
           // This effectively "reveals" the original image under the brush stroke.
@@ -194,6 +244,14 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       }
       return brushColor;
   };
+
+  const toWorkingCoords = useCallback((point: { x: number; y: number }) => {
+      const scale = phase2ScaleRef.current || 1;
+      return {
+          x: point.x / scale,
+          y: point.y / scale,
+      };
+  }, []);
 
   const hideBrushCursor = useCallback(() => {
       brushCursorPendingRef.current = null;
@@ -255,6 +313,10 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       hideBrushCursor();
       readbackCtxRef.current = null;
       readbackCanvasRef.current = null;
+      workingCtxRef.current = null;
+      workingCanvasRef.current = null;
+      originalPreviewCanvasRef.current = null;
+      phase2ScaleRef.current = 1;
   }, [hideBrushCursor]);
 
   const canvasToPngBlob = useCallback((canvas: HTMLCanvasElement) => {
@@ -338,7 +400,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       setIsPainting(true);
       lastPos.current = { x, y };
       
-      const style = getBrushStyle(ctx);
+      const style = getBrushStyle(ctx, 'preview');
       if (!style) return;
 
       ctx.lineCap = 'round';
@@ -351,6 +413,22 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       ctx.beginPath();
       ctx.arc(x, y, brushSize/2, 0, Math.PI * 2);
       ctx.fill();
+
+      if (phase2Enabled && workingCtxRef.current) {
+          const workingPos = toWorkingCoords({ x, y });
+          const workingStyle = getBrushStyle(workingCtxRef.current, 'working');
+          if (workingStyle) {
+              const workingBrushSize = brushSize / (phase2ScaleRef.current || 1);
+              workingCtxRef.current.lineCap = 'round';
+              workingCtxRef.current.lineJoin = 'round';
+              workingCtxRef.current.strokeStyle = workingStyle;
+              workingCtxRef.current.fillStyle = workingStyle;
+              workingCtxRef.current.lineWidth = workingBrushSize;
+              workingCtxRef.current.beginPath();
+              workingCtxRef.current.arc(workingPos.x, workingPos.y, workingBrushSize / 2, 0, Math.PI * 2);
+              workingCtxRef.current.fill();
+          }
+      }
   };
 
   const handlePaintMove = (e: React.MouseEvent) => {
@@ -373,7 +451,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
 
       const newPos = getCanvasCoords(e);
       
-      const style = getBrushStyle(ctx);
+      const style = getBrushStyle(ctx, 'preview');
       if (!style) return;
 
       ctx.strokeStyle = style;
@@ -383,6 +461,20 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       ctx.moveTo(lastPos.current.x, lastPos.current.y);
       ctx.lineTo(newPos.x, newPos.y);
       ctx.stroke();
+
+      if (phase2Enabled && workingCtxRef.current) {
+          const prevWorkingPos = toWorkingCoords(lastPos.current);
+          const newWorkingPos = toWorkingCoords(newPos);
+          const workingStyle = getBrushStyle(workingCtxRef.current, 'working');
+          if (workingStyle) {
+              workingCtxRef.current.strokeStyle = workingStyle;
+              workingCtxRef.current.lineWidth = brushSize / (phase2ScaleRef.current || 1);
+              workingCtxRef.current.beginPath();
+              workingCtxRef.current.moveTo(prevWorkingPos.x, prevWorkingPos.y);
+              workingCtxRef.current.lineTo(newWorkingPos.x, newWorkingPos.y);
+              workingCtxRef.current.stroke();
+          }
+      }
       
       lastPos.current = newPos;
   };
@@ -391,12 +483,13 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       if (isPainting && currentImage && paintCanvasRef.current) {
           setIsPainting(false);
           lastPos.current = null;
+          const saveCanvas = phase2Enabled && workingCanvasRef.current ? workingCanvasRef.current : paintCanvasRef.current;
           if (phase1Enabled) {
               // Save asynchronously to avoid blocking the main thread on pen-up.
-              startPaintSave(currentImage.id, paintCanvasRef.current);
+              startPaintSave(currentImage.id, saveCanvas);
           } else {
               console.info('[freehand-perf] flush:legacy-sync', { imageId: currentImage.id });
-              const newBase64 = paintCanvasRef.current.toDataURL('image/png');
+              const newBase64 = saveCanvas.toDataURL('image/png');
               handlePaintSave(currentImage.id, newBase64);
               setPaintSaveError(null);
           }
