@@ -8,6 +8,14 @@ import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { getFillOverlayMode } from '../utils/editorUtils';
 
+type StrokeCommand = {
+  tool: 'paint' | 'restore';
+  color: string;
+  size: number;
+  compositeMode: GlobalCompositeOperation;
+  pointsHigh: Array<{ x: number; y: number }>;
+};
+
 interface WorkspaceProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   onCanvasMouseDown: (e: React.MouseEvent) => void;
@@ -71,6 +79,12 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   const maskRegions = currentImage?.maskRegions || [];
   const PHASE2_LOWRES_THRESHOLD_PIXELS = 4_000_000;
   const PHASE2_PREVIEW_TARGET_PIXELS = 1_500_000;
+  const PHASE2_REPLAY_BATCH_SIZE = 120;
+  const strokeLogRef = useRef<StrokeCommand[]>([]);
+  const activeStrokeRef = useRef<StrokeCommand | null>(null);
+  const replayQueueRef = useRef<StrokeCommand[]>([]);
+  const replayingRef = useRef(false);
+  const replayPromiseRef = useRef<Promise<void> | null>(null);
 
   // Determine display URL based strictly on Active Layer
   let displayUrl = currentImage ? (currentImage.originalUrl || currentImage.url) : '';
@@ -138,6 +152,11 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           workingCtxRef.current = null;
           originalPreviewCanvasRef.current = null;
           phase2ScaleRef.current = 1;
+          strokeLogRef.current = [];
+          activeStrokeRef.current = null;
+          replayQueueRef.current = [];
+          replayingRef.current = false;
+          replayPromiseRef.current = null;
 
           // 1. Load the current "Clean" layer as the base for the canvas
           const img = new Image();
@@ -253,6 +272,110 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       };
   }, []);
 
+  const replayStrokeCommand = useCallback((command: StrokeCommand) => {
+      return new Promise<void>((resolve, reject) => {
+          const ctx = workingCtxRef.current;
+          if (!ctx) {
+              resolve();
+              return;
+          }
+          try {
+              const drawStyle =
+                  command.tool === 'restore'
+                      ? (originalImageRef.current ? ctx.createPattern(originalImageRef.current, 'no-repeat') : null)
+                      : command.color;
+              if (!drawStyle || command.pointsHigh.length === 0) {
+                  resolve();
+                  return;
+              }
+              ctx.globalCompositeOperation = command.compositeMode;
+              ctx.lineCap = 'round';
+              ctx.lineJoin = 'round';
+              ctx.strokeStyle = drawStyle;
+              ctx.fillStyle = drawStyle;
+              ctx.lineWidth = command.size;
+
+              const first = command.pointsHigh[0];
+              ctx.beginPath();
+              ctx.arc(first.x, first.y, command.size / 2, 0, Math.PI * 2);
+              ctx.fill();
+
+              let index = 1;
+              const step = () => {
+                  if (!workingCtxRef.current) {
+                      resolve();
+                      return;
+                  }
+                  const end = Math.min(index + PHASE2_REPLAY_BATCH_SIZE, command.pointsHigh.length);
+                  if (index < end) {
+                      ctx.beginPath();
+                      for (; index < end; index += 1) {
+                          const prev = command.pointsHigh[index - 1];
+                          const next = command.pointsHigh[index];
+                          ctx.moveTo(prev.x, prev.y);
+                          ctx.lineTo(next.x, next.y);
+                      }
+                      ctx.stroke();
+                  }
+                  if (index < command.pointsHigh.length) {
+                      setTimeout(step, 0);
+                      return;
+                  }
+                  resolve();
+              };
+              step();
+          } catch (error) {
+              reject(error);
+          }
+      });
+  }, []);
+
+  const processReplayQueue = useCallback(() => {
+      if (!phase2Enabled) return Promise.resolve();
+      if (replayingRef.current && replayPromiseRef.current) return replayPromiseRef.current;
+      if (replayQueueRef.current.length === 0) return Promise.resolve();
+
+      replayingRef.current = true;
+      const startAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+      console.info('[freehand-perf] replay:start', {
+          queueLength: replayQueueRef.current.length,
+      });
+
+      const run = (async () => {
+          while (replayQueueRef.current.length > 0) {
+              const command = replayQueueRef.current.shift();
+              if (!command) continue;
+              await replayStrokeCommand(command);
+          }
+          const endAt = typeof performance !== 'undefined' ? performance.now() : Date.now();
+          console.info('[freehand-perf] replay:done', {
+              durationMs: Math.round(endAt - startAt),
+              strokeLogSize: strokeLogRef.current.length,
+          });
+      })()
+          .catch((error) => {
+              console.error('[freehand-perf] replay:failed', {
+                  reason: error instanceof Error ? error.message : String(error),
+              });
+          })
+          .finally(() => {
+              replayingRef.current = false;
+              replayPromiseRef.current = null;
+          });
+
+      replayPromiseRef.current = run;
+      return run;
+  }, [phase2Enabled, replayStrokeCommand]);
+
+  const flushPendingCommandsLocal = useCallback(async () => {
+      if (!phase2Enabled) return;
+      await processReplayQueue();
+      while (replayQueueRef.current.length > 0 || replayingRef.current) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          await processReplayQueue();
+      }
+  }, [phase2Enabled, processReplayQueue]);
+
   const hideBrushCursor = useCallback(() => {
       brushCursorPendingRef.current = null;
       if (brushCursorRafRef.current !== null) {
@@ -317,6 +440,10 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       workingCanvasRef.current = null;
       originalPreviewCanvasRef.current = null;
       phase2ScaleRef.current = 1;
+      activeStrokeRef.current = null;
+      replayQueueRef.current = [];
+      replayingRef.current = false;
+      replayPromiseRef.current = null;
   }, [hideBrushCursor]);
 
   const canvasToPngBlob = useCallback((canvas: HTMLCanvasElement) => {
@@ -354,6 +481,9 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       setImages(prev => prev.map(img => img.id === imageId ? { ...img, inpaintingStatus: 'processing' } : img));
       void (async () => {
           try {
+              if (phase2Enabled) {
+                  await flushPendingCommandsLocal();
+              }
               const blob = await canvasToPngBlob(canvas);
               const newBase64 = await blobToDataUrl(blob);
               if (saveSeq !== paintSaveSeqRef.current) return;
@@ -378,7 +508,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               setPaintSaveError('Paint save failed. Please retry.');
           }
       })();
-  }, [blobToDataUrl, canvasToPngBlob, handlePaintSave, phase1Enabled, setImages]);
+  }, [blobToDataUrl, canvasToPngBlob, flushPendingCommandsLocal, handlePaintSave, phase1Enabled, phase2Enabled, setImages]);
 
   const handlePaintStart = (e: React.MouseEvent) => {
       if (!showPaintCanvas) return;
@@ -399,6 +529,17 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       // BRUSH TOOL
       setIsPainting(true);
       lastPos.current = { x, y };
+      if (phase2Enabled) {
+          activeStrokeRef.current = {
+              tool: brushType,
+              color: brushColor,
+              size: brushSize / (phase2ScaleRef.current || 1),
+              compositeMode: 'source-over',
+              pointsHigh: [toWorkingCoords({ x, y })],
+          };
+      } else {
+          activeStrokeRef.current = null;
+      }
       
       const style = getBrushStyle(ctx, 'preview');
       if (!style) return;
@@ -413,22 +554,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       ctx.beginPath();
       ctx.arc(x, y, brushSize/2, 0, Math.PI * 2);
       ctx.fill();
-
-      if (phase2Enabled && workingCtxRef.current) {
-          const workingPos = toWorkingCoords({ x, y });
-          const workingStyle = getBrushStyle(workingCtxRef.current, 'working');
-          if (workingStyle) {
-              const workingBrushSize = brushSize / (phase2ScaleRef.current || 1);
-              workingCtxRef.current.lineCap = 'round';
-              workingCtxRef.current.lineJoin = 'round';
-              workingCtxRef.current.strokeStyle = workingStyle;
-              workingCtxRef.current.fillStyle = workingStyle;
-              workingCtxRef.current.lineWidth = workingBrushSize;
-              workingCtxRef.current.beginPath();
-              workingCtxRef.current.arc(workingPos.x, workingPos.y, workingBrushSize / 2, 0, Math.PI * 2);
-              workingCtxRef.current.fill();
-          }
-      }
   };
 
   const handlePaintMove = (e: React.MouseEvent) => {
@@ -461,19 +586,8 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       ctx.moveTo(lastPos.current.x, lastPos.current.y);
       ctx.lineTo(newPos.x, newPos.y);
       ctx.stroke();
-
-      if (phase2Enabled && workingCtxRef.current) {
-          const prevWorkingPos = toWorkingCoords(lastPos.current);
-          const newWorkingPos = toWorkingCoords(newPos);
-          const workingStyle = getBrushStyle(workingCtxRef.current, 'working');
-          if (workingStyle) {
-              workingCtxRef.current.strokeStyle = workingStyle;
-              workingCtxRef.current.lineWidth = brushSize / (phase2ScaleRef.current || 1);
-              workingCtxRef.current.beginPath();
-              workingCtxRef.current.moveTo(prevWorkingPos.x, prevWorkingPos.y);
-              workingCtxRef.current.lineTo(newWorkingPos.x, newWorkingPos.y);
-              workingCtxRef.current.stroke();
-          }
+      if (phase2Enabled && activeStrokeRef.current) {
+          activeStrokeRef.current.pointsHigh.push(toWorkingCoords(newPos));
       }
       
       lastPos.current = newPos;
@@ -483,6 +597,13 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       if (isPainting && currentImage && paintCanvasRef.current) {
           setIsPainting(false);
           lastPos.current = null;
+          if (phase2Enabled && activeStrokeRef.current) {
+              const command = activeStrokeRef.current;
+              activeStrokeRef.current = null;
+              strokeLogRef.current.push(command);
+              replayQueueRef.current.push(command);
+              void processReplayQueue();
+          }
           const saveCanvas = phase2Enabled && workingCanvasRef.current ? workingCanvasRef.current : paintCanvasRef.current;
           if (phase1Enabled) {
               // Save asynchronously to avoid blocking the main thread on pen-up.
