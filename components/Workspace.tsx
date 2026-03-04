@@ -39,7 +39,9 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   const brushCursorRef = useRef<HTMLDivElement>(null);
   const brushCursorRafRef = useRef<number | null>(null);
   const brushCursorPendingRef = useRef<{ x: number; y: number; d: number } | null>(null);
+  const paintSaveSeqRef = useRef(0);
   const [isPainting, setIsPainting] = useState(false);
+  const [paintSaveError, setPaintSaveError] = useState<string | null>(null);
   const lastPos = useRef<{x: number, y: number} | null>(null);
 
   // --- Zoom / Pan State ---
@@ -231,6 +233,53 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       readbackCanvasRef.current = null;
   }, [hideBrushCursor]);
 
+  const canvasToPngBlob = useCallback((canvas: HTMLCanvasElement) => {
+      return new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((blob) => {
+              if (!blob) {
+                  reject(new Error('canvas.toBlob returned null'));
+                  return;
+              }
+              resolve(blob);
+          }, 'image/png');
+      });
+  }, []);
+
+  const blobToDataUrl = useCallback((blob: Blob) => {
+      return new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+              if (typeof reader.result !== 'string') {
+                  reject(new Error('FileReader returned non-string result'));
+                  return;
+              }
+              resolve(reader.result);
+          };
+          reader.onerror = () => reject(reader.error || new Error('FileReader failed'));
+          reader.readAsDataURL(blob);
+      });
+  }, []);
+
+  const startPaintSave = useCallback((imageId: string, canvas: HTMLCanvasElement) => {
+      const saveSeq = ++paintSaveSeqRef.current;
+      setPaintSaveError(null);
+      setImages(prev => prev.map(img => img.id === imageId ? { ...img, inpaintingStatus: 'processing' } : img));
+      void (async () => {
+          try {
+              const blob = await canvasToPngBlob(canvas);
+              const newBase64 = await blobToDataUrl(blob);
+              if (saveSeq !== paintSaveSeqRef.current) return;
+              handlePaintSave(imageId, newBase64);
+              setPaintSaveError(null);
+          } catch (err) {
+              if (saveSeq !== paintSaveSeqRef.current) return;
+              console.error('Paint save failed', err);
+              setImages(prev => prev.map(img => img.id === imageId ? { ...img, inpaintingStatus: 'error' } : img));
+              setPaintSaveError('Paint save failed. Please retry.');
+          }
+      })();
+  }, [blobToDataUrl, canvasToPngBlob, handlePaintSave, setImages]);
+
   const handlePaintStart = (e: React.MouseEvent) => {
       if (!showPaintCanvas) return;
       
@@ -299,9 +348,8 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       if (isPainting && currentImage && paintCanvasRef.current) {
           setIsPainting(false);
           lastPos.current = null;
-          // Save the canvas state to the image state
-          const newBase64 = paintCanvasRef.current.toDataURL('image/png');
-          handlePaintSave(currentImage.id, newBase64);
+          // Save asynchronously to avoid blocking the main thread on pen-up.
+          startPaintSave(currentImage.id, paintCanvasRef.current);
       }
   };
 
@@ -726,6 +774,12 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           zIndex: 9999,
           willChange: 'transform,width,height',
         }} />
+      )}
+
+      {paintSaveError && (
+        <div className="absolute top-4 right-4 z-50 rounded-md border border-red-700/60 bg-red-950/85 px-3 py-1.5 text-xs font-semibold text-red-200">
+          {paintSaveError}
+        </div>
       )}
 
       {/* Zoom Indicator */}
