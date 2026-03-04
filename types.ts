@@ -298,6 +298,9 @@ export interface AIConfig {
   // Freehand Performance Rollout
   freehandPerfPhase1Enabled?: boolean; // Phase 1: hot-path + async save + history merge
   freehandPerfPhase2Enabled?: boolean; // Phase 2: preview/working split (future rollout gate)
+  freehandLowResThresholdMp?: number; // Auto-enable low-res when W*H exceeds this MP threshold
+  freehandPreviewTargetPixels?: number; // Target pixels for previewLow canvas
+  freehandReplayBatchSize?: number; // Async replay batch size per tick
 }
 
 // Add EyeDropper API type definition

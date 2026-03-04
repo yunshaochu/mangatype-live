@@ -91,6 +91,9 @@ const DEFAULT_CONFIG: AIConfig = {
   exportSkippedAsOriginal: false,
   freehandPerfPhase1Enabled: true,
   freehandPerfPhase2Enabled: false,
+  freehandLowResThresholdMp: 4,
+  freehandPreviewTargetPixels: 1500000,
+  freehandReplayBatchSize: 120,
 };
 
 interface ProjectContextType {

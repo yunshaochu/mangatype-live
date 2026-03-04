@@ -78,9 +78,9 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   const perfFlagsRef = useRef({ phase1Enabled, phase2Enabled });
   const bubbles = currentImage?.bubbles || [];
   const maskRegions = currentImage?.maskRegions || [];
-  const PHASE2_LOWRES_THRESHOLD_PIXELS = 4_000_000;
-  const PHASE2_PREVIEW_TARGET_PIXELS = 1_500_000;
-  const PHASE2_REPLAY_BATCH_SIZE = 120;
+  const phase2LowResThresholdPixels = Math.max(1, aiConfig.freehandLowResThresholdMp ?? 4) * 1_000_000;
+  const phase2PreviewTargetPixels = Math.max(250_000, aiConfig.freehandPreviewTargetPixels ?? 1_500_000);
+  const phase2ReplayBatchSize = Math.max(8, aiConfig.freehandReplayBatchSize ?? 120);
   const strokeLogRef = useRef<StrokeCommand[]>([]);
   const activeStrokeRef = useRef<StrokeCommand | null>(null);
   const replayQueueRef = useRef<StrokeCommand[]>([]);
@@ -165,9 +165,9 @@ export const Workspace: React.FC<WorkspaceProps> = ({
           img.src = displayUrl;
           img.onload = () => {
               const sourcePixels = img.width * img.height;
-              const usePhase2LowRes = phase2Enabled && sourcePixels > PHASE2_LOWRES_THRESHOLD_PIXELS;
+              const usePhase2LowRes = phase2Enabled && sourcePixels > phase2LowResThresholdPixels;
               const previewScale = usePhase2LowRes
-                  ? Math.max(0.2, Math.min(1, Math.sqrt(PHASE2_PREVIEW_TARGET_PIXELS / sourcePixels)))
+                  ? Math.max(0.2, Math.min(1, Math.sqrt(phase2PreviewTargetPixels / sourcePixels)))
                   : 1;
 
               const previewWidth = Math.max(1, Math.round(img.width * previewScale));
@@ -239,7 +239,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               };
           }
       }
-  }, [showPaintCanvas, currentImage?.id, displayUrl, phase1Enabled, phase2Enabled]); // Re-init when visibility or image/phase changes
+  }, [showPaintCanvas, currentImage?.id, displayUrl, phase1Enabled, phase2Enabled, phase2LowResThresholdPixels, phase2PreviewTargetPixels]); // Re-init when visibility or image/phase changes
 
   const getCanvasCoords = (e: React.MouseEvent) => {
       if (!paintCanvasRef.current) return { x: 0, y: 0 };
@@ -307,7 +307,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
                       resolve();
                       return;
                   }
-                  const end = Math.min(index + PHASE2_REPLAY_BATCH_SIZE, command.pointsHigh.length);
+                  const end = Math.min(index + phase2ReplayBatchSize, command.pointsHigh.length);
                   if (index < end) {
                       ctx.beginPath();
                       for (; index < end; index += 1) {
@@ -329,7 +329,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               reject(error);
           }
       });
-  }, []);
+  }, [phase2ReplayBatchSize]);
 
   const processReplayQueue = useCallback(() => {
       if (!phase2Enabled) return Promise.resolve();

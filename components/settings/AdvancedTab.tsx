@@ -133,6 +133,59 @@ export const AdvancedTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                 onChange={(e) => setConfig({ ...config, freehandPerfPhase2Enabled: e.target.checked })}
               />
             </label>
+
+            <div className="rounded-lg border border-gray-700/70 bg-gray-900/40 px-3 py-2 space-y-2">
+              <div className="grid grid-cols-3 gap-2 items-center">
+                <p className="text-[11px] text-gray-300">
+                  {lang === 'zh' ? '低清切换阈值(MP)' : 'Low-res Threshold (MP)'}
+                </p>
+                <input
+                  type="number"
+                  min={1}
+                  max={64}
+                  value={config.freehandLowResThresholdMp ?? 4}
+                  onChange={(e) => {
+                    const v = Math.max(1, Math.min(64, Number(e.target.value) || 4));
+                    setConfig({ ...config, freehandLowResThresholdMp: v });
+                  }}
+                  className="col-span-2 h-7 rounded border border-gray-600 bg-gray-800 px-2 text-xs text-gray-200 outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 items-center">
+                <p className="text-[11px] text-gray-300">
+                  {lang === 'zh' ? 'preview 目标像素' : 'Preview Target Pixels'}
+                </p>
+                <input
+                  type="number"
+                  min={250000}
+                  step={50000}
+                  value={config.freehandPreviewTargetPixels ?? 1500000}
+                  onChange={(e) => {
+                    const v = Math.max(250000, Number(e.target.value) || 1500000);
+                    setConfig({ ...config, freehandPreviewTargetPixels: v });
+                  }}
+                  className="col-span-2 h-7 rounded border border-gray-600 bg-gray-800 px-2 text-xs text-gray-200 outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 items-center">
+                <p className="text-[11px] text-gray-300">
+                  {lang === 'zh' ? 'replay 批大小' : 'Replay Batch Size'}
+                </p>
+                <input
+                  type="number"
+                  min={8}
+                  max={4096}
+                  value={config.freehandReplayBatchSize ?? 120}
+                  onChange={(e) => {
+                    const v = Math.max(8, Math.min(4096, Number(e.target.value) || 120));
+                    setConfig({ ...config, freehandReplayBatchSize: v });
+                  }}
+                  className="col-span-2 h-7 rounded border border-gray-600 bg-gray-800 px-2 text-xs text-gray-200 outline-none focus:border-amber-500"
+                />
+              </div>
+            </div>
           </div>
         </div>
 
