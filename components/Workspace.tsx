@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BubbleLayer } from './BubbleLayer';
 import { RegionLayer } from './RegionLayer';
@@ -995,19 +995,51 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               );
           })}
 
-          {/* Contour Preview Overlay — orange tint on text pixels (only when usePreciseFill + showContourPreview) */}
-          {/* Not gated by showFilledMasks — contour preview is informational and shows on all layers except original */}
-          {activeLayer !== 'original' && aiConfig.usePreciseFill && aiConfig.showContourPreview && maskRegions.map(region => (
-              region.maskContourBase64 && (
+                    {/* Contour Preview Overlay - independent anchor + clip to current red box */}
+          {/* Not gated by showFilledMasks: contour preview is informational and visible on non-original layers */}
+          {activeLayer !== 'original' && aiConfig.usePreciseFill && aiConfig.showContourPreview && maskRegions.map(region => {
+              if (!region.maskContourBase64) return null;
+
+              const contourX = region.maskContourX ?? region.x;
+              const contourY = region.maskContourY ?? region.y;
+              const contourW = region.maskContourW ?? region.width;
+              const contourH = region.maskContourH ?? region.height;
+              if (contourW <= 0 || contourH <= 0) return null;
+
+              const contourLeft = contourX - contourW / 2;
+              const contourTop = contourY - contourH / 2;
+              const contourRight = contourLeft + contourW;
+              const contourBottom = contourTop + contourH;
+
+              const maskLeft = region.x - region.width / 2;
+              const maskTop = region.y - region.height / 2;
+              const maskRight = maskLeft + region.width;
+              const maskBottom = maskTop + region.height;
+
+              const interLeft = Math.max(contourLeft, maskLeft);
+              const interTop = Math.max(contourTop, maskTop);
+              const interRight = Math.min(contourRight, maskRight);
+              const interBottom = Math.min(contourBottom, maskBottom);
+              if (interRight <= interLeft || interBottom <= interTop) return null;
+
+              const insetLeft = Math.max(0, Math.min(100, ((interLeft - contourLeft) / contourW) * 100));
+              const insetRight = Math.max(0, Math.min(100, ((contourRight - interRight) / contourW) * 100));
+              const insetTop = Math.max(0, Math.min(100, ((interTop - contourTop) / contourH) * 100));
+              const insetBottom = Math.max(0, Math.min(100, ((contourBottom - interBottom) / contourH) * 100));
+              const clipValue = `inset(${insetTop}% ${insetRight}% ${insetBottom}% ${insetLeft}%)`;
+
+              return (
                   <div
                       key={`contour-preview-${region.id}`}
                       className="absolute z-[2] pointer-events-none"
                       style={{
-                          top: `${region.y}%`,
-                          left: `${region.x}%`,
-                          width: `${region.maskContourW ?? region.width}%`,
-                          height: `${region.maskContourH ?? region.height}%`,
+                          top: `${contourY}%`,
+                          left: `${contourX}%`,
+                          width: `${contourW}%`,
+                          height: `${contourH}%`,
                           transform: 'translate(-50%, -50%)',
+                          clipPath: clipValue,
+                          WebkitClipPath: clipValue,
                           WebkitMaskImage: `url(data:image/png;base64,${region.maskContourBase64})`,
                           maskImage: `url(data:image/png;base64,${region.maskContourBase64})`,
                           WebkitMaskSize: '100% 100%',
@@ -1018,8 +1050,8 @@ export const Workspace: React.FC<WorkspaceProps> = ({
                           opacity: 0.65,
                       } as React.CSSProperties}
                   />
-              )
-          ))}
+              );
+          })}
 
           {/* Main Interaction Layer */}
           {!showPaintCanvas && (
@@ -1115,3 +1147,4 @@ export const Workspace: React.FC<WorkspaceProps> = ({
     </div>
   );
 };
+
