@@ -1,7 +1,7 @@
 
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ImageState } from '../types';
+import { ImageState, CONTOUR_SCHEMA_VERSION, normalizeImageContourState } from '../types';
 
 export const useProjectState = () => {
   const [history, setHistory] = useState<{
@@ -20,13 +20,24 @@ export const useProjectState = () => {
   const images = history.present;
   const currentImage = images.find(img => img.id === currentId);
 
+  const normalizeImageList = (images: ImageState[]): ImageState[] => {
+    let changed = false;
+    const normalized = images.map((img) => {
+      const next = normalizeImageContourState(img);
+      if (next !== img) changed = true;
+      return next;
+    });
+    return changed ? normalized : images;
+  };
+
   // Helper: Smart Setter that manages history
   const setImages = useCallback((
     newImagesOrUpdater: ImageState[] | ((prev: ImageState[]) => ImageState[]),
     skipHistory: boolean = false
   ) => {
     setHistory(curr => {
-      const newPresent = typeof newImagesOrUpdater === 'function' ? newImagesOrUpdater(curr.present) : newImagesOrUpdater;
+      const rawPresent = typeof newImagesOrUpdater === 'function' ? newImagesOrUpdater(curr.present) : newImagesOrUpdater;
+      const newPresent = normalizeImageList(rawPresent);
       if (newPresent === curr.present) return curr;
       if (skipHistory) return { ...curr, present: newPresent };
       return {
@@ -113,6 +124,8 @@ export const useProjectState = () => {
               url, base64, // Current display (starts as original)
               originalUrl: url, originalBase64: base64, // Persistent original
               width: img.width, height: img.height, bubbles: [], maskRegions: [],
+              contourSchemaVersion: CONTOUR_SCHEMA_VERSION,
+              contours: [],
               status: 'idle', detectionStatus: 'idle', inpaintingStatus: 'idle', skipped: false
             });
           };

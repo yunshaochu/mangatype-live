@@ -72,6 +72,17 @@ export interface DetectedBubble {
   fontSize?: number; // Direct mode output from AI (beta)
 }
 
+export interface ContourRegion {
+  id: string;
+  base64: string;
+  anchor: { x: number; y: number };
+  size: { w: number; h: number };
+  rects?: Array<{ x: number; y: number; w: number; h: number }>;
+  dilatedBase64?: string;
+}
+
+export const CONTOUR_SCHEMA_VERSION = 1;
+
 export interface ImageState {
   id: string;
   name: string;
@@ -89,6 +100,8 @@ export interface ImageState {
   height: number;
   bubbles: Bubble[];
   maskRegions?: MaskRegion[]; // Store Mode 2 regions (Red Boxes)
+  contourSchemaVersion?: number;
+  contours?: ContourRegion[];
   
   // New: Pixel-perfect mask from detection API (Base64 string)
   maskRefinedBase64?: string; 
@@ -105,6 +118,19 @@ export interface ImageState {
   
   skipped?: boolean; // If true, skip AI processing but include in export
 }
+
+export const normalizeImageContourState = (image: ImageState): ImageState => {
+  const contourSchemaVersion =
+    typeof image.contourSchemaVersion === 'number' && Number.isFinite(image.contourSchemaVersion)
+      ? image.contourSchemaVersion
+      : CONTOUR_SCHEMA_VERSION;
+  const contours = Array.isArray(image.contours) ? image.contours : [];
+
+  if (image.contourSchemaVersion === contourSchemaVersion && image.contours === contours) {
+    return image;
+  }
+  return { ...image, contourSchemaVersion, contours };
+};
 
 export type FontOption = {
   id: Bubble['fontFamily'];
