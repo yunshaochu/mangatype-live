@@ -490,6 +490,70 @@ const withMaskClipOnCanvas = (
     ctx.restore();
 };
 
+const resolveExportFillMasks = (imageState: ImageState): MaskRegion[] => {
+    const masks = imageState.maskRegions || [];
+    const contours = imageState.contours || [];
+    const resolved: MaskRegion[] = [];
+
+    for (const m of masks) {
+        const fillMode = resolveExportFillRenderMode(m);
+        if (fillMode === 'skip') continue;
+        if (fillMode === 'rect') {
+            resolved.push(m);
+            continue;
+        }
+
+        // contour mode: prefer contour pool intersection; fallback to legacy inline contour payload.
+        const maskLeft = m.x - m.width / 2;
+        const maskTop = m.y - m.height / 2;
+        const maskRight = maskLeft + m.width;
+        const maskBottom = maskTop + m.height;
+        let usedContourPool = false;
+
+        for (const contour of contours) {
+            if (!contour.base64) continue;
+            const contourX = contour.anchor?.x;
+            const contourY = contour.anchor?.y;
+            const contourW = contour.size?.w;
+            const contourH = contour.size?.h;
+            if (
+                typeof contourX !== 'number' || typeof contourY !== 'number' ||
+                typeof contourW !== 'number' || typeof contourH !== 'number' ||
+                contourW <= 0 || contourH <= 0
+            ) {
+                continue;
+            }
+
+            const contourLeft = contourX - contourW / 2;
+            const contourTop = contourY - contourH / 2;
+            const contourRight = contourLeft + contourW;
+            const contourBottom = contourTop + contourH;
+            const intersects = contourRight > maskLeft && contourBottom > maskTop && contourLeft < maskRight && contourTop < maskBottom;
+            if (!intersects) continue;
+
+            usedContourPool = true;
+            resolved.push({
+                ...m,
+                id: `${m.id}::${contour.id}`,
+                fillMode: 'contour',
+                maskContourBase64: contour.base64,
+                maskContourX: contourX,
+                maskContourY: contourY,
+                maskContourW: contourW,
+                maskContourH: contourH,
+                maskContourRects: contour.rects,
+                maskContourDilatedBase64: contour.dilatedBase64,
+            });
+        }
+
+        if (!usedContourPool && m.maskContourBase64 && m.maskContourW !== undefined && m.maskContourH !== undefined) {
+            resolved.push(m);
+        }
+    }
+
+    return resolved;
+};
+
 const drawFillMaskOnCanvas = async (
     ctx: CanvasRenderingContext2D,
     m: MaskRegion,
@@ -1055,10 +1119,8 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
     ctx.drawImage(imgBg, 0, 0, width, height);
 
     // 2. Draw filled masks (manual fill regions)
-    if (imageState.maskRegions) {
-        for (const m of imageState.maskRegions) {
-            await drawFillMaskOnCanvas(ctx, m, width, height);
-        }
+    for (const m of resolveExportFillMasks(imageState)) {
+        await drawFillMaskOnCanvas(ctx, m, width, height);
     }
 
     // 3. Create hidden DOM container for measuring text positions
@@ -1416,10 +1478,8 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
         // --- NEW: DRAW FILLED MASKS (Manual Fill) ---
         // These are masks that are cleaned but NOT via inpainting (method='fill')
         // We must burn them into the exported image here because they exist only as metadata in the app.
-        if (imageState.maskRegions) {
-            for (const m of imageState.maskRegions) {
-                await drawFillMaskOnCanvas(ctx, m, width, height);
-            }
+        for (const m of resolveExportFillMasks(imageState)) {
+            await drawFillMaskOnCanvas(ctx, m, width, height);
         }
         // --------------------------------------------
 
@@ -1656,11 +1716,9 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
         container.appendChild(overlay);
 
         // 4. Filled masks
-        if (imageState.maskRegions) {
-            imageState.maskRegions.forEach(m => {
-                appendFillMaskOverlayToDom(overlay, m);
-            });
-        }
+        resolveExportFillMasks(imageState).forEach(m => {
+            appendFillMaskOverlayToDom(overlay, m);
+        });
 
         // 5. Bubbles — replicate BubbleLayer.tsx CSS exactly
         // PLACEHOLDER_BUBBLE_RENDERING
