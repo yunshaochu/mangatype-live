@@ -556,23 +556,55 @@ const appendFillMaskOverlayToDom = (overlay: HTMLDivElement, m: MaskRegion): voi
     if (fillMode === 'skip') return;
 
     if (fillMode === 'contour') {
-        const maskLeft = m.x - m.maskContourW! / 2;
-        const maskTop  = m.y - m.maskContourH! / 2;
+        const anchor = getContourAnchorPct(m);
+        const contourW = m.maskContourW!;
+        const contourH = m.maskContourH!;
+        const contourLeft = anchor.x - contourW / 2;
+        const contourTop = anchor.y - contourH / 2;
+        const contourRight = contourLeft + contourW;
+        const contourBottom = contourTop + contourH;
+
+        const boxLeft = m.x - m.width / 2;
+        const boxTop = m.y - m.height / 2;
+        const boxRight = boxLeft + m.width;
+        const boxBottom = boxTop + m.height;
+
+        const interLeft = Math.max(contourLeft, boxLeft);
+        const interTop = Math.max(contourTop, boxTop);
+        const interRight = Math.min(contourRight, boxRight);
+        const interBottom = Math.min(contourBottom, boxBottom);
+        if (interRight <= interLeft || interBottom <= interTop) return;
+
+        const insetLeft = Math.max(0, Math.min(100, ((interLeft - contourLeft) / contourW) * 100));
+        const insetRight = Math.max(0, Math.min(100, ((contourRight - interRight) / contourW) * 100));
+        const insetTop = Math.max(0, Math.min(100, ((interTop - contourTop) / contourH) * 100));
+        const insetBottom = Math.max(0, Math.min(100, ((contourBottom - interBottom) / contourH) * 100));
+        const clipValue = `inset(${insetTop}% ${insetRight}% ${insetBottom}% ${insetLeft}%)`;
 
         if (m.maskContourRects && m.maskContourRects.length > 0) {
             // useCharRects=true: per-character bounding rects
+            const contourLayer = document.createElement('div');
+            contourLayer.style.cssText = `
+                position: absolute; z-index: 1;
+                top: ${anchor.y}%; left: ${anchor.x}%;
+                width: ${contourW}%; height: ${contourH}%;
+                transform: translate(-50%, -50%);
+                clip-path: ${clipValue};
+                -webkit-clip-path: ${clipValue};
+            `;
             for (const r of m.maskContourRects) {
                 const rectDiv = document.createElement('div');
                 rectDiv.style.cssText = `
-                    position: absolute; z-index: 1;
-                    left: ${maskLeft + r.x * m.maskContourW!}%;
-                    top:  ${maskTop  + r.y * m.maskContourH!}%;
-                    width: ${r.w * m.maskContourW!}%;
-                    height: ${r.h * m.maskContourH!}%;
+                    position: absolute;
+                    left: ${r.x * 100}%;
+                    top: ${r.y * 100}%;
+                    width: ${r.w * 100}%;
+                    height: ${r.h * 100}%;
                     background-color: ${m.fillColor || '#ffffff'};
                 `;
-                overlay.appendChild(rectDiv);
+                contourLayer.appendChild(rectDiv);
             }
+            overlay.appendChild(contourLayer);
             return;
         }
 
@@ -582,9 +614,11 @@ const appendFillMaskOverlayToDom = (overlay: HTMLDivElement, m: MaskRegion): voi
         if (contourSrc) {
             maskDiv.style.cssText = `
                 position: absolute; z-index: 1;
-                top: ${m.y}%; left: ${m.x}%;
-                width: ${m.maskContourW}%; height: ${m.maskContourH}%;
+                top: ${anchor.y}%; left: ${anchor.x}%;
+                width: ${contourW}%; height: ${contourH}%;
                 transform: translate(-50%, -50%);
+                clip-path: ${clipValue};
+                -webkit-clip-path: ${clipValue};
                 -webkit-mask-image: url(data:image/png;base64,${contourSrc});
                 mask-image: url(data:image/png;base64,${contourSrc});
                 -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
