@@ -991,6 +991,9 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                                 x: r.x, y: r.y, width: r.width, height: r.height,
                                 method: 'fill', // Default local detection to fill
                                 maskContourBase64: r.maskContourBase64,
+                                // Keep contour anchor independent from manual box geometry updates.
+                                maskContourX: originalRects[i].x,
+                                maskContourY: originalRects[i].y,
                                 maskContourW: originalRects[i].width,
                                 maskContourH: originalRects[i].height,
                             }));

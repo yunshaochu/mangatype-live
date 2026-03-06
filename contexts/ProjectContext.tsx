@@ -828,9 +828,13 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const updateMaskRegion = useCallback((maskId: string, updates: Partial<MaskRegion>) => {
       if (!currentId) return;
+      const normalizedUpdates: Partial<MaskRegion> = { ...updates };
+      // Avoid accidental anchor wipe when callers pass explicit undefined fields.
+      if (normalizedUpdates.maskContourX === undefined) delete normalizedUpdates.maskContourX;
+      if (normalizedUpdates.maskContourY === undefined) delete normalizedUpdates.maskContourY;
       setImages(prev => prev.map(img => img.id === currentId ? {
           ...img,
-          maskRegions: (img.maskRegions || []).map(m => m.id === maskId ? { ...m, ...updates } : m)
+          maskRegions: (img.maskRegions || []).map(m => m.id === maskId ? { ...m, ...normalizedUpdates } : m)
       } : img));
   }, [currentId, setImages]);
 
