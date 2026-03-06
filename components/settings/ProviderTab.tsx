@@ -606,11 +606,11 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                           {lang === 'zh' ? '已停用' : 'Disabled'}
                         </span>
                       )}
-                      {isEndpointPaused(ep) && (
+                      {isEndpointPaused(ep, nowMs) && (
                         <>
                           <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-bold bg-orange-500/20 text-orange-400" title={ep.lastError || 'Rate limited'}>
                             <Clock size={10} />
-                            {formatPauseDuration(getRemainingPauseTime(ep))}
+                            {formatPauseDuration(getRemainingPauseTime(ep, nowMs))}
                           </span>
                           {ep.consecutiveErrors && ep.consecutiveErrors > 0 && (
                             <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-bold bg-red-500/20 text-red-400" title={`${ep.consecutiveErrors} consecutive errors`}>
@@ -631,7 +631,7 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                         {ep.disableReasonMessage ? ` (${ep.disableReasonMessage})` : ''}
                       </p>
                     )}
-                    {isEndpointPaused(ep) && ep.lastError && (
+                    {isEndpointPaused(ep, nowMs) && ep.lastError && (
                       <p className="text-[10px] text-red-400/70 truncate mt-0.5" title={ep.lastError}>{ep.lastError}</p>
                     )}
                   </div>
