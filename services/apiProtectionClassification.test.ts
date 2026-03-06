@@ -27,8 +27,20 @@ const classifyCases = [
     shouldProtect: true,
   },
   {
-    name: 'parse_invalid',
-    input: { code: FAILURE_CODE_PARSE_BUBBLES_INVALID, message: 'AI response missing bubbles key' },
+    name: 'openai_tool_args_parse_failure',
+    input: { code: FAILURE_CODE_PARSE_BUBBLES_INVALID, message: 'OpenAI tool call arguments parse failed: Unexpected token' },
+    code: FAILURE_CODE_PARSE_BUBBLES_INVALID,
+    shouldProtect: true,
+  },
+  {
+    name: 'empty_response',
+    input: { code: FAILURE_CODE_PARSE_BUBBLES_INVALID, message: 'Gemini JSON mode response returned empty response; expected {"bubbles":[...]}.' },
+    code: FAILURE_CODE_PARSE_BUBBLES_INVALID,
+    shouldProtect: true,
+  },
+  {
+    name: 'missing_bubbles',
+    input: { code: FAILURE_CODE_PARSE_BUBBLES_INVALID, message: "AI response missing 'bubbles' key. The model failed to follow the schema." },
     code: FAILURE_CODE_PARSE_BUBBLES_INVALID,
     shouldProtect: true,
   },
