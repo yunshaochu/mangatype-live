@@ -16,8 +16,8 @@ const checks = [
   },
   {
     file: path.join('components', 'Workspace.tsx'),
-    patterns: ['const contourX = region.maskContourX ?? region.x;', 'clipPath: clipValue'],
-    label: 'preview overlay uses independent anchor and clip',
+    patterns: ['const contourPreviewLayers = useMemo(() => {', 'for (const contour of contours)', 'clipPath: layer.clipValue'],
+    label: 'preview overlay consumes contour pool intersection and clip',
   },
   {
     file: path.join('services', 'exportService.ts'),
