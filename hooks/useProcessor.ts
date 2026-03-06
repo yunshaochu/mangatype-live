@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { ImageState, AIConfig, APIEndpoint, MaskRegion, Bubble, mergeEndpointConfig } from '../types';
+import { ImageState, AIConfig, APIEndpoint, MaskRegion, Bubble, ContourRegion, mergeEndpointConfig } from '../types';
 import { detectAndTypesetComic, fetchRawDetectedRegions } from '../services/geminiService';
 import { generateMaskedImage, generateAnnotatedImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
@@ -986,17 +986,19 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                                 return { ...r, width: w, height: h };
                             });
 
-                            const maskRegions: MaskRegion[] = expandedRegions.map((r, i) => ({
+                            const maskRegions: MaskRegion[] = expandedRegions.map((r) => ({
                                 id: crypto.randomUUID(),
                                 x: r.x, y: r.y, width: r.width, height: r.height,
                                 method: 'fill', // Default local detection to fill
-                                maskContourBase64: r.maskContourBase64,
-                                // Keep contour anchor independent from manual box geometry updates.
-                                maskContourX: originalRects[i].x,
-                                maskContourY: originalRects[i].y,
-                                maskContourW: originalRects[i].width,
-                                maskContourH: originalRects[i].height,
                             }));
+                            const contours: ContourRegion[] = originalRects
+                                .filter(r => !!r.maskContourBase64)
+                                .map((r) => ({
+                                    id: crypto.randomUUID(),
+                                    base64: r.maskContourBase64!,
+                                    anchor: { x: r.x, y: r.y },
+                                    size: { w: r.width, h: r.height },
+                                }));
 
                             // Process Mask (Refined Pixel Mask) - We store it but don't use it for auto-inpaint anymore
                             const maskRefinedBase64 = data.maskBase64;
@@ -1004,6 +1006,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                             setImages(prev => prev.map(p => p.id === img.id ? {
                                 ...p,
                                 maskRegions: [...(p.maskRegions || []), ...maskRegions],
+                                contours: [...(p.contours || []), ...contours],
                                 maskRefinedBase64: maskRefinedBase64,
                                 detectionStatus: 'done'
                             } : p));

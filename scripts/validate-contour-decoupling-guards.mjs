@@ -11,8 +11,8 @@ const checks = [
   },
   {
     file: path.join('hooks', 'useProcessor.ts'),
-    patterns: ['maskContourX: originalRects[i].x', 'maskContourY: originalRects[i].y'],
-    label: 'scan pipeline initializes independent contour anchors',
+    patterns: ['const contours: ContourRegion[] = originalRects', 'contours: [...(p.contours || []), ...contours]'],
+    label: 'scan pipeline writes contours into image contour pool',
   },
   {
     file: path.join('components', 'Workspace.tsx'),
