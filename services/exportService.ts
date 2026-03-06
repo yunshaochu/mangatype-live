@@ -466,6 +466,30 @@ const resolveExportFillRenderMode = (m: MaskRegion): ExportFillRenderMode => {
     return 'rect';
 };
 
+const getContourAnchorPct = (m: MaskRegion): { x: number; y: number } => ({
+    x: m.maskContourX ?? m.x,
+    y: m.maskContourY ?? m.y,
+});
+
+const withMaskClipOnCanvas = (
+    ctx: CanvasRenderingContext2D,
+    m: MaskRegion,
+    width: number,
+    height: number,
+    draw: () => void
+) => {
+    const maskX = (m.x / 100) * width;
+    const maskY = (m.y / 100) * height;
+    const maskW = (m.width / 100) * width;
+    const maskH = (m.height / 100) * height;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(maskX - maskW / 2, maskY - maskH / 2, maskW, maskH);
+    ctx.clip();
+    draw();
+    ctx.restore();
+};
+
 const drawFillMaskOnCanvas = async (
     ctx: CanvasRenderingContext2D,
     m: MaskRegion,
@@ -481,22 +505,25 @@ const drawFillMaskOnCanvas = async (
     const h = (m.height / 100) * height;
 
     if (fillMode === 'contour') {
+        const anchor = getContourAnchorPct(m);
         const maskW_px = (m.maskContourW! / 100) * width;
         const maskH_px = (m.maskContourH! / 100) * height;
-        const maskOriginX = x - maskW_px / 2;
-        const maskOriginY = y - maskH_px / 2;
+        const maskOriginX = (anchor.x / 100) * width - maskW_px / 2;
+        const maskOriginY = (anchor.y / 100) * height - maskH_px / 2;
 
         if (m.maskContourRects && m.maskContourRects.length > 0) {
             // useCharRects=true: per-character bounding rects
-            ctx.fillStyle = m.fillColor || '#ffffff';
-            for (const r of m.maskContourRects) {
-                ctx.fillRect(
-                    maskOriginX + r.x * maskW_px,
-                    maskOriginY + r.y * maskH_px,
-                    r.w * maskW_px,
-                    r.h * maskH_px
-                );
-            }
+            withMaskClipOnCanvas(ctx, m, width, height, () => {
+                ctx.fillStyle = m.fillColor || '#ffffff';
+                for (const r of m.maskContourRects!) {
+                    ctx.fillRect(
+                        maskOriginX + r.x * maskW_px,
+                        maskOriginY + r.y * maskH_px,
+                        r.w * maskW_px,
+                        r.h * maskH_px
+                    );
+                }
+            });
             return;
         }
 
@@ -513,7 +540,9 @@ const drawFillMaskOnCanvas = async (
             offCtx.globalCompositeOperation = 'source-in';
             offCtx.fillStyle = m.fillColor || '#ffffff';
             offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
-            ctx.drawImage(offscreen, maskOriginX, maskOriginY);
+            withMaskClipOnCanvas(ctx, m, width, height, () => {
+                ctx.drawImage(offscreen, maskOriginX, maskOriginY);
+            });
             return;
         }
     }
@@ -656,11 +685,13 @@ export const applyContourPreFill = async (
         // Use dilated contour (if available) for better coverage
         const contourBase64 = m.maskContourDilatedBase64 || m.maskContourBase64;
         const maskImg = await loadImage(`data:image/png;base64,${contourBase64}`);
+        const anchor = getContourAnchorPct(m);
 
         const mW = ((m.maskContourW ?? m.width) / 100) * W;
         const mH = ((m.maskContourH ?? m.height) / 100) * H;
-        const mX = (m.x / 100) * W - mW / 2;
-        const mY = (m.y / 100) * H - mH / 2;
+        if (mW <= 0 || mH <= 0) continue;
+        const mX = (anchor.x / 100) * W - mW / 2;
+        const mY = (anchor.y / 100) * H - mH / 2;
 
         // offscreen: apply source-in to paint white only over text pixels
         const off = document.createElement('canvas');
@@ -672,7 +703,9 @@ export const applyContourPreFill = async (
         offCtx.fillStyle = '#ffffff';
         offCtx.fillRect(0, 0, off.width, off.height);
 
-        ctx.drawImage(off, mX, mY);
+        withMaskClipOnCanvas(ctx, m, W, H, () => {
+            ctx.drawImage(off, mX, mY);
+        });
     }
 
     return canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
@@ -701,21 +734,25 @@ export const bakeContourFillsIntoImage = async (
 
     for (const m of masks) {
         if (!m.maskContourBase64 || m.maskContourW === undefined || m.maskContourH === undefined) continue;
+        const anchor = getContourAnchorPct(m);
         const maskW_px = (m.maskContourW / 100) * W;
         const maskH_px = (m.maskContourH / 100) * H;
-        const maskOriginX = (m.x / 100) * W - maskW_px / 2;
-        const maskOriginY = (m.y / 100) * H - maskH_px / 2;
+        if (maskW_px <= 0 || maskH_px <= 0) continue;
+        const maskOriginX = (anchor.x / 100) * W - maskW_px / 2;
+        const maskOriginY = (anchor.y / 100) * H - maskH_px / 2;
 
         if (useCharRects && m.maskContourRects && m.maskContourRects.length > 0) {
-            ctx.fillStyle = color;
-            for (const r of m.maskContourRects) {
-                ctx.fillRect(
-                    maskOriginX + r.x * maskW_px,
-                    maskOriginY + r.y * maskH_px,
-                    r.w * maskW_px,
-                    r.h * maskH_px
-                );
-            }
+            withMaskClipOnCanvas(ctx, m, W, H, () => {
+                ctx.fillStyle = color;
+                for (const r of m.maskContourRects!) {
+                    ctx.fillRect(
+                        maskOriginX + r.x * maskW_px,
+                        maskOriginY + r.y * maskH_px,
+                        r.w * maskW_px,
+                        r.h * maskH_px
+                    );
+                }
+            });
         } else {
             const contourSrc = m.maskContourDilatedBase64 || m.maskContourBase64;
             const offscreen = document.createElement('canvas');
@@ -728,7 +765,9 @@ export const bakeContourFillsIntoImage = async (
             offCtx.globalCompositeOperation = 'source-in';
             offCtx.fillStyle = color;
             offCtx.fillRect(0, 0, offscreen.width, offscreen.height);
-            ctx.drawImage(offscreen, maskOriginX, maskOriginY);
+            withMaskClipOnCanvas(ctx, m, W, H, () => {
+                ctx.drawImage(offscreen, maskOriginX, maskOriginY);
+            });
         }
     }
 
