@@ -29,6 +29,64 @@ const getRuntimeConfig = () => {
 const runtimeConfig = getRuntimeConfig();
 // ----------------------------------------
 
+const buildContourIntersectionMasks = (image: ImageState, targetMasks: MaskRegion[]) => {
+  const perMask = new Map<string, MaskRegion[]>();
+  const contours = image.contours || [];
+  if (contours.length === 0 || targetMasks.length === 0) {
+    return { perMask, all: [] as MaskRegion[] };
+  }
+
+  for (const mask of targetMasks) {
+    const maskLeft = mask.x - mask.width / 2;
+    const maskTop = mask.y - mask.height / 2;
+    const maskRight = maskLeft + mask.width;
+    const maskBottom = maskTop + mask.height;
+    const intersections: MaskRegion[] = [];
+
+    for (const contour of contours) {
+      if (!contour.base64) continue;
+      const contourX = contour.anchor?.x;
+      const contourY = contour.anchor?.y;
+      const contourW = contour.size?.w;
+      const contourH = contour.size?.h;
+      if (
+        typeof contourX !== 'number' || typeof contourY !== 'number' ||
+        typeof contourW !== 'number' || typeof contourH !== 'number' ||
+        contourW <= 0 || contourH <= 0
+      ) {
+        continue;
+      }
+
+      const contourLeft = contourX - contourW / 2;
+      const contourTop = contourY - contourH / 2;
+      const contourRight = contourLeft + contourW;
+      const contourBottom = contourTop + contourH;
+      const intersects = contourRight > maskLeft && contourBottom > maskTop && contourLeft < maskRight && contourTop < maskBottom;
+      if (!intersects) continue;
+
+      intersections.push({
+        id: `${mask.id}::${contour.id}`,
+        x: mask.x,
+        y: mask.y,
+        width: mask.width,
+        height: mask.height,
+        method: 'fill',
+        maskContourBase64: contour.base64,
+        maskContourX: contourX,
+        maskContourY: contourY,
+        maskContourW: contourW,
+        maskContourH: contourH,
+      });
+    }
+
+    if (intersections.length > 0) {
+      perMask.set(mask.id, intersections);
+    }
+  }
+
+  return { perMask, all: Array.from(perMask.values()).flat() };
+};
+
 const DEFAULT_CONFIG: AIConfig = {
   provider: 'openai',
   apiKey: '',
@@ -362,11 +420,12 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
         // Pre-fill text contour onto source image before inpainting (if enabled)
         if (aiConfig.preInpaintContour) {
-            const masksToPreFill = specificMaskId
-                ? (img.maskRegions || []).filter(m => m.id === specificMaskId && m.maskContourBase64)
-                : (img.maskRegions || []).filter(m => m.maskContourBase64);
-            if (masksToPreFill.length > 0) {
-                sourceBase64 = await applyContourPreFill(sourceBase64, masksToPreFill, img.width, img.height);
+            const targetMasks = specificMaskId
+                ? (img.maskRegions || []).filter(m => m.id === specificMaskId)
+                : (img.maskRegions || []);
+            const contourMasks = buildContourIntersectionMasks(img, targetMasks).all;
+            if (contourMasks.length > 0) {
+                sourceBase64 = await applyContourPreFill(sourceBase64, contourMasks, img.width, img.height);
             }
         }
 
@@ -469,22 +528,25 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const handleBoxFill = useCallback(async (imageId: string, maskId: string, color: string) => {
     const targetImg = historyRef.current.present.find(i => i.id === imageId);
     const targetMask = targetImg?.maskRegions?.find(m => m.id === maskId);
+    const contourMasks = targetImg && targetMask
+        ? (buildContourIntersectionMasks(targetImg, [targetMask]).perMask.get(targetMask.id) || [])
+        : [];
 
-    if (aiConfig.usePreciseFill && targetMask?.maskContourBase64) {
+    if (aiConfig.usePreciseFill && contourMasks.length > 0) {
         // --- PRECISE MODE: compute contour data, bake pixels into image ---
-        let contourRects: MaskRegion['maskContourRects'];
-        let dilatedBase64: string | undefined;
-        if (aiConfig.useCharRects !== false) {
-            contourRects = await computeContourRects(targetMask.maskContourBase64);
-        } else {
-            dilatedBase64 = await dilateMaskImage(targetMask.maskContourBase64);
-        }
+        const masksWithData = await Promise.all(contourMasks.map(async (m) => {
+            if (aiConfig.useCharRects !== false) {
+                const contourRects = await computeContourRects(m.maskContourBase64!);
+                return { ...m, maskContourRects: contourRects };
+            }
+            const dilatedBase64 = await dilateMaskImage(m.maskContourBase64!);
+            return { ...m, maskContourDilatedBase64: dilatedBase64 };
+        }));
 
         // Bake into pixels
         const srcBase64 = targetImg!.inpaintedBase64 || targetImg!.originalBase64 || targetImg!.base64;
-        const maskWithData: MaskRegion = { ...targetMask, maskContourRects: contourRects, maskContourDilatedBase64: dilatedBase64 };
         const newBase64 = await bakeContourFillsIntoImage(
-            srcBase64, [maskWithData], targetImg!.width, targetImg!.height,
+            srcBase64, masksWithData, targetImg!.width, targetImg!.height,
             color, aiConfig.useCharRects !== false
         );
         const newUrl = `data:image/png;base64,${newBase64}`;
@@ -544,40 +606,45 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
     if (aiConfig.usePreciseFill) {
         // --- PRECISE MODE: per-image pixel bake ---
-        // Pre-compute contour data for all eligible masks (parallel across masks)
-        const contourRectsMap = new Map<string, MaskRegion['maskContourRects']>();
-        const dilatedBase64Map = new Map<string, string>();
-        const contourJobs: Promise<void>[] = [];
-        for (const img of historyRef.current.present) {
-            if (!targetIds.has(img.id)) continue;
-            for (const m of (img.maskRegions || [])) {
-                if (m.method !== 'inpaint' && !m.isCleaned && m.maskContourBase64) {
-                    if (aiConfig.useCharRects !== false) {
-                        contourJobs.push(computeContourRects(m.maskContourBase64).then(r => { contourRectsMap.set(m.id, r); }));
-                    } else {
-                        contourJobs.push(dilateMaskImage(m.maskContourBase64).then(b => { dilatedBase64Map.set(m.id, b); }));
-                    }
-                }
-            }
-        }
-        await Promise.all(contourJobs);
-
-        // Bake pixels per image (sequential to avoid canvas memory pressure)
+        const contourRectsByBase64 = new Map<string, MaskRegion['maskContourRects']>();
+        const dilatedByBase64 = new Map<string, string>();
+        const bakedMaskIdsByImage = new Map<string, Set<string>>();
         const bakedImages = new Map<string, { base64: string; url: string }>();
         for (const img of historyRef.current.present) {
             if (!targetIds.has(img.id)) continue;
-            const masksToFill = (img.maskRegions || []).filter(m => m.method !== 'inpaint' && !m.isCleaned && m.maskContourBase64);
+            const masksToFill = (img.maskRegions || []).filter(m => m.method !== 'inpaint' && !m.isCleaned);
             if (masksToFill.length === 0) continue;
-            const masksWithData = masksToFill.map(m => ({
-                ...m,
-                maskContourRects: contourRectsMap.get(m.id),
-                maskContourDilatedBase64: dilatedBase64Map.get(m.id),
-            }));
+            const intersections = buildContourIntersectionMasks(img, masksToFill);
+            if (intersections.all.length === 0) continue;
+
+            const masksWithData: MaskRegion[] = [];
+            for (const contourMask of intersections.all) {
+                const contourBase64 = contourMask.maskContourBase64;
+                if (!contourBase64) continue;
+                if (aiConfig.useCharRects !== false) {
+                    let rects = contourRectsByBase64.get(contourBase64);
+                    if (!rects) {
+                        rects = await computeContourRects(contourBase64);
+                        contourRectsByBase64.set(contourBase64, rects);
+                    }
+                    masksWithData.push({ ...contourMask, maskContourRects: rects });
+                } else {
+                    let dilated = dilatedByBase64.get(contourBase64);
+                    if (!dilated) {
+                        dilated = await dilateMaskImage(contourBase64);
+                        dilatedByBase64.set(contourBase64, dilated);
+                    }
+                    masksWithData.push({ ...contourMask, maskContourDilatedBase64: dilated });
+                }
+            }
+            if (masksWithData.length === 0) continue;
+
             const srcBase64 = img.inpaintedBase64 || img.originalBase64 || img.base64;
             const newBase64 = await bakeContourFillsIntoImage(
                 srcBase64, masksWithData, img.width, img.height, color, aiConfig.useCharRects !== false
             );
             bakedImages.set(img.id, { base64: newBase64, url: `data:image/png;base64,${newBase64}` });
+            bakedMaskIdsByImage.set(img.id, new Set(intersections.perMask.keys()));
         }
 
         setImages(prev => prev.map(img => {
@@ -585,11 +652,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
             const baked = bakedImages.get(img.id);
             const masksToFill = (img.maskRegions || []).filter(m => m.method !== 'inpaint' && !m.isCleaned);
             if (masksToFill.length === 0) return img;
-            const bakedMaskIds = new Set(
-                (img.maskRegions || [])
-                    .filter(m => m.method !== 'inpaint' && !m.isCleaned && m.maskContourBase64)
-                    .map(m => m.id)
-            );
+            const bakedMaskIds = bakedMaskIdsByImage.get(img.id) || new Set<string>();
             const overlayMaskIds = new Set(masksToFill.filter(m => !bakedMaskIds.has(m.id)).map(m => m.id));
             const newMasks = (img.maskRegions || []).map(m => {
                 if (bakedMaskIds.has(m.id)) {
