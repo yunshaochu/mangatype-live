@@ -34,6 +34,12 @@ const classifyCases = [
     shouldProtect: true,
   },
   {
+    name: 'network_failed_to_fetch',
+    input: { message: 'Failed to fetch' },
+    code: FAILURE_CODE_HTTP_503,
+    shouldProtect: true,
+  },
+  {
     name: 'openai_tool_args_parse_failure',
     input: { message: 'OpenAI tool call arguments parse failed: Unexpected token' },
     code: FAILURE_CODE_PARSE_BUBBLES_INVALID,

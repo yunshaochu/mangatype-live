@@ -181,6 +181,13 @@ const RATE_LIMIT_KEYWORDS = [
   'requests per minute',
 ];
 
+const NETWORK_FAILURE_KEYWORDS = [
+  'failed to fetch',
+  'fetch failed',
+  'network request failed',
+  'network error',
+];
+
 const PARSE_FAILURE_KEYWORDS = [
   FAILURE_CODE_PARSE_BUBBLES_INVALID.toLowerCase(),
   'could not parse json structure',
@@ -361,6 +368,16 @@ export const classifyEndpointFailure = (error: any): EndpointFailureClassificati
       shouldProtect: true,
       statusCode: 429,
       message: rawMessages[0] || 'Rate limit failure',
+      rawMessages,
+    };
+  }
+
+  if (NETWORK_FAILURE_KEYWORDS.some(keyword => combinedMessage.includes(keyword))) {
+    return {
+      code: FAILURE_CODE_HTTP_503,
+      shouldProtect: true,
+      statusCode: 503,
+      message: rawMessages[0] || 'Network failure',
       rawMessages,
     };
   }
