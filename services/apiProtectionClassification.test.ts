@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   FAILURE_CODE_HTTP_429,
+  FAILURE_CODE_HTTP_503,
   FAILURE_CODE_PARSE_BUBBLES_INVALID,
   FAILURE_CODE_UNKNOWN,
   classifyEndpointFailure,
@@ -24,6 +25,12 @@ const classifyCases = [
     name: 'http_429',
     input: { status: 429, message: 'Too Many Requests' },
     code: FAILURE_CODE_HTTP_429,
+    shouldProtect: true,
+  },
+  {
+    name: 'http_503',
+    input: { status: 503, message: 'Service Unavailable' },
+    code: FAILURE_CODE_HTTP_503,
     shouldProtect: true,
   },
   {
@@ -75,6 +82,7 @@ for (const testCase of classifyCases) {
 
 const protectionConfig = { durations: [30, 60, 120, 300, 600], disableThreshold: 2 };
 const endpoint429 = handleEndpointError(createEndpoint(), { status: 429, message: '429' }, protectionConfig);
+const endpoint503 = handleEndpointError(createEndpoint(), { status: 503, message: '503' }, protectionConfig);
 const endpointParse = handleEndpointError(createEndpoint(), { code: FAILURE_CODE_PARSE_BUBBLES_INVALID, message: 'invalid bubbles' }, protectionConfig);
 const endpointWrappedParse = handleEndpointError(createEndpoint(), {
   message: 'wrapped parse failure',
@@ -83,13 +91,16 @@ const endpointWrappedParse = handleEndpointError(createEndpoint(), {
 const endpointAbort = handleEndpointError(createEndpoint(), { name: 'AbortError', message: 'Aborted by user' }, protectionConfig);
 
 assert.equal(endpoint429.updatedEndpoint.consecutiveErrors, 1);
+assert.equal(endpoint503.updatedEndpoint.consecutiveErrors, 1);
 assert.equal(endpointParse.updatedEndpoint.consecutiveErrors, 1);
 assert.equal(endpointWrappedParse.updatedEndpoint.consecutiveErrors, 1);
 assert.equal(endpointAbort.updatedEndpoint.consecutiveErrors, undefined);
 assert.ok((endpoint429.updatedEndpoint.pausedUntil || 0) > 0);
+assert.ok((endpoint503.updatedEndpoint.pausedUntil || 0) > 0);
 assert.ok((endpointParse.updatedEndpoint.pausedUntil || 0) > 0);
 assert.ok((endpointWrappedParse.updatedEndpoint.pausedUntil || 0) > 0);
 assert.equal(endpoint429.shouldDisable, false);
+assert.equal(endpoint503.shouldDisable, false);
 assert.equal(endpointParse.shouldDisable, false);
 assert.equal(endpointWrappedParse.shouldDisable, false);
 assert.equal(endpointAbort.shouldDisable, false);

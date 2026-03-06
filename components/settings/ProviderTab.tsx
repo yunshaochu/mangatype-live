@@ -532,8 +532,8 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
               {/* Footnote */}
               <p className="text-[11px] text-gray-600 leading-relaxed border-t border-gray-800 pt-3">
                 {lang === 'zh'
-                  ? '遇到 429 / 503 等限速错误时，端点按上方时间序列自动暂停；连续错误达到阈值次数后自动停用。'
-                  : 'On 429/503 errors, the endpoint is paused using the duration sequence above; it is auto-disabled after consecutive errors reach the threshold.'}
+                  ? '遇到 429/5xx 或结构化响应无效（例如 bubbles JSON 无效）时，端点按上方时间序列自动暂停；连续失败达到阈值后自动停用。'
+                  : 'On 429/5xx failures or invalid structured responses (for example invalid bubbles JSON), the endpoint is paused using the duration sequence above and auto-disabled after consecutive failures reach the threshold.'}
               </p>
 
               {/* Reset row */}
