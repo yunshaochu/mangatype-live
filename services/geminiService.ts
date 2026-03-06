@@ -318,6 +318,29 @@ const validateBubblesArray = (data: any): any[] => {
     return data.bubbles;
 };
 
+export const parseOpenAIToolCallArguments = (toolCall: any): any => {
+  const argsStr = toolCall?.function?.arguments;
+  if (typeof argsStr !== 'string' || argsStr.trim().length === 0) {
+    throw createParseBubblesError("OpenAI tool call arguments are missing or not a string.");
+  }
+
+  try {
+    return JSON.parse(argsStr);
+  } catch (parseError: any) {
+    try {
+      return JSON.parse(repairJson(argsStr));
+    } catch (repairParseError: any) {
+      const parseFailure = createParseBubblesError(
+        `OpenAI tool call arguments parse failed: ${parseError?.message || 'Invalid JSON arguments.'}`,
+        repairParseError
+      ) as any;
+      parseFailure.originalParseError = parseError;
+      parseFailure.rawArguments = argsStr;
+      throw parseFailure;
+    }
+  }
+};
+
 /**
  * Handle OpenAI-compatible responses that may be streaming despite stream:false.
  * Detects SSE/ndjson responses and reassembles them into a single JSON object.
@@ -780,14 +803,7 @@ export const detectAndTypesetComic = async (
       const toolCalls = resData.choices?.[0]?.message?.tool_calls;
       
       if (toolCalls && toolCalls.length > 0) {
-        // Often 'arguments' is also a JSON string, so we might need repair here too if the model is weird
-        let argsStr = toolCalls[0].function.arguments;
-        let args;
-        try {
-            args = JSON.parse(argsStr);
-        } catch(e) {
-            args = JSON.parse(repairJson(argsStr));
-        }
+        const args = parseOpenAIToolCallArguments(toolCalls[0]);
         const bubbles = validateBubblesArray(args);
         return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text || b.translation) }));
       } else {
