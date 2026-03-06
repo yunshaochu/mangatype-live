@@ -192,9 +192,11 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
   const [groupNameDraft, setGroupNameDraft] = useState('');
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, EndpointCapabilityTestResult>>({});
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const endpoints = config.endpoints || [];
   const enabledCount = endpoints.filter(ep => ep.enabled).length;
+  const hasPausedEndpoints = endpoints.some(ep => isEndpointPaused(ep, nowMs));
 
   // Derive ordered unique groups from endpoint array
   const groups = Array.from(new Set(endpoints.map((ep: APIEndpoint) => ep.group).filter(Boolean))) as string[];
@@ -341,6 +343,13 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
   };
 
   const [showProtectionSettings, setShowProtectionSettings] = useState(false);
+
+  useEffect(() => {
+    if (!hasPausedEndpoints) return;
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [hasPausedEndpoints]);
 
   // ESC closes gear modal (capture phase so it doesn't bubble up to SettingsModal)
   useEffect(() => {
