@@ -5,7 +5,9 @@ import {
   FAILURE_CODE_PARSE_BUBBLES_INVALID,
   FAILURE_CODE_UNKNOWN,
   classifyEndpointFailure,
+  getRemainingPauseTime,
   handleEndpointError,
+  isEndpointPaused,
 } from './apiProtection';
 import { APIEndpoint } from '../types';
 
@@ -110,5 +112,25 @@ assert.equal(endpoint503.shouldDisable, false);
 assert.equal(endpointParse.shouldDisable, false);
 assert.equal(endpointWrappedParse.shouldDisable, false);
 assert.equal(endpointAbort.shouldDisable, false);
+
+const NOW_MS = 1_700_000_000_000;
+const pausedEndpoint: APIEndpoint = {
+  ...createEndpoint(),
+  pausedUntil: NOW_MS + 2_500,
+};
+
+assert.equal(isEndpointPaused(pausedEndpoint, NOW_MS), true);
+assert.equal(getRemainingPauseTime(pausedEndpoint, NOW_MS), 3);
+assert.equal(isEndpointPaused(pausedEndpoint, NOW_MS + 2_500), false);
+assert.equal(getRemainingPauseTime(pausedEndpoint, NOW_MS + 2_500), 0);
+
+const originalDateNow = Date.now;
+Date.now = () => NOW_MS;
+try {
+  assert.equal(isEndpointPaused(pausedEndpoint), true);
+  assert.equal(getRemainingPauseTime(pausedEndpoint), 3);
+} finally {
+  Date.now = originalDateNow;
+}
 
 console.log('apiProtectionClassification tests passed (429 + parse + abort)');

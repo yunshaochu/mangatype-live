@@ -477,17 +477,17 @@ export const handleEndpointSuccess = (endpoint: APIEndpoint): APIEndpoint => {
 /**
  * Check if endpoint is currently paused
  */
-export const isEndpointPaused = (endpoint: APIEndpoint): boolean => {
+export const isEndpointPaused = (endpoint: APIEndpoint, nowMs: number = Date.now()): boolean => {
   if (!endpoint.pausedUntil) return false;
-  return Date.now() < endpoint.pausedUntil;
+  return nowMs < endpoint.pausedUntil;
 };
 
 /**
  * Get remaining pause time in seconds
  */
-export const getRemainingPauseTime = (endpoint: APIEndpoint): number => {
+export const getRemainingPauseTime = (endpoint: APIEndpoint, nowMs: number = Date.now()): number => {
   if (!endpoint.pausedUntil) return 0;
-  const remaining = endpoint.pausedUntil - Date.now();
+  const remaining = endpoint.pausedUntil - nowMs;
   return Math.max(0, Math.ceil(remaining / 1000));
 };
 
