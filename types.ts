@@ -46,6 +46,10 @@ export interface MaskRegion {
   method?: 'fill' | 'inpaint'; // New: Tag to determine batch processing method. Default is 'fill'.
   fillColor?: string; // New: Store color for instant rendering
   maskContourBase64?: string;    // Per-block refined mask from detection API (mask_refined_region_base64)
+  // Optional independent contour anchor.
+  // Backward compatibility: when absent, consumers must fall back to x/y.
+  maskContourX?: number;
+  maskContourY?: number;
   maskContourW?: number;         // Original scan width % (before expansion/user resize)
   maskContourH?: number;         // Original scan height % (before expansion/user resize)
   maskContourRects?: Array<{x: number; y: number; w: number; h: number}>; // BFS bounding rects, proportions (0–1) of mask image
