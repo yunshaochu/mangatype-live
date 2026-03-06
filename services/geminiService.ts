@@ -216,6 +216,16 @@ const createParseBubblesError = (message: string, cause?: unknown): Error => {
   return err;
 };
 
+const createAbortByUserError = (): Error => {
+  const err: any = new Error("Aborted by user");
+  err.name = "AbortError";
+  return err;
+};
+
+const isAbortByUserError = (error: any): boolean => {
+  return error?.name === 'AbortError' || (typeof error?.message === 'string' && error.message.includes('Aborted'));
+};
+
 /**
  * Robust JSON repair function.
  * Iterates through the string statefully to handle unescaped control characters inside quotes.
@@ -437,16 +447,23 @@ const createWrappedError = (message: string, original?: any, extras?: Record<str
   const wrapped: any = new Error(message);
   if (original) {
     wrapped.cause = original;
-    if (original?.code) {
-      wrapped.code = original.code;
+    const errorCode = original?.code || original?.cause?.code;
+    if (errorCode) {
+      wrapped.code = errorCode;
     }
-    const status = original?.status || original?.statusCode || original?.response?.status;
+    const status =
+      original?.status ||
+      original?.statusCode ||
+      original?.response?.status ||
+      original?.cause?.status ||
+      original?.cause?.statusCode ||
+      original?.cause?.response?.status;
     if (status) {
       wrapped.status = status;
       wrapped.statusCode = status;
     }
-    if (original?.response) {
-      wrapped.response = original.response;
+    if (original?.response || original?.cause?.response) {
+      wrapped.response = original?.response || original?.cause?.response;
     }
   }
   if (extras) {
@@ -575,7 +592,7 @@ export const detectAndTypesetComic = async (
   const data = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
   let systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
 
-  if (signal?.aborted) throw new Error("Aborted by user");
+  if (signal?.aborted) throw createAbortByUserError();
 
   if (config.useMasksAsHints && maskRegions && maskRegions.length > 0) {
       const hints = maskRegions.map(m => {
@@ -680,7 +697,7 @@ export const detectAndTypesetComic = async (
     // Tier 1: Function Calling (Skip if user explicitly disabled)
     if (config.modelSupportsFunctionCalling !== false) {
       try {
-      if (signal?.aborted) throw new Error("Aborted by user");
+      if (signal?.aborted) throw createAbortByUserError();
       const response = await ai.models.generateContent({
         model: config.model || 'gemini-3-pro-preview',
         contents: [
@@ -705,7 +722,7 @@ export const detectAndTypesetComic = async (
         return mapDetectedBubbles(bubbles);
       }
     } catch (e: any) {
-      if (e.message?.includes('Aborted')) throw e;
+      if (isAbortByUserError(e)) throw e;
       if (isProtectableError(e).shouldProtect) {
         throw createWrappedError(`Gemini request failed: ${e.message || 'Rate limit error'}`, e);
       }
@@ -716,7 +733,7 @@ export const detectAndTypesetComic = async (
     // Tier 2: Official JSON Mode (Skip if user explicitly disabled)
     if (config.modelSupportsJsonMode !== false) {
       try {
-      if (signal?.aborted) throw new Error("Aborted by user");
+      if (signal?.aborted) throw createAbortByUserError();
       const fallbackResponse = await ai.models.generateContent({
         model: config.model || 'gemini-3-flash-preview',
         contents: [
@@ -734,7 +751,7 @@ export const detectAndTypesetComic = async (
       const bubbles = extractAndValidateBubblesFromText(fallbackResponse.text, "Gemini JSON mode response");
       return mapDetectedBubbles(bubbles);
     } catch (e: any) {
-      if (e.message?.includes('Aborted')) throw e;
+      if (isAbortByUserError(e)) throw e;
       if (isProtectableError(e).shouldProtect) {
         throw createWrappedError(`Gemini request failed: ${e.message || 'Rate limit error'}`, e);
       }
@@ -744,7 +761,7 @@ export const detectAndTypesetComic = async (
 
     // Tier 3: Raw Text Extraction (Dumb Luck Mode) - Always available as final fallback
     try {
-      if (signal?.aborted) throw new Error("Aborted by user");
+      if (signal?.aborted) throw createAbortByUserError();
       const rawResponse = await ai.models.generateContent({
         model: config.model || 'gemini-3-flash-preview',
         contents: [
@@ -761,7 +778,7 @@ export const detectAndTypesetComic = async (
       const bubbles = extractAndValidateBubblesFromText(rawResponse.text, "Gemini raw response");
       return mapDetectedBubbles(bubbles);
     } catch (e: any) {
-      if (e.message?.includes('Aborted')) throw e;
+      if (isAbortByUserError(e)) throw e;
       console.error("Tier 3 (Raw Text) failed too:", e.message);
       throw createWrappedError("AI failed to return structured data. " + (e.message || 'Unknown error'), e);
     }
@@ -827,7 +844,7 @@ export const detectAndTypesetComic = async (
         return mapDetectedBubbles(bubbles);
       }
     } catch (e: any) {
-      if (e.name === 'AbortError') throw new Error("Aborted by user");
+      if (isAbortByUserError(e)) throw createAbortByUserError();
       throw createWrappedError("Failed to process OpenAI vision request: " + (e.message || 'Unknown error'), e);
     }
   }

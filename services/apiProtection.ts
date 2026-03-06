@@ -300,6 +300,20 @@ export const getDisableReasonMessage = (classification: EndpointFailureClassific
 export const classifyEndpointFailure = (error: any): EndpointFailureClassification => {
   const rawMessages = collectErrorMessages(error);
   const combinedMessage = rawMessages.join(' | ').toLowerCase();
+  const isAbortLike =
+    error?.name === 'AbortError' ||
+    combinedMessage.includes('aborted by user') ||
+    combinedMessage.includes('operation was aborted');
+
+  if (isAbortLike) {
+    return {
+      code: FAILURE_CODE_UNKNOWN,
+      shouldProtect: false,
+      message: rawMessages[0] || 'Aborted by user',
+      rawMessages,
+    };
+  }
+
   const statusFromError = getRawStatusCode(error);
   const statusCode = statusFromError ?? findStatusCodeFromMessage(combinedMessage);
   const statusCodeBased = getFailureCodeFromStatus(statusCode);
@@ -314,7 +328,11 @@ export const classifyEndpointFailure = (error: any): EndpointFailureClassificati
     };
   }
 
-  const explicitCode = error?.code;
+  const explicitCode =
+    error?.code ||
+    error?.cause?.code ||
+    error?.error?.code ||
+    error?.response?.data?.error?.code;
   if (explicitCode === FAILURE_CODE_PARSE_BUBBLES_INVALID) {
     return {
       code: FAILURE_CODE_PARSE_BUBBLES_INVALID,

@@ -33,6 +33,21 @@ const classifyCases = [
     shouldProtect: true,
   },
   {
+    name: 'wrapped_parse_code_in_cause',
+    input: {
+      message: 'wrapped translate failure',
+      cause: { code: FAILURE_CODE_PARSE_BUBBLES_INVALID, message: 'provider parse failed' },
+    },
+    code: FAILURE_CODE_PARSE_BUBBLES_INVALID,
+    shouldProtect: true,
+  },
+  {
+    name: 'abort_error',
+    input: { name: 'AbortError', message: 'Aborted by user' },
+    code: FAILURE_CODE_UNKNOWN,
+    shouldProtect: false,
+  },
+  {
     name: 'unknown_failure',
     input: { message: 'socket reset by peer' },
     code: FAILURE_CODE_UNKNOWN,
@@ -49,12 +64,22 @@ for (const testCase of classifyCases) {
 const protectionConfig = { durations: [30, 60, 120, 300, 600], disableThreshold: 2 };
 const endpoint429 = handleEndpointError(createEndpoint(), { status: 429, message: '429' }, protectionConfig);
 const endpointParse = handleEndpointError(createEndpoint(), { code: FAILURE_CODE_PARSE_BUBBLES_INVALID, message: 'invalid bubbles' }, protectionConfig);
+const endpointWrappedParse = handleEndpointError(createEndpoint(), {
+  message: 'wrapped parse failure',
+  cause: { code: FAILURE_CODE_PARSE_BUBBLES_INVALID, message: 'failed inside provider wrapper' },
+}, protectionConfig);
+const endpointAbort = handleEndpointError(createEndpoint(), { name: 'AbortError', message: 'Aborted by user' }, protectionConfig);
 
 assert.equal(endpoint429.updatedEndpoint.consecutiveErrors, 1);
 assert.equal(endpointParse.updatedEndpoint.consecutiveErrors, 1);
+assert.equal(endpointWrappedParse.updatedEndpoint.consecutiveErrors, 1);
+assert.equal(endpointAbort.updatedEndpoint.consecutiveErrors, undefined);
 assert.ok((endpoint429.updatedEndpoint.pausedUntil || 0) > 0);
 assert.ok((endpointParse.updatedEndpoint.pausedUntil || 0) > 0);
+assert.ok((endpointWrappedParse.updatedEndpoint.pausedUntil || 0) > 0);
 assert.equal(endpoint429.shouldDisable, false);
 assert.equal(endpointParse.shouldDisable, false);
+assert.equal(endpointWrappedParse.shouldDisable, false);
+assert.equal(endpointAbort.shouldDisable, false);
 
-console.log('apiProtectionClassification tests passed (429 + parse equivalence)');
+console.log('apiProtectionClassification tests passed (429 + parse + abort)');
