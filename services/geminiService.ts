@@ -318,6 +318,23 @@ const validateBubblesArray = (data: any): any[] => {
     return data.bubbles;
 };
 
+const ensureNonEmptyResponseText = (text: string | undefined | null, source: string): string => {
+  if (typeof text !== 'string' || text.trim().length === 0) {
+    throw createParseBubblesError(`${source} returned empty response; expected {"bubbles":[...]}.`);
+  }
+  return text;
+};
+
+export const extractAndValidateBubblesFromText = (text: string | undefined | null, source: string): any[] => {
+  const nonEmptyText = ensureNonEmptyResponseText(text, source);
+  const payload = extractJsonFromText(nonEmptyText);
+  return validateBubblesArray(payload);
+};
+
+const mapDetectedBubbles = (bubbles: any[]): any[] => {
+  return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text || b.translation) }));
+};
+
 export const parseOpenAIToolCallArguments = (toolCall: any): any => {
   const argsStr = toolCall?.function?.arguments;
   if (typeof argsStr !== 'string' || argsStr.trim().length === 0) {
@@ -685,7 +702,7 @@ export const detectAndTypesetComic = async (
       if (response.functionCalls && response.functionCalls.length > 0) {
         const args = response.functionCalls[0].args as any;
         const bubbles = validateBubblesArray(args); 
-        return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text || b.translation) }));
+        return mapDetectedBubbles(bubbles);
       }
     } catch (e: any) {
       if (e.message?.includes('Aborted')) throw e;
@@ -714,9 +731,8 @@ export const detectAndTypesetComic = async (
         ],
         config: { responseMimeType: "application/json" }
       });
-      const json = extractJsonFromText(fallbackResponse.text || "{}");
-      const bubbles = validateBubblesArray(json);
-      return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text || b.translation) }));
+      const bubbles = extractAndValidateBubblesFromText(fallbackResponse.text, "Gemini JSON mode response");
+      return mapDetectedBubbles(bubbles);
     } catch (e: any) {
       if (e.message?.includes('Aborted')) throw e;
       if (isProtectableError(e).shouldProtect) {
@@ -742,9 +758,8 @@ export const detectAndTypesetComic = async (
             }
         ]
       });
-      const json = extractJsonFromText(rawResponse.text || "{}");
-      const bubbles = validateBubblesArray(json);
-      return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text || b.translation) }));
+      const bubbles = extractAndValidateBubblesFromText(rawResponse.text, "Gemini raw response");
+      return mapDetectedBubbles(bubbles);
     } catch (e: any) {
       if (e.message?.includes('Aborted')) throw e;
       console.error("Tier 3 (Raw Text) failed too:", e.message);
@@ -805,12 +820,11 @@ export const detectAndTypesetComic = async (
       if (toolCalls && toolCalls.length > 0) {
         const args = parseOpenAIToolCallArguments(toolCalls[0]);
         const bubbles = validateBubblesArray(args);
-        return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text || b.translation) }));
+        return mapDetectedBubbles(bubbles);
       } else {
         const content = resData.choices?.[0]?.message?.content;
-        const json = extractJsonFromText(content || "{}");
-        const bubbles = validateBubblesArray(json);
-        return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text || b.translation) }));
+        const bubbles = extractAndValidateBubblesFromText(content, "OpenAI content response");
+        return mapDetectedBubbles(bubbles);
       }
     } catch (e: any) {
       if (e.name === 'AbortError') throw new Error("Aborted by user");
