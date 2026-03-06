@@ -2,6 +2,7 @@
 import { ImageState, Bubble, MaskRegion, FONTS, getFontStack } from '../types';
 import JSZip from 'jszip';
 import { domToPng } from 'modern-screenshot';
+import { getVerticalPunctuationTune } from '../utils/verticalPunctuation';
 
 // Helper to escape HTML characters to prevent breaking SVG XML
 const escapeHtml = (unsafe: string) => {
@@ -13,7 +14,66 @@ const escapeHtml = (unsafe: string) => {
          .replace(/'/g, "&#039;");
 };
 
-// Google Fonts CSS URL (same as index.html)
+const getTunedVerticalPunctuationStyleText = (rotationDeg: number) => `
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1em;
+    height: 1em;
+    position: relative;
+    writing-mode: horizontal-tb;
+    line-height: 1;
+    transform: rotate(${rotationDeg}deg);
+    transform-origin: center center;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    color: inherit;
+    -webkit-text-stroke: inherit;
+`;
+
+const applyTunedVerticalPunctuationStyles = (span: HTMLSpanElement, rotationDeg: number, offsetXEm: number = 0) => {
+    span.style.cssText = `${getTunedVerticalPunctuationStyleText(rotationDeg)} left: ${offsetXEm}em;`;
+};
+
+const appendTunedVerticalTextNodes = (target: HTMLElement, text: string) => {
+    let bufferedText = '';
+
+    const flushBufferedText = () => {
+        if (!bufferedText) return;
+        target.appendChild(document.createTextNode(bufferedText));
+        bufferedText = '';
+    };
+
+    Array.from(text).forEach((char) => {
+        const tune = getVerticalPunctuationTune(char);
+        if (!tune) {
+            bufferedText += char;
+            return;
+        }
+
+        flushBufferedText();
+        const span = document.createElement('span');
+        applyTunedVerticalPunctuationStyles(span, tune.rotationDeg, tune.offsetXEm ?? 0);
+        span.textContent = tune.renderChar;
+        span.dataset.sourceChar = char;
+        span.dataset.renderChar = tune.renderChar;
+        span.dataset.rotation = String(tune.rotationDeg);
+        target.appendChild(span);
+    });
+
+    flushBufferedText();
+};
+
+const renderTunedVerticalTextHtml = (text: string) => {
+    return Array.from(text).map((char) => {
+        const tune = getVerticalPunctuationTune(char);
+        if (!tune) return escapeHtml(char);
+        return `<span style="${getTunedVerticalPunctuationStyleText(tune.rotationDeg)} left: ${tune.offsetXEm ?? 0}em;">${escapeHtml(tune.renderChar)}</span>`;
+    }).join('');
+};
+
+// Google Fonts CSS URL (same as index.html, Google-hosted families only)
 const GOOGLE_FONTS_CSS_URL = 'https://fonts.googleapis.com/css2?family=Zhi+Mang+Xing&family=Ma+Shan+Zheng&family=Noto+Sans+SC:wght@400;700;900&family=Noto+Serif+SC:wght@400;700&family=ZCOOL+KuaiLe&family=ZCOOL+XiaoWei&family=Long+Cang&family=Liu+Jian+Mao+Cao&display=swap';
 
 // Cache: parsed @font-face blocks keyed by font-family name
@@ -169,6 +229,7 @@ const getInlinedFontCSS = async (usedFamilies: Set<string>): Promise<string> => 
         const familyBlocks = blocks.get(family);
         if (familyBlocks) neededBlocks.push(...familyBlocks);
     }
+
     if (neededBlocks.length === 0) return '';
 
     // Collect all woff2 URLs from needed blocks
@@ -1139,7 +1200,7 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
     const uniqueFonts = [...new Set(FONTS.map(f => f.googleFontName))];
     await Promise.all(
         uniqueFonts.map(fontName =>
-            document.fonts.load(`bold 48px '${fontName}'`).catch(() => {})
+            document.fonts.load(`48px '${fontName}'`).catch(() => {})
         )
     );
 
@@ -1219,12 +1280,21 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 // actually creates column breaks inside the flex parent
                 const innerBlock = document.createElement('div');
                 innerBlock.style.cssText = `white-space: pre; writing-mode: vertical-rl; text-orientation: mixed; line-height: ${b.lineHeight ?? 1.1}; letter-spacing: ${b.letterSpacing ?? 0.15}em;`;
-                b.text.split('').forEach(char => {
+                Array.from(b.text).forEach(char => {
                     if (char === '\n') {
                         innerBlock.appendChild(document.createTextNode('\n'));
                     } else {
                         const span = document.createElement('span');
-                        span.textContent = char;
+                        const tune = getVerticalPunctuationTune(char);
+                        if (tune) {
+                            applyTunedVerticalPunctuationStyles(span, tune.rotationDeg, tune.offsetXEm ?? 0);
+                            span.textContent = tune.renderChar;
+                            span.dataset.sourceChar = char;
+                            span.dataset.renderChar = tune.renderChar;
+                            span.dataset.rotation = String(tune.rotationDeg);
+                        } else {
+                            span.textContent = char;
+                        }
                         innerBlock.appendChild(span);
                         charSpans.push(span);
                     }
@@ -1320,7 +1390,7 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 // Each char's position was already laid out by CSS (writing-mode + text-orientation: mixed)
 
                 charSpans.forEach(span => {
-                    const char = span.textContent || '';
+                    const char = span.dataset.renderChar || span.textContent || '';
                     const rect = span.getBoundingClientRect();
                     // Character center in image coordinates
                     const charCX = rect.left - containerRect.left + rect.width / 2;
@@ -1334,10 +1404,15 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                     // always draws upright, so we must rotate for horizontal-script chars.
                     // CJK punctuation that has vertical variants (，。、：；！？) also needs
                     // special handling — CSS uses vertical glyph variants but Canvas doesn't.
-                    const isHorizontalScript = /[A-Za-z0-9…—!?@#$%^&*()_+=\[\]{}<>\/\\|~`'";:,.\-]/.test(char);
-                    const isCJKPunctuation = /[，。、：；「」『』（）【】〈〉《》〔〕｛｝～·]/.test(char);
-                    if (isHorizontalScript || isCJKPunctuation) {
-                        ctx.rotate(Math.PI / 2);
+                    const tunedRotationDeg = span.dataset.rotation ? parseFloat(span.dataset.rotation) : NaN;
+                    if (Number.isFinite(tunedRotationDeg)) {
+                        ctx.rotate((tunedRotationDeg * Math.PI) / 180);
+                    } else {
+                        const isHorizontalScript = /[A-Za-z0-9…—!?@#$%^&*()_+=\[\]{}<>\/\\|~`'";:,.\-]/.test(char);
+                        const isCJKPunctuation = /[，。、：；「」『』（）【】〈〉《》〔〕｛｝～·]/.test(char);
+                        if (isHorizontalScript || isCJKPunctuation) {
+                            ctx.rotate(Math.PI / 2);
+                        }
                     }
 
                     if (b.strokeColor && b.strokeColor !== 'transparent') {
@@ -1432,7 +1507,7 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
 
        const safeText = escapeHtml(b.text);
        // Vertical Text Fix: 牺牲行用于解决 Chrome ForeignObject 竖排第一行缩进 Bug
-       const renderText = b.isVertical ? `\n${safeText}` : safeText;
+       const renderText = b.isVertical ? renderTunedVerticalTextHtml(`\n${b.text}`) : safeText;
 
        // 方案 C: 绝对定位手动居中，避免 Flexbox 在 SVG ForeignObject 中的渲染差异
        // 基础 transform: 将文字中心对齐到父容器中心
@@ -1473,6 +1548,7 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
                 left: 50%;
                 transform: ${centerTransform};
                 writing-mode: ${b.isVertical ? 'vertical-rl' : 'horizontal-tb'};
+                ${b.isVertical ? 'text-orientation: mixed;' : ''}
                 font-family: ${fontStack};
                 font-size: ${fontSize}px;
                 font-weight: bold;
@@ -1795,10 +1871,15 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
             outer.appendChild(bgDiv);
 
             // Text div
-            const textDiv = document.createElement('div');
-            textDiv.style.cssText = `
+            const textWrap = document.createElement('div');
+            textWrap.style.cssText = `
                 position: absolute; top: 0; left: 0; right: 0; bottom: 0;
                 display: flex; align-items: center; justify-content: center;
+                overflow: visible;
+            `;
+
+            const textDiv = document.createElement('div');
+            textDiv.style.cssText = `
                 font-size: ${b.fontSize * 2}cqw;
                 font-weight: ${b.fontFamily === 'noto-bold' ? '900' : 'bold'};
                 font-family: ${getFontStack(b.fontFamily)};
@@ -1811,10 +1892,11 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
                 text-align: ${b.isVertical ? 'start' : 'center'};
                 -webkit-text-stroke: 3px ${strokeColor};
                 paint-order: stroke fill;
-                overflow: visible;
             `;
-            textDiv.textContent = b.text;
-            outer.appendChild(textDiv);
+            if (b.isVertical) appendTunedVerticalTextNodes(textDiv, b.text);
+            else textDiv.textContent = b.text;
+            textWrap.appendChild(textDiv);
+            outer.appendChild(textWrap);
 
             overlay.appendChild(outer);
         });

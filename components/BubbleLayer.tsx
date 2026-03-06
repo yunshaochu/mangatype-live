@@ -3,6 +3,61 @@ import React, { useRef, useEffect } from 'react';
 import { Bubble, AIConfig, HandleType } from '../types';
 import { X } from 'lucide-react';
 import { handleStyle, HANDLE_OFFSET, clamp } from '../utils/editorUtils';
+import { getVerticalPunctuationTune } from '../utils/verticalPunctuation';
+
+const tunedVerticalPunctuationStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '1em',
+  height: '1em',
+  position: 'relative',
+  writingMode: 'horizontal-tb',
+  lineHeight: 1,
+  transformOrigin: 'center center',
+  fontFamily: 'inherit',
+  fontSize: 'inherit',
+  fontWeight: 'inherit',
+  color: 'inherit',
+  WebkitTextStroke: 'inherit',
+};
+
+const renderVerticalText = (text: string) => {
+  const nodes: React.ReactNode[] = [];
+  let bufferedText = '';
+
+  Array.from(text).forEach((char, index) => {
+    const tune = getVerticalPunctuationTune(char);
+    if (!tune) {
+      bufferedText += char;
+      return;
+    }
+
+    if (bufferedText) {
+      nodes.push(bufferedText);
+      bufferedText = '';
+    }
+
+    nodes.push(
+      <span
+        key={`vp-${index}`}
+        style={{
+          ...tunedVerticalPunctuationStyle,
+          left: `${tune.offsetXEm ?? 0}em`,
+          transform: `rotate(${tune.rotationDeg}deg)`,
+        }}
+      >
+        {tune.renderChar}
+      </span>
+    );
+  });
+
+  if (bufferedText) {
+    nodes.push(bufferedText);
+  }
+
+  return nodes;
+};
 
 interface BubbleLayerProps {
   bubble: Bubble;
@@ -123,23 +178,25 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
         </>
       )}
       
-      <div
-        className={`absolute inset-0 flex items-center justify-center font-${bubble.fontFamily} leading-[1.2] overflow-visible`}
-        style={{
-          fontSize: `${bubble.fontSize * 2}cqw`,
-          fontWeight: bubble.fontFamily === 'noto-bold' ? 900 : 'bold',
-          color: bubble.color,
-          writingMode: bubble.isVertical ? 'vertical-rl' : 'horizontal-tb',
-          textOrientation: bubble.isVertical ? 'mixed' : undefined,
-          whiteSpace: 'pre',
-          letterSpacing: `${bubble.letterSpacing ?? 0.15}em`,
-          lineHeight: String(bubble.lineHeight ?? 1.1),
-          textAlign: bubble.isVertical ? 'start' : 'center',
-          WebkitTextStroke: bubble.strokeColor && bubble.strokeColor !== 'transparent' ? `3px ${bubble.strokeColor}` : '3px #ffffff',
-          paintOrder: 'stroke fill',
-        }}
-      >
-        {bubble.text}
+      <div className="absolute inset-0 flex items-center justify-center overflow-visible">
+        <div
+          className={`font-${bubble.fontFamily} leading-[1.2]`}
+          style={{
+            fontSize: `${bubble.fontSize * 2}cqw`,
+            fontWeight: bubble.fontFamily === 'noto-bold' ? 900 : 'bold',
+            color: bubble.color,
+            writingMode: bubble.isVertical ? 'vertical-rl' : 'horizontal-tb',
+            textOrientation: bubble.isVertical ? 'mixed' : undefined,
+            whiteSpace: 'pre',
+            letterSpacing: `${bubble.letterSpacing ?? 0.15}em`,
+            lineHeight: String(bubble.lineHeight ?? 1.1),
+            textAlign: bubble.isVertical ? 'start' : 'center',
+            WebkitTextStroke: bubble.strokeColor && bubble.strokeColor !== 'transparent' ? `3px ${bubble.strokeColor}` : '3px #ffffff',
+            paintOrder: 'stroke fill',
+          }}
+        >
+          {bubble.isVertical ? renderVerticalText(bubble.text) : bubble.text}
+        </div>
       </div>
     </div>
   );
