@@ -7,7 +7,7 @@ const checks = [
   {
     id: 'AC1',
     file: path.join('components', 'Workspace.tsx'),
-    patterns: ['for (const region of maskRegions)', 'for (const contour of contours)'],
+    patterns: ['for (const region of maskRegions)', 'for (const contour of preparedContours)'],
     label: '任意红框可见已有轮廓（交集渲染）',
   },
   {

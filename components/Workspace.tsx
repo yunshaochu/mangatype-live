@@ -89,6 +89,49 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   const replayPromiseRef = useRef<Promise<void> | null>(null);
 
   const contourPreviewLayers = useMemo(() => {
+    const preparedContours = contours
+      .map((contour) => {
+        if (!contour.base64) return null;
+        const contourX = contour.anchor?.x;
+        const contourY = contour.anchor?.y;
+        const contourW = contour.size?.w;
+        const contourH = contour.size?.h;
+        if (
+          typeof contourX !== 'number' || typeof contourY !== 'number' ||
+          typeof contourW !== 'number' || typeof contourH !== 'number' ||
+          contourW <= 0 || contourH <= 0
+        ) {
+          return null;
+        }
+        const left = contourX - contourW / 2;
+        const top = contourY - contourH / 2;
+        return {
+          id: contour.id,
+          base64: contour.base64,
+          contourX,
+          contourY,
+          contourW,
+          contourH,
+          left,
+          top,
+          right: left + contourW,
+          bottom: top + contourH,
+        };
+      })
+      .filter((contour): contour is {
+        id: string;
+        base64: string;
+        contourX: number;
+        contourY: number;
+        contourW: number;
+        contourH: number;
+        left: number;
+        top: number;
+        right: number;
+        bottom: number;
+      } => contour !== null);
+    if (preparedContours.length === 0 || maskRegions.length === 0) return [];
+
     const layers: Array<{
       key: string;
       contourX: number;
@@ -105,24 +148,15 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       const maskRight = maskLeft + region.width;
       const maskBottom = maskTop + region.height;
 
-      for (const contour of contours) {
-        if (!contour.base64) continue;
-        const contourX = contour.anchor?.x;
-        const contourY = contour.anchor?.y;
-        const contourW = contour.size?.w;
-        const contourH = contour.size?.h;
-        if (
-          typeof contourX !== 'number' || typeof contourY !== 'number' ||
-          typeof contourW !== 'number' || typeof contourH !== 'number' ||
-          contourW <= 0 || contourH <= 0
-        ) {
-          continue;
-        }
-
-        const contourLeft = contourX - contourW / 2;
-        const contourTop = contourY - contourH / 2;
-        const contourRight = contourLeft + contourW;
-        const contourBottom = contourTop + contourH;
+      for (const contour of preparedContours) {
+        const contourLeft = contour.left;
+        const contourTop = contour.top;
+        const contourRight = contour.right;
+        const contourBottom = contour.bottom;
+        const contourW = contour.contourW;
+        const contourH = contour.contourH;
+        const contourX = contour.contourX;
+        const contourY = contour.contourY;
 
         const interLeft = Math.max(contourLeft, maskLeft);
         const interTop = Math.max(contourTop, maskTop);

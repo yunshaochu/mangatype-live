@@ -36,15 +36,9 @@ const buildContourIntersectionMasks = (image: ImageState, targetMasks: MaskRegio
     return { perMask, all: [] as MaskRegion[] };
   }
 
-  for (const mask of targetMasks) {
-    const maskLeft = mask.x - mask.width / 2;
-    const maskTop = mask.y - mask.height / 2;
-    const maskRight = maskLeft + mask.width;
-    const maskBottom = maskTop + mask.height;
-    const intersections: MaskRegion[] = [];
-
-    for (const contour of contours) {
-      if (!contour.base64) continue;
+  const preparedContours = contours
+    .map((contour) => {
+      if (!contour.base64) return null;
       const contourX = contour.anchor?.x;
       const contourY = contour.anchor?.y;
       const contourW = contour.size?.w;
@@ -54,13 +48,55 @@ const buildContourIntersectionMasks = (image: ImageState, targetMasks: MaskRegio
         typeof contourW !== 'number' || typeof contourH !== 'number' ||
         contourW <= 0 || contourH <= 0
       ) {
-        continue;
+        return null;
       }
+      const left = contourX - contourW / 2;
+      const top = contourY - contourH / 2;
+      return {
+        id: contour.id,
+        base64: contour.base64,
+        contourX,
+        contourY,
+        contourW,
+        contourH,
+        left,
+        top,
+        right: left + contourW,
+        bottom: top + contourH,
+      };
+    })
+    .filter((contour): contour is {
+      id: string;
+      base64: string;
+      contourX: number;
+      contourY: number;
+      contourW: number;
+      contourH: number;
+      left: number;
+      top: number;
+      right: number;
+      bottom: number;
+    } => contour !== null);
+  if (preparedContours.length === 0) {
+    return { perMask, all: [] as MaskRegion[] };
+  }
 
-      const contourLeft = contourX - contourW / 2;
-      const contourTop = contourY - contourH / 2;
-      const contourRight = contourLeft + contourW;
-      const contourBottom = contourTop + contourH;
+  for (const mask of targetMasks) {
+    const maskLeft = mask.x - mask.width / 2;
+    const maskTop = mask.y - mask.height / 2;
+    const maskRight = maskLeft + mask.width;
+    const maskBottom = maskTop + mask.height;
+    const intersections: MaskRegion[] = [];
+
+    for (const contour of preparedContours) {
+      const contourX = contour.contourX;
+      const contourY = contour.contourY;
+      const contourW = contour.contourW;
+      const contourH = contour.contourH;
+      const contourLeft = contour.left;
+      const contourTop = contour.top;
+      const contourRight = contour.right;
+      const contourBottom = contour.bottom;
       const intersects = contourRight > maskLeft && contourBottom > maskTop && contourLeft < maskRight && contourTop < maskBottom;
       if (!intersects) continue;
 

@@ -10,6 +10,8 @@
     "check:export-fill": "node scripts/validate-export-fill-guards.mjs",
     "check:contour-decoupling": "node scripts/validate-contour-decoupling-guards.mjs",
     "check:contour-acceptance": "node scripts/validate-contour-pool-acceptance.mjs",
+    "perf:contour:check": "node scripts/perf/check-contour-intersection-baseline.mjs",
+    "perf:contour:gate": "node scripts/perf/compare-contour-intersection-baseline.mjs",
     "perf:freehand:check": "node scripts/perf/check-freehand-baseline.mjs",
     "perf:freehand:gate": "node scripts/perf/compare-freehand-baseline.mjs"
   },

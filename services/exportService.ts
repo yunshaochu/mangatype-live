@@ -494,6 +494,51 @@ const resolveExportFillMasks = (imageState: ImageState): MaskRegion[] => {
     const masks = imageState.maskRegions || [];
     const contours = imageState.contours || [];
     const resolved: MaskRegion[] = [];
+    const preparedContours = contours
+        .map((contour) => {
+            if (!contour.base64) return null;
+            const contourX = contour.anchor?.x;
+            const contourY = contour.anchor?.y;
+            const contourW = contour.size?.w;
+            const contourH = contour.size?.h;
+            if (
+                typeof contourX !== 'number' || typeof contourY !== 'number' ||
+                typeof contourW !== 'number' || typeof contourH !== 'number' ||
+                contourW <= 0 || contourH <= 0
+            ) {
+                return null;
+            }
+            const left = contourX - contourW / 2;
+            const top = contourY - contourH / 2;
+            return {
+                id: contour.id,
+                base64: contour.base64,
+                contourX,
+                contourY,
+                contourW,
+                contourH,
+                left,
+                top,
+                right: left + contourW,
+                bottom: top + contourH,
+                rects: contour.rects,
+                dilatedBase64: contour.dilatedBase64,
+            };
+        })
+        .filter((contour): contour is {
+            id: string;
+            base64: string;
+            contourX: number;
+            contourY: number;
+            contourW: number;
+            contourH: number;
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+            rects?: Array<{ x: number; y: number; w: number; h: number }>;
+            dilatedBase64?: string;
+        } => contour !== null);
 
     for (const m of masks) {
         const fillMode = resolveExportFillRenderMode(m);
@@ -510,24 +555,15 @@ const resolveExportFillMasks = (imageState: ImageState): MaskRegion[] => {
         const maskBottom = maskTop + m.height;
         let usedContourPool = false;
 
-        for (const contour of contours) {
-            if (!contour.base64) continue;
-            const contourX = contour.anchor?.x;
-            const contourY = contour.anchor?.y;
-            const contourW = contour.size?.w;
-            const contourH = contour.size?.h;
-            if (
-                typeof contourX !== 'number' || typeof contourY !== 'number' ||
-                typeof contourW !== 'number' || typeof contourH !== 'number' ||
-                contourW <= 0 || contourH <= 0
-            ) {
-                continue;
-            }
-
-            const contourLeft = contourX - contourW / 2;
-            const contourTop = contourY - contourH / 2;
-            const contourRight = contourLeft + contourW;
-            const contourBottom = contourTop + contourH;
+        for (const contour of preparedContours) {
+            const contourX = contour.contourX;
+            const contourY = contour.contourY;
+            const contourW = contour.contourW;
+            const contourH = contour.contourH;
+            const contourLeft = contour.left;
+            const contourTop = contour.top;
+            const contourRight = contour.right;
+            const contourBottom = contour.bottom;
             const intersects = contourRight > maskLeft && contourBottom > maskTop && contourLeft < maskRight && contourTop < maskBottom;
             if (!intersects) continue;
 
