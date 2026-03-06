@@ -79,6 +79,7 @@ export interface ContourRegion {
   size: { w: number; h: number };
   rects?: Array<{ x: number; y: number; w: number; h: number }>;
   dilatedBase64?: string;
+  sourceMaskId?: string;
 }
 
 export const CONTOUR_SCHEMA_VERSION = 1;
@@ -120,16 +121,59 @@ export interface ImageState {
 }
 
 export const normalizeImageContourState = (image: ImageState): ImageState => {
+  const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+  const legacyContours: ContourRegion[] = (image.maskRegions || [])
+    .map((mask) => {
+      if (!mask.maskContourBase64) return null;
+
+      const anchorX = isFiniteNumber(mask.maskContourX) ? mask.maskContourX : mask.x;
+      const anchorY = isFiniteNumber(mask.maskContourY) ? mask.maskContourY : mask.y;
+      const sizeW = isFiniteNumber(mask.maskContourW) ? mask.maskContourW : mask.width;
+      const sizeH = isFiniteNumber(mask.maskContourH) ? mask.maskContourH : mask.height;
+      if (sizeW <= 0 || sizeH <= 0) return null;
+
+      return {
+        id: `legacy-${mask.id}`,
+        sourceMaskId: mask.id,
+        base64: mask.maskContourBase64,
+        anchor: { x: anchorX, y: anchorY },
+        size: { w: sizeW, h: sizeH },
+        rects: mask.maskContourRects,
+        dilatedBase64: mask.maskContourDilatedBase64,
+      };
+    })
+    .filter((contour): contour is ContourRegion => contour !== null);
+
   const contourSchemaVersion =
     typeof image.contourSchemaVersion === 'number' && Number.isFinite(image.contourSchemaVersion)
       ? image.contourSchemaVersion
       : CONTOUR_SCHEMA_VERSION;
   const contours = Array.isArray(image.contours) ? image.contours : [];
 
-  if (image.contourSchemaVersion === contourSchemaVersion && image.contours === contours) {
+  let mergedContours = contours;
+  if (legacyContours.length > 0) {
+    const keyOf = (contour: ContourRegion) => (
+      contour.sourceMaskId
+        ? `mask:${contour.sourceMaskId}`
+        : `${contour.base64}|${contour.anchor.x}|${contour.anchor.y}|${contour.size.w}|${contour.size.h}`
+    );
+    const seen = new Set<string>(contours.map(keyOf));
+    const appended: ContourRegion[] = [];
+    for (const legacyContour of legacyContours) {
+      const key = keyOf(legacyContour);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      appended.push(legacyContour);
+    }
+    if (appended.length > 0) {
+      mergedContours = [...contours, ...appended];
+    }
+  }
+
+  if (image.contourSchemaVersion === contourSchemaVersion && image.contours === mergedContours) {
     return image;
   }
-  return { ...image, contourSchemaVersion, contours };
+  return { ...image, contourSchemaVersion, contours: mergedContours };
 };
 
 export type FontOption = {
