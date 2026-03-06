@@ -35,13 +35,13 @@ const classifyCases = [
   },
   {
     name: 'openai_tool_args_parse_failure',
-    input: { code: FAILURE_CODE_PARSE_BUBBLES_INVALID, message: 'OpenAI tool call arguments parse failed: Unexpected token' },
+    input: { message: 'OpenAI tool call arguments parse failed: Unexpected token' },
     code: FAILURE_CODE_PARSE_BUBBLES_INVALID,
     shouldProtect: true,
   },
   {
     name: 'empty_response',
-    input: { code: FAILURE_CODE_PARSE_BUBBLES_INVALID, message: 'Gemini JSON mode response returned empty response; expected {"bubbles":[...]}.' },
+    input: { message: 'Gemini JSON mode response returned empty response; expected {"bubbles":[...]}.' },
     code: FAILURE_CODE_PARSE_BUBBLES_INVALID,
     shouldProtect: true,
   },
@@ -67,7 +67,7 @@ const classifyCases = [
     shouldProtect: false,
   },
   {
-    name: 'unknown_failure',
+    name: 'message_only_non_parse',
     input: { message: 'socket reset by peer' },
     code: FAILURE_CODE_UNKNOWN,
     shouldProtect: false,

@@ -184,6 +184,10 @@ const RATE_LIMIT_KEYWORDS = [
 const PARSE_FAILURE_KEYWORDS = [
   FAILURE_CODE_PARSE_BUBBLES_INVALID.toLowerCase(),
   'could not parse json structure',
+  'openai tool call arguments parse failed',
+  'tool call arguments are missing or not a string',
+  'returned empty response; expected {"bubbles":[...]}',
+  'empty response; expected {"bubbles":[...]}',
   "missing 'bubbles' key",
   "'bubbles' is not an array",
   'failed to parse response',
