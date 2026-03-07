@@ -4,6 +4,7 @@ import { t } from '../../services/i18n';
 import { TabProps } from './types';
 import { clearFontCache } from '../../services/exportService';
 import { clearAiConfigStorage, exportAiConfigJson, isImportableAiConfig, saveAiConfigToStorage } from '../../services/aiConfigStorage';
+import { clearAllEndpointModelCaches } from '../../services/endpointModelCache';
 
 export const GeneralTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -11,6 +12,7 @@ export const GeneralTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
   const handleResetToDefaults = async () => {
     if (!confirm(t('resetToDefaultsConfirm', lang))) return;
     clearAiConfigStorage(localStorage);
+    clearAllEndpointModelCaches(localStorage);
     await clearFontCache();
     window.location.reload();
   };
@@ -37,6 +39,7 @@ export const GeneralTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
           alert(t('configImportError', lang));
           return;
         }
+        clearAllEndpointModelCaches(localStorage);
         saveAiConfigToStorage(localStorage, parsed);
         alert(t('configImported', lang));
         window.location.reload();

@@ -6,6 +6,7 @@ import { AIProvider, APIEndpoint, mergeEndpointConfig } from '../../types';
 import { TabProps } from './types';
 import { isEndpointPaused, getRemainingPauseTime, formatPauseDuration, DEFAULT_API_PROTECTION_CONFIG } from '../../services/apiProtection';
 import { EndpointCapabilityTestResult, runEndpointCapabilityTests } from '../../services/endpointTestService';
+import { clearEndpointModelCache, readEndpointModelCache, writeEndpointModelCache } from '../../services/endpointModelCache';
 
 const EndpointEditor: React.FC<{
   endpoint: APIEndpoint;
@@ -32,14 +33,20 @@ const EndpointEditor: React.FC<{
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    const cachedModels = readEndpointModelCache(localStorage, draft);
+    setAvailableModels(cachedModels ?? []);
+  }, [draft.id, draft.provider, draft.baseUrl]);
+
   const handleFetchModels = async () => {
     setLoadingModels(true);
     setError(null);
     try {
       const merged = mergeEndpointConfig(config, draft);
       const models = await fetchAvailableModels(merged);
+      setAvailableModels(models);
+      writeEndpointModelCache(localStorage, draft, models);
       if (models.length > 0) {
-        setAvailableModels(models);
         setIsDropdownOpen(true);
       } else {
         setError(draft.provider === 'openai' ? t('noModels', lang) : t('failedFetch', lang));
@@ -239,11 +246,16 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
   };
 
   const handleSave = (ep: APIEndpoint) => {
+    const previous = endpoints.find(e => e.id === ep.id);
+    if (previous && (previous.provider !== ep.provider || previous.baseUrl !== ep.baseUrl)) {
+      clearEndpointModelCache(localStorage, ep.id);
+    }
     updateEndpoints(endpoints.map(e => e.id === ep.id ? ep : e));
     setEditingId(null);
   };
 
   const handleDelete = (id: string) => {
+    clearEndpointModelCache(localStorage, id);
     updateEndpoints(endpoints.filter(e => e.id !== id));
     if (editingId === id) setEditingId(null);
   };
