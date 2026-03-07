@@ -28,10 +28,15 @@ const EndpointEditor: React.FC<{
   config: any;
   lang: 'zh' | 'en';
   groups: string[];
-  onSave: (ep: APIEndpoint) => void;
+  testSettings: EndpointCapabilityTestSettings;
+  onSave: (ep: APIEndpoint, testSettings: EndpointCapabilityTestSettings) => void;
   onCancel: () => void;
-}> = ({ endpoint, config, lang, groups, onSave, onCancel }) => {
+}> = ({ endpoint, config, lang, groups, testSettings, onSave, onCancel }) => {
   const [draft, setDraft] = useState<APIEndpoint>({ ...endpoint });
+  const [draftTestSettings, setDraftTestSettings] = useState<EndpointCapabilityTestSettings>({
+    ...DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS,
+    ...testSettings,
+  });
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -163,37 +168,73 @@ const EndpointEditor: React.FC<{
         {error && <div className="text-xs text-red-400 flex items-center gap-1 mt-1"><AlertCircle size={12}/> {error}</div>}
       </div>
 
-      {/* Runtime capability overrides */}
-      <div className="space-y-2">
-        <div className="space-y-1">
-          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
-            {lang === 'zh' ? '运行时能力覆盖' : 'Runtime Capability Overrides'}
-          </label>
-          <p className="text-[11px] text-gray-500">
-            {lang === 'zh' ? '仅控制该端点翻译请求的能力字段，不影响测试设置。' : 'Only controls translation request capabilities for this endpoint, not test settings.'}
-          </p>
+      <details className="rounded-xl border border-gray-700 bg-gray-900/30 px-3 py-3">
+        <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-wider text-gray-300">
+          {lang === 'zh' ? '高级能力' : 'Advanced Capabilities'}
+        </summary>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div className="space-y-2 rounded-lg border border-gray-800 bg-black/10 p-3">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                {lang === 'zh' ? '运行时能力覆盖' : 'Runtime Capability Overrides'}
+              </label>
+              <p className="text-[11px] text-gray-500">
+                {lang === 'zh' ? '仅控制该端点翻译请求的能力字段。' : 'Only controls translation request capabilities for this endpoint.'}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                aria-pressed={draft.modelSupportsFunctionCalling !== false}
+                onClick={() => setDraft({ ...draft, modelSupportsFunctionCalling: draft.modelSupportsFunctionCalling === false ? undefined : false })}
+                className={`p-3 rounded-lg border text-left transition-all ${draft.modelSupportsFunctionCalling !== false ? 'bg-blue-600/15 border-blue-500/50 text-blue-200 ring-1 ring-blue-500/20' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
+              >
+                <div className="text-xs font-semibold">Function Calling</div>
+                <div className="text-[10px] mt-1 text-current/80">{draft.modelSupportsFunctionCalling !== false ? (lang === 'zh' ? '运行时已启用' : 'Runtime enabled') : (lang === 'zh' ? '运行时已关闭' : 'Runtime disabled')}</div>
+              </button>
+              <button
+                type="button"
+                aria-pressed={draft.modelSupportsJsonMode !== false}
+                onClick={() => setDraft({ ...draft, modelSupportsJsonMode: draft.modelSupportsJsonMode === false ? undefined : false })}
+                className={`p-3 rounded-lg border text-left transition-all ${draft.modelSupportsJsonMode !== false ? 'bg-indigo-600/15 border-indigo-500/50 text-indigo-200 ring-1 ring-indigo-500/20' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
+              >
+                <div className="text-xs font-semibold">JSON Mode</div>
+                <div className="text-[10px] mt-1 text-current/80">{draft.modelSupportsJsonMode !== false ? (lang === 'zh' ? '运行时已启用' : 'Runtime enabled') : (lang === 'zh' ? '运行时已关闭' : 'Runtime disabled')}</div>
+              </button>
+            </div>
+          </div>
+          <div className="space-y-2 rounded-lg border border-gray-800 bg-black/10 p-3">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                {lang === 'zh' ? '测试设置' : 'Test Settings'}
+              </label>
+              <p className="text-[11px] text-gray-500">
+                {lang === 'zh' ? '基础测试始终执行；仅在勾选后追加高级测试。' : 'Basic test always runs; advanced tests run only when selected.'}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                aria-pressed={draftTestSettings.testFunctionCalling}
+                onClick={() => setDraftTestSettings(prev => ({ ...prev, testFunctionCalling: !prev.testFunctionCalling }))}
+                className={`rounded-lg border px-3 py-2 text-left transition-all ${draftTestSettings.testFunctionCalling ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
+              >
+                <div className="font-semibold">{lang === 'zh' ? '测试 FC' : 'Test FC'}</div>
+                <div className="mt-1 text-[10px] text-current/80">{lang === 'zh' ? '发送 Function Calling 探测请求' : 'Send Function Calling probe request'}</div>
+              </button>
+              <button
+                type="button"
+                aria-pressed={draftTestSettings.testJsonMode}
+                onClick={() => setDraftTestSettings(prev => ({ ...prev, testJsonMode: !prev.testJsonMode }))}
+                className={`rounded-lg border px-3 py-2 text-left transition-all ${draftTestSettings.testJsonMode ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-200' : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
+              >
+                <div className="font-semibold">{lang === 'zh' ? '测试 JSON' : 'Test JSON'}</div>
+                <div className="mt-1 text-[10px] text-current/80">{lang === 'zh' ? '发送 JSON Mode 探测请求' : 'Send JSON mode probe request'}</div>
+              </button>
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <button
-            type="button"
-            aria-pressed={draft.modelSupportsFunctionCalling !== false}
-            onClick={() => setDraft({ ...draft, modelSupportsFunctionCalling: draft.modelSupportsFunctionCalling === false ? undefined : false })}
-            className={`p-3 rounded-lg border text-left transition-all ${draft.modelSupportsFunctionCalling !== false ? 'bg-blue-600/15 border-blue-500/50 text-blue-200 ring-1 ring-blue-500/20' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
-          >
-            <div className="text-xs font-semibold">Function Calling</div>
-            <div className="text-[10px] mt-1 text-current/80">{draft.modelSupportsFunctionCalling !== false ? (lang === 'zh' ? '运行时已启用' : 'Runtime enabled') : (lang === 'zh' ? '运行时已关闭' : 'Runtime disabled')}</div>
-          </button>
-          <button
-            type="button"
-            aria-pressed={draft.modelSupportsJsonMode !== false}
-            onClick={() => setDraft({ ...draft, modelSupportsJsonMode: draft.modelSupportsJsonMode === false ? undefined : false })}
-            className={`p-3 rounded-lg border text-left transition-all ${draft.modelSupportsJsonMode !== false ? 'bg-indigo-600/15 border-indigo-500/50 text-indigo-200 ring-1 ring-indigo-500/20' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
-          >
-            <div className="text-xs font-semibold">JSON Mode</div>
-            <div className="text-[10px] mt-1 text-current/80">{draft.modelSupportsJsonMode !== false ? (lang === 'zh' ? '运行时已启用' : 'Runtime enabled') : (lang === 'zh' ? '运行时已关闭' : 'Runtime disabled')}</div>
-          </button>
-        </div>
-      </div>
+      </details>
 
       {/* Concurrency */}
       <div className="space-y-1">
@@ -207,7 +248,7 @@ const EndpointEditor: React.FC<{
 
       {/* Save / Cancel */}
       <div className="flex gap-2 pt-2">
-        <button onClick={() => onSave(draft)}
+        <button onClick={() => onSave(draft, draftTestSettings)}
           className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2 text-xs font-bold transition-colors">
           {lang === 'zh' ? '保存' : 'Save'}
         </button>
@@ -261,12 +302,13 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     setEditingId(newEp.id);
   };
 
-  const handleSave = (ep: APIEndpoint) => {
+  const handleSave = (ep: APIEndpoint, nextTestSettings: EndpointCapabilityTestSettings) => {
     const previous = endpoints.find(e => e.id === ep.id);
     if (previous && (previous.provider !== ep.provider || previous.baseUrl !== ep.baseUrl)) {
       clearEndpointModelCache(localStorage, ep.id);
     }
     updateEndpoints(endpoints.map(e => e.id === ep.id ? ep : e));
+    setTestSettings(prev => ({ ...prev, [ep.id]: nextTestSettings }));
     setEditingId(null);
   };
 
@@ -618,7 +660,7 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
           const renderEndpoint = (ep: APIEndpoint) => (
             <div key={ep.id}>
               {editingId === ep.id ? (
-                <EndpointEditor endpoint={ep} config={config} lang={lang} groups={groups} onSave={handleSave} onCancel={() => setEditingId(null)} />
+                <EndpointEditor endpoint={ep} config={config} lang={lang} groups={groups} testSettings={testSettings[ep.id] || DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS} onSave={handleSave} onCancel={() => setEditingId(null)} />
               ) : (
                 <>
                 <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${ep.enabled ? 'bg-gray-800/40 border-gray-700' : 'bg-gray-900/30 border-gray-800 opacity-50'}`}>
@@ -692,46 +734,6 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                     <Trash2 size={14} />
                   </button>
                 </div>
-                <details className="mt-1 rounded-lg border border-gray-800 bg-gray-900/20 px-3 py-2 text-[11px]">
-                  <summary className="cursor-pointer text-gray-300 select-none">{lang === 'zh' ? '测试设置' : 'Test settings'}</summary>
-                  <div className="mt-2 space-y-2">
-                    <p className="text-gray-500">{lang === 'zh' ? '基础测试始终执行；仅在勾选后追加高级测试。' : 'Basic test always runs; advanced tests run only when selected.'}</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        aria-pressed={(testSettings[ep.id]?.testFunctionCalling ?? false)}
-                        onClick={() => setTestSettings(prev => ({
-                          ...prev,
-                          [ep.id]: {
-                            ...DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS,
-                            ...(prev[ep.id] || {}),
-                            testFunctionCalling: !(prev[ep.id]?.testFunctionCalling ?? false),
-                          },
-                        }))}
-                        className={`rounded-lg border px-3 py-2 text-left transition-all ${(testSettings[ep.id]?.testFunctionCalling ?? false) ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
-                      >
-                        <div className="font-semibold">{lang === 'zh' ? '测试 FC' : 'Test FC'}</div>
-                        <div className="mt-1 text-[10px] text-current/80">{lang === 'zh' ? '发送 Function Calling 探测请求' : 'Send Function Calling probe request'}</div>
-                      </button>
-                      <button
-                        type="button"
-                        aria-pressed={(testSettings[ep.id]?.testJsonMode ?? false)}
-                        onClick={() => setTestSettings(prev => ({
-                          ...prev,
-                          [ep.id]: {
-                            ...DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS,
-                            ...(prev[ep.id] || {}),
-                            testJsonMode: !(prev[ep.id]?.testJsonMode ?? false),
-                          },
-                        }))}
-                        className={`rounded-lg border px-3 py-2 text-left transition-all ${(testSettings[ep.id]?.testJsonMode ?? false) ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-200' : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
-                      >
-                        <div className="font-semibold">{lang === 'zh' ? '测试 JSON' : 'Test JSON'}</div>
-                        <div className="mt-1 text-[10px] text-current/80">{lang === 'zh' ? '发送 JSON Mode 探测请求' : 'Send JSON mode probe request'}</div>
-                      </button>
-                    </div>
-                  </div>
-                </details>
                 {testResults[ep.id] && (
                   <div className="mt-1 p-2 rounded-lg border border-gray-700 bg-gray-900/40 text-[11px] space-y-1">
                     <div className={`font-medium ${getTestResultMeta(testResults[ep.id].basic, lang).color}`}>
