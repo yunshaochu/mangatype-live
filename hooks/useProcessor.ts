@@ -31,6 +31,20 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
     const abortControllerRef = useRef<AbortController | null>(null);
     const activeRunIdRef = useRef(0);
 
+    type DetectionRunResult = {
+        ok: boolean;
+        protectableFailure: boolean;
+        failureCode?: EndpointFailureCode;
+        abortedByTrip?: boolean;
+        abortedByDisable?: boolean;
+    };
+
+    type ProcessingRunHandle = {
+        signal: AbortSignal;
+        runId?: number;
+        finish: () => void;
+    };
+
     const beginRun = (): number => {
         const next = activeRunIdRef.current + 1;
         activeRunIdRef.current = next;
@@ -135,6 +149,50 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
 
     const maxRetries = aiConfig.maxRetries || 0;
 
+    const getTranslateRetryBudget = (configOverride?: AIConfig): number => {
+        const resolvedConfig = configOverride || aiConfigRef.current;
+        return resolvedConfig.maxRetries ?? aiConfigRef.current.maxRetries ?? 0;
+    };
+
+    const getTranslateEndpointState = () => {
+        const enabledEndpoints = (aiConfigRef.current.endpoints || []).filter(endpoint => endpoint.enabled);
+        return {
+            enabledEndpoints,
+            availableEndpoints: enabledEndpoints.filter(endpoint => !isEndpointPaused(endpoint)),
+        };
+    };
+
+    const notifyUnavailableTranslateEndpoints = (enabledEndpoints: APIEndpoint[]) => {
+        if (enabledEndpoints.length === 0) {
+            alert('No enabled endpoints available');
+            return;
+        }
+
+        const pausedInfo = enabledEndpoints.map(endpoint => {
+            const remaining = getRemainingPauseTime(endpoint);
+            return `${endpoint.name}: ${formatPauseDuration(remaining)}`;
+        }).join(', ');
+        alert(`All endpoints are paused. Wait time: ${pausedInfo}`);
+    };
+
+    const beginProcessingRun = (task: 'translate' | 'inpaint'): ProcessingRunHandle => {
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+        const runId = task === 'translate' ? beginRun() : undefined;
+        setIsProcessingBatch(true);
+        setProcessingType(task);
+
+        return {
+            signal: controller.signal,
+            runId,
+            finish: () => {
+                setIsProcessingBatch(false);
+                setProcessingType(null);
+                abortControllerRef.current = null;
+            },
+        };
+    };
+
     const getNextEventSeq = (endpointId: string): number => {
         const endpoint = aiConfigRef.current.endpoints.find(ep => ep.id === endpointId);
         const persistedSeq = endpoint?.lastEventSeq ?? 0;
@@ -208,9 +266,9 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         endpointId?: string,
         protectionMode: 'request' | 'batch' = 'request',
         runId?: number
-    ): Promise<{ ok: boolean; protectableFailure: boolean; failureCode?: EndpointFailureCode; abortedByTrip?: boolean; abortedByDisable?: boolean }> => {
+    ): Promise<DetectionRunResult> => {
         const effectiveConfig = configOverride || aiConfig;
-        const retries = effectiveConfig.maxRetries || maxRetries;
+        const retries = getTranslateRetryBudget(effectiveConfig);
 
         for (let attempt = 0; attempt <= retries; attempt++) {
             if (signal?.aborted) {
@@ -551,26 +609,19 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
     const processQueue = async (queue: ImageState[], task: 'translate' | 'inpaint', concurrency: number) => {
         if (queue.length === 0) return;
 
-        const controller = new AbortController();
-        abortControllerRef.current = controller;
-        const signal = controller.signal;
-        const runId = task === 'translate' ? beginRun() : undefined;
-        setIsProcessingBatch(true);
-        setProcessingType(task);
+        const processingRun = beginProcessingRun(task);
+        const { signal, runId } = processingRun;
 
         try {
-            const enabledEndpoints = (aiConfigRef.current.endpoints || []).filter(ep => ep.enabled);
+            const translateEndpointState = task === 'translate' ? getTranslateEndpointState() : null;
+            const enabledEndpoints = translateEndpointState?.enabledEndpoints || [];
 
             const useStateMachineV2 = aiConfigRef.current.apiProtectionStateMachineV2 ?? false;
 
             if (task === 'translate' && enabledEndpoints.length > 0 && useStateMachineV2) {
-                const availableNow = enabledEndpoints.filter(ep => !isEndpointPaused(ep));
+                const availableNow = translateEndpointState?.availableEndpoints || [];
                 if (availableNow.length === 0) {
-                    const pausedInfo = enabledEndpoints.map(ep => {
-                        const remaining = getRemainingPauseTime(ep);
-                        return `${ep.name}: ${formatPauseDuration(remaining)}`;
-                    }).join(', ');
-                    alert(`All endpoints are paused. Wait time: ${pausedInfo}`);
+                    notifyUnavailableTranslateEndpoints(enabledEndpoints);
                     return;
                 }
 
@@ -736,13 +787,9 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     await Promise.allSettled(Array.from(activeTasks));
                 }
             } else if (task === 'translate' && enabledEndpoints.length > 0) {
-                const availableNow = enabledEndpoints.filter(ep => !isEndpointPaused(ep));
+                const availableNow = translateEndpointState?.availableEndpoints || [];
                 if (availableNow.length === 0) {
-                    const pausedInfo = enabledEndpoints.map(ep => {
-                        const remaining = getRemainingPauseTime(ep);
-                        return `${ep.name}: ${formatPauseDuration(remaining)}`;
-                    }).join(', ');
-                    alert(`All endpoints are paused. Wait time: ${pausedInfo}`);
+                    notifyUnavailableTranslateEndpoints(enabledEndpoints);
                     return;
                 }
 
@@ -828,9 +875,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         } catch (e) {
             console.error(e);
         } finally {
-            setIsProcessingBatch(false);
-            setProcessingType(null);
-            abortControllerRef.current = null;
+            processingRun.finish();
         }
     };
     // --- Public Actions ---
@@ -839,38 +884,28 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         if (isProcessingBatch) return;
 
         if (onlyCurrent && currentImage) {
-            const controller = new AbortController();
-            abortControllerRef.current = controller;
-            const runId = beginRun();
-            setIsProcessingBatch(true);
-            setProcessingType('translate');
+            const processingRun = beginProcessingRun('translate');
+            const { signal, runId } = processingRun;
             try {
-                const firstEndpoint = (aiConfigRef.current.endpoints || []).find(ep => ep.enabled && !isEndpointPaused(ep));
+                const { enabledEndpoints, availableEndpoints } = getTranslateEndpointState();
+                const firstEndpoint = availableEndpoints[0];
 
                 if (!firstEndpoint) {
-                    const pausedEndpoint = (aiConfigRef.current.endpoints || []).find(ep => ep.enabled);
-                    if (pausedEndpoint) {
-                        const remaining = getRemainingPauseTime(pausedEndpoint);
-                        alert(`Endpoint is paused. Wait time: ${formatPauseDuration(remaining)}`);
-                    } else {
-                        alert('No enabled endpoints available');
-                    }
+                    notifyUnavailableTranslateEndpoints(enabledEndpoints);
                     return;
                 }
 
                 const mergedConfig = mergeEndpointConfig(aiConfigRef.current, firstEndpoint);
                 const endpointController = new AbortController();
                 registerInFlightController(firstEndpoint.id, endpointController);
-                const mergedSignal = createMergedAbortSignal([controller.signal, endpointController.signal]);
+                const mergedSignal = createMergedAbortSignal([signal, endpointController.signal]);
                 try {
                     await runDetectionForImage(currentImage, mergedSignal, mergedConfig, firstEndpoint.id, 'request', runId);
                 } finally {
                     unregisterInFlightController(firstEndpoint.id, endpointController);
                 }
             } finally {
-                setIsProcessingBatch(false);
-                setProcessingType(null);
-                abortControllerRef.current = null;
+                processingRun.finish();
             }
         } else {
             const queue = images.filter(img => !img.skipped && (img.status === 'idle' || img.status === 'error'));
