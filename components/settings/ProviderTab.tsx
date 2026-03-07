@@ -7,6 +7,7 @@ import { TabProps } from './types';
 import { isEndpointPaused, getRemainingPauseTime, formatPauseDuration, DEFAULT_API_PROTECTION_CONFIG } from '../../services/apiProtection';
 import { EndpointCapabilityTestResult, runEndpointCapabilityTests } from '../../services/endpointTestService';
 import { clearEndpointModelCache, readEndpointModelCache, writeEndpointModelCache } from '../../services/endpointModelCache';
+import { getDisplayedProviderModels } from '../../services/providerModelFilter';
 
 const EndpointEditor: React.FC<{
   endpoint: APIEndpoint;
@@ -57,12 +58,7 @@ const EndpointEditor: React.FC<{
       setLoadingModels(false);
     }
   };
-  const displayedModels = (() => {
-    const current = draft.model.trim().toLowerCase();
-    if (!current) return availableModels;
-    const filtered = availableModels.filter(m => m.toLowerCase().includes(current));
-    return filtered.length > 0 ? filtered : availableModels;
-  })();
+  const displayedModels = getDisplayedProviderModels(availableModels, draft.model);
 
   return (
     <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700 space-y-4">
