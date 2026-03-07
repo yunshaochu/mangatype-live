@@ -17,6 +17,14 @@ import {
     formatPauseDuration
 } from '../services/apiProtection';
 import { reduceEndpointProtectionState } from '../services/apiProtectionReducer';
+import {
+    cleanupTranslateProcessingImages,
+    hasRemainingFailoverBudget,
+    markFailoverAttempt,
+    pickFailoverEndpoint,
+    shouldAllowRunWrite,
+    shouldTranslateImage,
+} from '../services/translationSemantics';
 
 interface UseProcessorProps {
     images: ImageState[];
@@ -64,9 +72,8 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
     };
 
     const canWriteForRun = (runId?: number, signal?: AbortSignal, options: SetImagesGuardOptions = {}): boolean => {
-        if (signal?.aborted && !options.allowAbortedSignal) return false;
-        if (runId === undefined) return true;
-        return activeRunIdRef.current === runId;
+        const isActiveRun = runId === undefined || activeRunIdRef.current === runId;
+        return shouldAllowRunWrite(isActiveRun, signal?.aborted === true, options.allowAbortedSignal === true);
     };
 
     const setImagesIfActive = (
@@ -669,12 +676,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 protectableFailure: boolean,
                 enqueue: (image: ImageState) => void
             ) => {
-                const retryState = retryStateByImage.get(img.id) || { attemptCount: 0, attemptedEndpointIds: [] as string[], lastErrorMessage: undefined as string | undefined };
-                retryState.attemptCount += 1;
-                if (!retryState.attemptedEndpointIds.includes(endpointId)) {
-                    retryState.attemptedEndpointIds.push(endpointId);
-                }
-                retryState.lastErrorMessage = errorMessage || retryState.lastErrorMessage || 'Unknown error occurred';
+                const retryState = markFailoverAttempt(retryStateByImage.get(img.id), endpointId, errorMessage);
                 retryStateByImage.set(img.id, retryState);
 
                 console.warn(
@@ -682,7 +684,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 );
 
                 const { availableEndpoints } = getTranslateEndpointState();
-                const hasRemainingBudget = retryState.attemptCount < maxFailoverAttempts;
+                const hasRemainingBudget = hasRemainingFailoverBudget(retryState, maxFailoverAttempts);
 
                 if (!hasRemainingBudget || availableEndpoints.length === 0) {
                     const exhaustedMessage = !hasRemainingBudget
@@ -906,14 +908,10 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     const latest = (aiConfigRef.current.endpoints || [])
                         .filter(ep => ep.enabled && !isEndpointPaused(ep))
                         .filter(ep => (inFlight.get(ep.id) || 0) < Math.max(1, ep.concurrency || 1));
-                    if (latest.length === 0) return null;
-                    const retryState = retryStateByImage.get(img.id);
-                    const preferred = retryState
-                        ? latest.filter(ep => !retryState.attemptedEndpointIds.includes(ep.id))
-                        : latest;
-                    const candidatePool = preferred.length > 0 ? preferred : latest;
-                    return candidatePool.reduce((best, ep) =>
-                        (inFlight.get(ep.id) || 0) < (inFlight.get(best.id) || 0) ? ep : best
+                    return pickFailoverEndpoint(
+                        latest,
+                        retryStateByImage.get(img.id)?.attemptedEndpointIds || [],
+                        endpoint => inFlight.get(endpoint.id) || 0,
                     );
                 };
 
@@ -1000,10 +998,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         } finally {
             if (task === 'translate') {
                 setImagesIfActive(
-                    prev => prev.map(img => img.status === 'processing'
-                        ? { ...img, status: 'idle', errorMessage: undefined }
-                        : img
-                    ),
+                    prev => cleanupTranslateProcessingImages(prev),
                     runId,
                     signal,
                     { allowAbortedSignal: true }
@@ -1018,13 +1013,13 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         if (isProcessingBatch) return;
 
         if (onlyCurrent && currentImage) {
-            if (currentImage.skipped) {
+            if (!shouldTranslateImage(currentImage.skipped)) {
                 alert('Skipped images cannot be translated.');
                 return;
             }
             await processQueue([currentImage], 'translate', 1);
         } else {
-            const queue = images.filter(img => !img.skipped && (img.status === 'idle' || img.status === 'error'));
+            const queue = images.filter(img => shouldTranslateImage(img.skipped) && (img.status === 'idle' || img.status === 'error'));
             if (queue.length === 0) {
                 alert("All images are already processed or skipped.");
                 return;

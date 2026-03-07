@@ -2,6 +2,7 @@
 import { ImageState, Bubble, MaskRegion, DetectionGuideLine, FONTS, getFontStack } from '../types';
 import JSZip from 'jszip';
 import { domToPng } from 'modern-screenshot';
+import { shouldExportOriginalImage } from './translationSemantics';
 import { getVerticalPunctuationTune } from '../utils/verticalPunctuation';
 
 // Helper to escape HTML characters to prevent breaking SVG XML
@@ -1969,7 +1970,7 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
  */
 export const compositeDispatch = async (imageState: ImageState, options?: ExportOptions): Promise<Blob | null> => {
     // Skip is a hard semantic: skipped images always export the untouched original.
-    if (imageState.skipped) {
+    if (shouldExportOriginalImage(imageState.skipped)) {
         const originalSrc = imageState.originalUrl
             || imageState.url
             || (imageState.originalBase64 ? imageState.originalBase64 : `data:image/png;base64,${imageState.base64}`);
