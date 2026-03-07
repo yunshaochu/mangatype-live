@@ -25,6 +25,7 @@ export const ControlPanel: React.FC = () => {
     zipCancelRequested, requestZipCancel, resetZipCancel,
     setShowManualJson,
     flushPendingCommands,
+    isDetectionGuideMode, setIsDetectionGuideMode,
     // Brush
     brushColor, setBrushColor, brushSize, setBrushSize,
     paintMode, setPaintMode,
@@ -39,6 +40,7 @@ export const ControlPanel: React.FC = () => {
 
   const handleToolChange = (tool: 'none' | 'bubble' | 'mask' | 'brush') => {
       setDrawTool(tool);
+      if (tool !== 'mask') setIsDetectionGuideMode(false);
       setSelectedBubbleId(null);
       setSelectedMaskId(null);
   };
@@ -323,21 +325,47 @@ export const ControlPanel: React.FC = () => {
                   <Square size={12} fill="currentColor" /> {t('stop', lang)}
                 </button>
               ) : (
-                <div className="grid grid-cols-2 gap-1 h-8">
-                  <button
-                    onClick={() => handleLocalDetectionScan(currentImage, false, concurrency)}
-                    className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                    title={t('scanCurrent', lang)}
-                  >
-                    <ScanText size={14} /> {t('scanCurrent', lang)}
-                  </button>
-                  <button
-                    onClick={() => handleLocalDetectionScan(currentImage, true, concurrency)}
-                    className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                    title={t('scanAll', lang)}
-                  >
-                    <Layers size={14} /> {t('scanAll', lang)}
-                  </button>
+                <div className="space-y-1">
+                  <div className="grid grid-cols-2 gap-1 h-8">
+                    <button
+                      onClick={() => handleLocalDetectionScan(currentImage, false, concurrency)}
+                      className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
+                      title={t('scanCurrent', lang)}
+                    >
+                      <ScanText size={14} /> {t('scanCurrent', lang)}
+                    </button>
+                    <button
+                      onClick={() => handleLocalDetectionScan(currentImage, true, concurrency)}
+                      className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
+                      title={t('scanAll', lang)}
+                    >
+                      <Layers size={14} /> {t('scanAll', lang)}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-1 h-8">
+                    <button
+                      onClick={() => setIsDetectionGuideMode(!isDetectionGuideMode)}
+                      disabled={!currentImage}
+                      className={`border rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50 ${isDetectionGuideMode ? 'bg-cyan-900/50 hover:bg-cyan-800/70 border-cyan-700 text-cyan-100' : 'bg-gray-800/60 hover:bg-gray-700/70 border-gray-700 text-gray-300'}`}
+                      title={t('detectGuideMode', lang)}
+                    >
+                      <Minus size={14} /> {t('detectGuideMode', lang)}
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (!currentId) return;
+                        setImages(prev => prev.map(img => img.id === currentId ? { ...img, detectionGuideLines: undefined } : img), true);
+                      }}
+                      disabled={!currentImage || !currentImage.detectionGuideLines || currentImage.detectionGuideLines.length === 0}
+                      className="bg-gray-800/60 hover:bg-gray-700/70 border border-gray-700 text-gray-300 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
+                      title={t('clearDetectGuides', lang)}
+                    >
+                      <Eraser size={14} /> {t('clearDetectGuides', lang)}
+                    </button>
+                  </div>
+                  <div className={`rounded px-2 py-1 text-[10px] ${isDetectionGuideMode ? 'bg-cyan-950/50 text-cyan-200 border border-cyan-800/60' : 'bg-gray-800/50 text-gray-400 border border-gray-800'}`}>
+                    {isDetectionGuideMode ? t('detectGuideActive', lang) : t('detectGuideHint', lang)}
+                  </div>
                 </div>
               )}
             </>

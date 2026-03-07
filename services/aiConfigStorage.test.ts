@@ -53,6 +53,7 @@ const defaultConfig = {
   defaultIsVertical: false,
   customMessages: [{ role: 'user', content: 'translate' }],
   textDetectionApiUrl: 'http://localhost:5000',
+  showDetectionLines: false,
   inpaintingUrl: 'http://localhost:8080',
 } as AIConfig;
 
@@ -69,6 +70,7 @@ const configWithTransientState = {
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
   }],
+  showDetectionLines: true,
   modelCache: ['should-not-export'],
   endpointTestSettings: { 'ep-1': { testFunctionCalling: true } },
 } as AIConfig & {
@@ -82,10 +84,12 @@ assert.ok(storedJson, 'saveAiConfigToStorage should persist config');
 const storedPayload = JSON.parse(storedJson!);
 assert.equal('modelCache' in storedPayload, false, 'browser model cache should not be persisted into AIConfig storage');
 assert.equal('endpointTestSettings' in storedPayload, false, 'test settings should not be persisted into AIConfig storage');
+assert.equal(storedPayload.showDetectionLines, true, 'showDetectionLines should persist into AIConfig storage');
 
 const exportedPayload = JSON.parse(exportAiConfigJson(configWithTransientState));
 assert.equal('modelCache' in exportedPayload, false, 'exported JSON should exclude model cache');
 assert.equal('endpointTestSettings' in exportedPayload, false, 'exported JSON should exclude transient test settings');
+assert.equal(exportedPayload.showDetectionLines, true, 'showDetectionLines should be included in exported config JSON');
 
 assert.equal(isImportableAiConfig({ provider: 'openai' }), true, 'legacy flat config should remain importable');
 assert.equal(isImportableAiConfig({ language: 'zh' }), true, 'language-only snapshot should remain importable');

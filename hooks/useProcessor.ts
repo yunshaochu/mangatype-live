@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { ImageState, AIConfig, APIEndpoint, MaskRegion, Bubble, ContourRegion, mergeEndpointConfig } from '../types';
 import { detectAndTypesetComic, fetchRawDetectedRegions } from '../services/geminiService';
-import { generateMaskedImage, generateAnnotatedImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
+import { generateMaskedImage, generateAnnotatedImage, generateDetectionGuideImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 import { isBubbleInsideMask, isMaskCleaned } from '../utils/editorUtils';
+import { splitDetectionRegionByLines } from '../utils/detectionUtils';
 import {
     EndpointFailureCode,
     EndpointProtectionEventType,
@@ -975,39 +976,58 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                         if (controller.signal.aborted) return;
                         setImages(prev => prev.map(p => p.id === img.id ? { ...p, detectionStatus: 'processing' } : p));
                         try {
-                            const data = await fetchRawDetectedRegions(img.originalBase64 || img.base64, aiConfig.textDetectionApiUrl!);
+                            const detectionSource = img.detectionGuideLines && img.detectionGuideLines.length > 0
+                                ? await generateDetectionGuideImage(img.originalBase64 || img.base64, img.detectionGuideLines)
+                                : (img.originalBase64 || img.base64);
+                            const data = await fetchRawDetectedRegions(detectionSource, aiConfig.textDetectionApiUrl!);
 
                             // Process Rects (Expansion Logic)
                             const expansion = aiConfig.detectionExpansionRatio || 0;
                             const originalRects = data.rects;
-                            const expandedRegions = data.rects.map(r => {
-                                const w = r.width * (1 + expansion);
-                                const h = r.height * (1 + expansion);
-                                return { ...r, width: w, height: h };
-                            });
+                            const maskRegions: MaskRegion[] = [];
+                            const contours: ContourRegion[] = [];
 
-                            const maskRegions: MaskRegion[] = expandedRegions.map((r) => ({
-                                id: crypto.randomUUID(),
-                                x: r.x, y: r.y, width: r.width, height: r.height,
-                                method: 'fill', // Default local detection to fill
-                            }));
-                            const contours: ContourRegion[] = originalRects
-                                .filter(r => !!r.maskContourBase64)
-                                .map((r) => ({
-                                    id: crypto.randomUUID(),
-                                    base64: r.maskContourBase64!,
-                                    anchor: { x: r.x, y: r.y },
-                                    size: { w: r.width, h: r.height },
-                                }));
+                            originalRects.forEach((r) => {
+                                const derivedRects = aiConfig.splitDetectionByLines
+                                    ? splitDetectionRegionByLines(r)
+                                    : [r];
+
+                                derivedRects.forEach((derived) => {
+                                    const maskId = crypto.randomUUID();
+                                    const expandedWidth = derived.width * (1 + expansion);
+                                    const expandedHeight = derived.height * (1 + expansion);
+
+                                    maskRegions.push({
+                                        id: maskId,
+                                        x: derived.x,
+                                        y: derived.y,
+                                        width: expandedWidth,
+                                        height: expandedHeight,
+                                        method: 'fill',
+                                    });
+
+                                    if (r.maskContourBase64 || (derived.linePolygons && derived.linePolygons.length > 0)) {
+                                        contours.push({
+                                            id: crypto.randomUUID(),
+                                            sourceMaskId: maskId,
+                                            base64: r.maskContourBase64,
+                                            anchor: { x: r.x, y: r.y },
+                                            size: { w: r.width, h: r.height },
+                                            linePolygons: derived.linePolygons,
+                                        });
+                                    }
+                                });
+                            });
 
                             // Process Mask (Refined Pixel Mask) - We store it but don't use it for auto-inpaint anymore
                             const maskRefinedBase64 = data.maskBase64;
 
                             setImages(prev => prev.map(p => p.id === img.id ? {
                                 ...p,
-                                maskRegions: [...(p.maskRegions || []), ...maskRegions],
-                                contours: [...(p.contours || []), ...contours],
+                                maskRegions,
+                                contours,
                                 maskRefinedBase64: maskRefinedBase64,
+                                detectionGuideLines: undefined,
                                 detectionStatus: 'done'
                             } : p));
                             return; // Success

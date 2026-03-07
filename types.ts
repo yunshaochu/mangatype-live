@@ -57,6 +57,18 @@ export interface MaskRegion {
   fillMode?: 'rect' | 'contour' | 'baked'; // Overlay control: rect/contour render DOM overlay, baked hides overlay because pixels are already in image
 }
 
+export interface DetectionPoint {
+  x: number;
+  y: number;
+}
+
+export type DetectionLinePolygon = DetectionPoint[];
+
+export interface DetectionGuideLine {
+  id: string;
+  points: DetectionPoint[];
+}
+
 export interface DetectedBubble {
   text: string;
   x: number;
@@ -74,9 +86,10 @@ export interface DetectedBubble {
 
 export interface ContourRegion {
   id: string;
-  base64: string;
+  base64?: string;
   anchor: { x: number; y: number };
   size: { w: number; h: number };
+  linePolygons?: DetectionLinePolygon[]; // Line polygons from detection API, normalized to image percentages (0-100)
   rects?: Array<{ x: number; y: number; w: number; h: number }>;
   dilatedBase64?: string;
   sourceMaskId?: string;
@@ -101,6 +114,7 @@ export interface ImageState {
   height: number;
   bubbles: Bubble[];
   maskRegions?: MaskRegion[]; // Store Mode 2 regions (Red Boxes)
+  detectionGuideLines?: DetectionGuideLine[]; // Temporary separator lines used only when rescanning detection
   contourSchemaVersion?: number;
   contours?: ContourRegion[];
   
@@ -310,8 +324,10 @@ export interface AIConfig {
   useTextDetectionApi?: boolean; // Toggle Local OCR
   textDetectionApiUrl?: string;
   detectionExpansionRatio?: number; // New: 0.0 - 0.5 (Expansion rate for detected boxes)
+  splitDetectionByLines?: boolean; // Experimental: split merged detection blocks using text_blocks[].lines groups
   usePreciseFill?: boolean;       // Use text contour mask for fill instead of whole rect
   showContourPreview?: boolean;   // Show orange contour overlay in editor as reference
+  showDetectionLines?: boolean;   // Show line polygons returned by text_blocks[].lines for inspection
   useCharRects?: boolean;         // true = per-char bounding rects; false = dilated raw contour mask
   preInpaintContour?: boolean;    // Pre-fill text contour onto source image before IOPaint API call
   enableDialogSnap?: boolean; // Snap AI bubbles to manual masks

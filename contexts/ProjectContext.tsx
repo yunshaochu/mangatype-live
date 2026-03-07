@@ -53,6 +53,7 @@ const buildContourIntersectionMasks = (image: ImageState, targetMasks: MaskRegio
       const top = contourY - contourH / 2;
       return {
         id: contour.id,
+        sourceMaskId: contour.sourceMaskId,
         base64: contour.base64,
         contourX,
         contourY,
@@ -66,6 +67,7 @@ const buildContourIntersectionMasks = (image: ImageState, targetMasks: MaskRegio
     })
     .filter((contour): contour is {
       id: string;
+      sourceMaskId?: string;
       base64: string;
       contourX: number;
       contourY: number;
@@ -88,6 +90,7 @@ const buildContourIntersectionMasks = (image: ImageState, targetMasks: MaskRegio
     const intersections: MaskRegion[] = [];
 
     for (const contour of preparedContours) {
+      if (contour.sourceMaskId && contour.sourceMaskId !== mask.id) continue;
       const contourX = contour.contourX;
       const contourY = contour.contourY;
       const contourW = contour.contourW;
@@ -140,6 +143,7 @@ const DEFAULT_CONFIG: AIConfig = {
   defaultFontSize: 1.0,
   useTextDetectionApi: false,
   textDetectionApiUrl: runtimeConfig.TEXT_DETECTION_API_URL || 'http://localhost:5000',
+  splitDetectionByLines: false,
   language: 'zh',
   customMessages: [{ role: 'user', content: '翻译' }],
   autoDetectBackground: false,
@@ -148,6 +152,7 @@ const DEFAULT_CONFIG: AIConfig = {
   enableMaskedImageMode: false,
   useMasksAsHints: true,
   drawMasksOnImage: true,
+  showDetectionLines: false,
   allowAiFontSelection: true,
   allowAiFontSize: true,
   fontSizeMode: 'scale',
@@ -240,6 +245,8 @@ interface ProjectContextType {
   setShowManualJson: (show: boolean) => void;
   showHelp: boolean;
   setShowHelp: (show: boolean) => void;
+  isDetectionGuideMode: boolean;
+  setIsDetectionGuideMode: (enabled: boolean) => void;
   concurrency: number;
   setConcurrency: (n: number) => void;
   isMerging: boolean;
@@ -331,6 +338,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [showSettings, setShowSettings] = useState(false);
   const [showManualJson, setShowManualJson] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [isDetectionGuideMode, setIsDetectionGuideMode] = useState(false);
   const [concurrency, setConcurrency] = useState(aiConfig.concurrency || 1);
 
   // Sync concurrency to aiConfig for persistence
@@ -936,6 +944,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     showSettings, setShowSettings,
     showManualJson, setShowManualJson,
     showHelp, setShowHelp,
+    isDetectionGuideMode, setIsDetectionGuideMode,
     concurrency, setConcurrency: handleSetConcurrency,
     isMerging, setIsMerging,
     isZipping, setIsZipping,
