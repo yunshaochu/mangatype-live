@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "check:provider-settings": "node scripts/run-provider-settings-regression.mjs",
     "check:export-fill": "node scripts/validate-export-fill-guards.mjs",
     "check:contour-decoupling": "node scripts/validate-contour-decoupling-guards.mjs",
     "check:contour-acceptance": "node scripts/validate-contour-pool-acceptance.mjs",
