@@ -184,7 +184,7 @@ const DEFAULT_CONFIG: AIConfig = {
   apiProtectionStateMachineV2: false,
   apiProtectionDurations: [30, 60, 120, 300, 600],
   apiProtectionDisableThreshold: 5,
-  exportSkippedAsOriginal: false,
+  exportSkippedAsOriginal: true,
   freehandPerfPhase1Enabled: true,
   freehandPerfPhase2Enabled: false,
   freehandLowResThresholdMp: 4,

@@ -378,7 +378,7 @@ export interface AIConfig {
 
   // Export
   exportMethod?: 'canvas' | 'screenshot'; // Default: 'canvas'
-  exportSkippedAsOriginal?: boolean; // If true, skipped images export as original image
+  exportSkippedAsOriginal?: boolean; // Persisted for compatibility; skipped images always export the original image
 
   // Freehand Performance Rollout
   freehandPerfPhase1Enabled?: boolean; // Phase 1: hot-path + async save + history merge

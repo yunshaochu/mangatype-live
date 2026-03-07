@@ -121,6 +121,8 @@ export const loadAiConfigFromStorage = (
   const sanitized = pickStoredAiConfig(parsed);
   const merged: AIConfig = { ...defaultConfig, ...sanitized };
 
+  merged.exportSkippedAsOriginal = true;
+
   if (!sanitized.customMessages) {
     merged.customMessages = defaultConfig.customMessages;
   }
