@@ -46,6 +46,10 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         finish: () => void;
     };
 
+    type SetImagesGuardOptions = {
+        allowAbortedSignal?: boolean;
+    };
+
     const beginRun = (): number => {
         const next = activeRunIdRef.current + 1;
         activeRunIdRef.current = next;
@@ -59,8 +63,8 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         console.log(`run_invalidate oldRunId=${old} newRunId=${activeRunIdRef.current}`);
     };
 
-    const canWriteForRun = (runId?: number, signal?: AbortSignal): boolean => {
-        if (signal?.aborted) return false;
+    const canWriteForRun = (runId?: number, signal?: AbortSignal, options: SetImagesGuardOptions = {}): boolean => {
+        if (signal?.aborted && !options.allowAbortedSignal) return false;
         if (runId === undefined) return true;
         return activeRunIdRef.current === runId;
     };
@@ -68,9 +72,10 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
     const setImagesIfActive = (
         updater: ImageState[] | ((prev: ImageState[]) => ImageState[]),
         runId?: number,
-        signal?: AbortSignal
+        signal?: AbortSignal,
+        options: SetImagesGuardOptions = {}
     ) => {
-        if (!canWriteForRun(runId, signal)) {
+        if (!canWriteForRun(runId, signal, options)) {
             if (runId !== undefined && activeRunIdRef.current !== runId) {
                 console.log(`run_drop_stale runId=${runId} active=${activeRunIdRef.current}`);
             }
@@ -411,7 +416,8 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 setImagesIfActive(
                     prev => prev.map(p => p.id === img.id ? { ...p, status: 'idle', errorMessage: undefined } : p),
                     runId,
-                    signal
+                    signal,
+                    { allowAbortedSignal: true }
                 );
                 return {
                     ok: false,
@@ -992,6 +998,17 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         } catch (e) {
             console.error(e);
         } finally {
+            if (task === 'translate') {
+                setImagesIfActive(
+                    prev => prev.map(img => img.status === 'processing'
+                        ? { ...img, status: 'idle', errorMessage: undefined }
+                        : img
+                    ),
+                    runId,
+                    signal,
+                    { allowAbortedSignal: true }
+                );
+            }
             processingRun.finish();
         }
     };
