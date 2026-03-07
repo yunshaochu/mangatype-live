@@ -3,22 +3,20 @@ import { Globe, Download, Upload, FolderArchive, RotateCcw } from 'lucide-react'
 import { t } from '../../services/i18n';
 import { TabProps } from './types';
 import { clearFontCache } from '../../services/exportService';
-
-const STORAGE_KEY = 'mangatype_live_settings_v1';
+import { clearAiConfigStorage, exportAiConfigJson, isImportableAiConfig, saveAiConfigToStorage } from '../../services/aiConfigStorage';
 
 export const GeneralTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleResetToDefaults = async () => {
     if (!confirm(t('resetToDefaultsConfirm', lang))) return;
-    localStorage.removeItem(STORAGE_KEY);
+    clearAiConfigStorage(localStorage);
     await clearFontCache();
     window.location.reload();
   };
 
   const handleExport = () => {
-    const data = localStorage.getItem(STORAGE_KEY);
-    if (!data) return;
+    const data = exportAiConfigJson(config);
     const blob = new Blob([data], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -35,11 +33,11 @@ export const GeneralTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
     reader.onload = (ev) => {
       try {
         const parsed = JSON.parse(ev.target?.result as string);
-        if (typeof parsed !== 'object' || parsed === null || !('provider' in parsed || 'language' in parsed || 'endpoints' in parsed)) {
+        if (!isImportableAiConfig(parsed)) {
           alert(t('configImportError', lang));
           return;
         }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        saveAiConfigToStorage(localStorage, parsed);
         alert(t('configImported', lang));
         window.location.reload();
       } catch {
