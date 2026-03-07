@@ -1968,8 +1968,8 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
  * Dispatcher: routes to canvas or screenshot export based on options.
  */
 export const compositeDispatch = async (imageState: ImageState, options?: ExportOptions): Promise<Blob | null> => {
-    // Optional behavior: skipped images can be exported as untouched original.
-    if (options?.exportSkippedAsOriginal && imageState.skipped) {
+    // Skip is a hard semantic: skipped images always export the untouched original.
+    if (imageState.skipped) {
         const originalSrc = imageState.originalUrl
             || imageState.url
             || (imageState.originalBase64 ? imageState.originalBase64 : `data:image/png;base64,${imageState.base64}`);

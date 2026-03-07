@@ -1018,6 +1018,10 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         if (isProcessingBatch) return;
 
         if (onlyCurrent && currentImage) {
+            if (currentImage.skipped) {
+                alert('Skipped images cannot be translated.');
+                return;
+            }
             await processQueue([currentImage], 'translate', 1);
         } else {
             const queue = images.filter(img => !img.skipped && (img.status === 'idle' || img.status === 'error'));
