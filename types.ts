@@ -62,8 +62,6 @@ export interface DetectionPoint {
   y: number;
 }
 
-export type DetectionLinePolygon = DetectionPoint[];
-
 export interface DetectionGuideLine {
   id: string;
   points: DetectionPoint[];
@@ -89,7 +87,6 @@ export interface ContourRegion {
   base64?: string;
   anchor: { x: number; y: number };
   size: { w: number; h: number };
-  linePolygons?: DetectionLinePolygon[]; // Line polygons from detection API, normalized to image percentages (0-100)
   rects?: Array<{ x: number; y: number; w: number; h: number }>;
   dilatedBase64?: string;
   sourceMaskId?: string;
@@ -324,10 +321,8 @@ export interface AIConfig {
   useTextDetectionApi?: boolean; // Toggle Local OCR
   textDetectionApiUrl?: string;
   detectionExpansionRatio?: number; // New: 0.0 - 0.5 (Expansion rate for detected boxes)
-  splitDetectionByLines?: boolean; // Experimental: split merged detection blocks using text_blocks[].lines groups
   usePreciseFill?: boolean;       // Use text contour mask for fill instead of whole rect
   showContourPreview?: boolean;   // Show orange contour overlay in editor as reference
-  showDetectionLines?: boolean;   // Show line polygons returned by text_blocks[].lines for inspection
   useCharRects?: boolean;         // true = per-char bounding rects; false = dilated raw contour mask
   preInpaintContour?: boolean;    // Pre-fill text contour onto source image before IOPaint API call
   enableDialogSnap?: boolean; // Snap AI bubbles to manual masks

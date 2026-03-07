@@ -149,38 +149,6 @@ export const DetectionTab: React.FC<TabProps> = ({ config, setConfig, lang }) =>
               </div>
 
               <div className="pt-2 border-t border-gray-700/50 space-y-3">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h5 className="text-xs font-medium text-gray-300">{t('showDetectionLines', lang)}</h5>
-                    <p className="text-[10px] text-gray-500 mt-0.5">{t('showDetectionLinesHint', lang)}</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
-                      checked={config.showDetectionLines || false}
-                      onChange={(e) => setConfig({...config, showDetectionLines: e.target.checked})}
-                    />
-                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
-                  </label>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h5 className="text-xs font-medium text-gray-300">{t('splitDetectionByLines', lang)}</h5>
-                    <p className="text-[10px] text-gray-500 mt-0.5">{t('splitDetectionByLinesHint', lang)}</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      className="sr-only peer"
-                      checked={config.splitDetectionByLines || false}
-                      onChange={(e) => setConfig({...config, splitDetectionByLines: e.target.checked})}
-                    />
-                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-orange-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-orange-500"></div>
-                  </label>
-                </div>
-
                 {/* Precise Contour Fill — main toggle */}
                 <div className="flex justify-between items-start">
                   <div>

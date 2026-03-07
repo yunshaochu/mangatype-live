@@ -4,7 +4,6 @@ import { detectAndTypesetComic, fetchRawDetectedRegions } from '../services/gemi
 import { generateMaskedImage, generateAnnotatedImage, generateDetectionGuideImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 import { isBubbleInsideMask, isMaskCleaned } from '../utils/editorUtils';
-import { splitDetectionRegionByLines } from '../utils/detectionUtils';
 import {
     EndpointFailureCode,
     EndpointProtectionEventType,
@@ -988,35 +987,28 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                             const contours: ContourRegion[] = [];
 
                             originalRects.forEach((r) => {
-                                const derivedRects = aiConfig.splitDetectionByLines
-                                    ? splitDetectionRegionByLines(r)
-                                    : [r];
+                                const maskId = crypto.randomUUID();
+                                const expandedWidth = r.width * (1 + expansion);
+                                const expandedHeight = r.height * (1 + expansion);
 
-                                derivedRects.forEach((derived) => {
-                                    const maskId = crypto.randomUUID();
-                                    const expandedWidth = derived.width * (1 + expansion);
-                                    const expandedHeight = derived.height * (1 + expansion);
-
-                                    maskRegions.push({
-                                        id: maskId,
-                                        x: derived.x,
-                                        y: derived.y,
-                                        width: expandedWidth,
-                                        height: expandedHeight,
-                                        method: 'fill',
-                                    });
-
-                                    if (r.maskContourBase64 || (derived.linePolygons && derived.linePolygons.length > 0)) {
-                                        contours.push({
-                                            id: crypto.randomUUID(),
-                                            sourceMaskId: maskId,
-                                            base64: r.maskContourBase64,
-                                            anchor: { x: r.x, y: r.y },
-                                            size: { w: r.width, h: r.height },
-                                            linePolygons: derived.linePolygons,
-                                        });
-                                    }
+                                maskRegions.push({
+                                    id: maskId,
+                                    x: r.x,
+                                    y: r.y,
+                                    width: expandedWidth,
+                                    height: expandedHeight,
+                                    method: 'fill',
                                 });
+
+                                if (r.maskContourBase64) {
+                                    contours.push({
+                                        id: crypto.randomUUID(),
+                                        sourceMaskId: maskId,
+                                        base64: r.maskContourBase64,
+                                        anchor: { x: r.x, y: r.y },
+                                        size: { w: r.width, h: r.height },
+                                    });
+                                }
                             });
 
                             // Process Mask (Refined Pixel Mask) - We store it but don't use it for auto-inpaint anymore

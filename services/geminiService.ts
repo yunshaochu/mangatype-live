@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, FunctionDeclaration, Type, FunctionCallingConfigMode } from "@google/genai";
-import { AIConfig, DetectedBubble, DetectionLinePolygon, MaskRegion } from "../types";
+import { AIConfig, DetectedBubble, MaskRegion } from "../types";
 import { FAILURE_CODE_PARSE_BUBBLES_INVALID, isProtectableError } from "./apiProtection";
 
 export const DEFAULT_FONT_SELECTION_PROMPT = `### 字体选择指南：
@@ -530,7 +530,7 @@ export const fetchAvailableModels = async (config: AIConfig): Promise<string[]> 
 // --- Detection API Helper ---
 
 export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: string): Promise<{
-    rects: {x:number, y:number, width:number, height:number, maskContourBase64?: string, linePolygons?: DetectionLinePolygon[], vertical?: boolean}[],
+    rects: {x:number, y:number, width:number, height:number, maskContourBase64?: string}[],
     maskBase64?: string
 }> => {
     try {
@@ -569,25 +569,6 @@ export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: strin
             const y = (cyPx / imgH) * 100;
             const w = (widthPx / imgW) * 100;
             const h = (heightPx / imgH) * 100;
-
-            const linePolygons = Array.isArray(block.lines)
-                ? block.lines
-                    .map((line: unknown) => Array.isArray(line)
-                        ? line
-                            .map((point: unknown) => {
-                                if (!Array.isArray(point) || point.length < 2) return null;
-                                const [px, py] = point;
-                                if (!Number.isFinite(px) || !Number.isFinite(py)) return null;
-                                return {
-                                    x: (Number(px) / imgW) * 100,
-                                    y: (Number(py) / imgH) * 100,
-                                };
-                            })
-                            .filter((point): point is DetectionLinePolygon[number] => point !== null)
-                        : []
-                    )
-                    .filter((line): line is DetectionLinePolygon => line.length >= 3)
-                : undefined;
             
             return {
                 x,
@@ -595,8 +576,6 @@ export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: strin
                 width: w,
                 height: h,
                 maskContourBase64: block.mask_refined_region_base64 ?? undefined,
-                linePolygons: linePolygons && linePolygons.length > 0 ? linePolygons : undefined,
-                vertical: typeof block.vertical === 'boolean' ? block.vertical : undefined,
             };
         });
 

@@ -191,36 +191,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
     return layers;
   }, [maskRegions, contours]);
 
-  const linePreviewPolygons = useMemo(() => {
-    const visibleMaskIds = new Set(maskRegions.map(region => region.id));
-
-    return contours.flatMap((contour) => {
-      if (contour.sourceMaskId && !visibleMaskIds.has(contour.sourceMaskId)) {
-        return [];
-      }
-
-      return (contour.linePolygons || [])
-        .map((line, index) => {
-          const points = line
-            .filter(point => Number.isFinite(point.x) && Number.isFinite(point.y))
-            .map(point => {
-              const x = Math.max(0, Math.min(100, point.x));
-              const y = Math.max(0, Math.min(100, point.y));
-              return `${x},${y}`;
-            })
-            .join(' ');
-
-          if (!points) return null;
-
-          return {
-            key: `line-preview-${contour.id}-${index}`,
-            points,
-          };
-        })
-        .filter((line): line is { key: string; points: string } => line !== null);
-    });
-  }, [contours, maskRegions]);
-
   const detectionGuideDisplayLines = useMemo(() => {
     const lines = detectionGuideLines
       .map((line) => ({
@@ -258,7 +228,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
     setImages(prev => prev.map(img => img.id === currentId ? {
       ...img,
       detectionGuideLines: [...(img.detectionGuideLines || []), { id: crypto.randomUUID(), points }],
-    } : img), true);
+    } : img));
   }, [currentId, setImages]);
 
   const handleGuideStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -1221,26 +1191,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
                   } as React.CSSProperties}
               />
           ))}
-
-          {aiConfig.showDetectionLines && linePreviewPolygons.length > 0 && (
-            <svg
-              className="absolute inset-0 z-[3] h-full w-full pointer-events-none"
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-            >
-              {linePreviewPolygons.map(line => (
-                <polygon
-                  key={line.key}
-                  points={line.points}
-                  fill="rgba(34, 211, 238, 0.10)"
-                  stroke="#22D3EE"
-                  strokeWidth="0.18"
-                  strokeLinejoin="round"
-                  vectorEffect="non-scaling-stroke"
-                />
-              ))}
-            </svg>
-          )}
 
           {detectionGuideDisplayLines.length > 0 && (
             <svg

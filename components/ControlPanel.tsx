@@ -1,6 +1,6 @@
 ﻿
 import React from 'react';
-import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon, Eraser, Brush, Pipette, Hash, PaintBucket, MousePointerClick, History } from 'lucide-react';
+import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon, Eraser, Brush, Pipette, Hash, PaintBucket, MousePointerClick } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { createBubble } from '../utils/editorUtils';
@@ -354,7 +354,7 @@ export const ControlPanel: React.FC = () => {
                     <button
                       onClick={() => {
                         if (!currentId) return;
-                        setImages(prev => prev.map(img => img.id === currentId ? { ...img, detectionGuideLines: undefined } : img), true);
+                        setImages(prev => prev.map(img => img.id === currentId ? { ...img, detectionGuideLines: undefined } : img));
                       }}
                       disabled={!currentImage || !currentImage.detectionGuideLines || currentImage.detectionGuideLines.length === 0}
                       className="bg-gray-800/60 hover:bg-gray-700/70 border border-gray-700 text-gray-300 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
