@@ -1001,29 +1001,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         if (isProcessingBatch) return;
 
         if (onlyCurrent && currentImage) {
-            const processingRun = beginProcessingRun('translate');
-            const { signal, runId } = processingRun;
-            try {
-                const { enabledEndpoints, availableEndpoints } = getTranslateEndpointState();
-                const firstEndpoint = availableEndpoints[0];
-
-                if (!firstEndpoint) {
-                    notifyUnavailableTranslateEndpoints(enabledEndpoints);
-                    return;
-                }
-
-                const mergedConfig = mergeEndpointConfig(aiConfigRef.current, firstEndpoint);
-                const endpointController = new AbortController();
-                registerInFlightController(firstEndpoint.id, endpointController);
-                const mergedSignal = createMergedAbortSignal([signal, endpointController.signal]);
-                try {
-                    await runDetectionForImage(currentImage, mergedSignal, mergedConfig, firstEndpoint.id, 'request', runId);
-                } finally {
-                    unregisterInFlightController(firstEndpoint.id, endpointController);
-                }
-            } finally {
-                processingRun.finish();
-            }
+            await processQueue([currentImage], 'translate', 1);
         } else {
             const queue = images.filter(img => !img.skipped && (img.status === 'idle' || img.status === 'error'));
             if (queue.length === 0) {
