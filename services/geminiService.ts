@@ -789,27 +789,35 @@ export const detectAndTypesetComic = async (
     const { history } = getCustomMessages(config, 'openai');
     
     try {
+      const openAIRequestBody: Record<string, any> = {
+        model: config.model,
+        messages: [
+          ...history,
+          {
+            role: "user",
+            content: [
+              { type: "text", text: systemPrompt + "\nRespond with a JSON object containing the bubbles." },
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${data}` } }
+            ]
+          }
+        ],
+        stream: false,
+      };
+
+      if (config.modelSupportsFunctionCalling !== false) {
+        openAIRequestBody.tools = [{ type: 'function', function: openAIToolSchema }];
+        openAIRequestBody.tool_choice = 'auto';
+      }
+
+      if (config.modelSupportsJsonMode !== false) {
+        openAIRequestBody.response_format = { type: "json_object" };
+      }
+
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
         signal: signal,
-        body: JSON.stringify({
-          model: config.model,
-          messages: [
-            ...history,
-            {
-              role: "user",
-              content: [
-                { type: "text", text: systemPrompt + "\nRespond with a JSON object containing the bubbles." },
-                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${data}` } }
-              ]
-            }
-          ],
-          stream: false,
-          tools: [{ type: 'function', function: openAIToolSchema }],
-          tool_choice: 'auto',
-          response_format: { type: "json_object" }
-        })
+        body: JSON.stringify(openAIRequestBody)
       });
 
       let resData: any;
