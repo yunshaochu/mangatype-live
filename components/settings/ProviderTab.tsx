@@ -8,6 +8,7 @@ import { isEndpointPaused, getRemainingPauseTime, formatPauseDuration, DEFAULT_A
 import { EndpointCapabilityTestResult, runEndpointCapabilityTests } from '../../services/endpointTestService';
 import { clearEndpointModelCache, readEndpointModelCache, writeEndpointModelCache } from '../../services/endpointModelCache';
 import { getDisplayedProviderModels } from '../../services/providerModelFilter';
+import { buildProviderEndpointSections } from '../../services/providerEndpointSections';
 
 const EndpointEditor: React.FC<{
   endpoint: APIEndpoint;
@@ -203,18 +204,7 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
 
   // Derive ordered unique groups from endpoint array
   const groups = Array.from(new Set(endpoints.map((ep: APIEndpoint) => ep.group).filter(Boolean))) as string[];
-
-  // Build group → endpoints map (preserving array order)
-  const groupedMap = new Map<string, APIEndpoint[]>();
-  const ungrouped: APIEndpoint[] = [];
-  endpoints.forEach((ep: APIEndpoint) => {
-    if (ep.group) {
-      if (!groupedMap.has(ep.group)) groupedMap.set(ep.group, []);
-      groupedMap.get(ep.group)!.push(ep);
-    } else {
-      ungrouped.push(ep);
-    }
-  });
+  const sections = buildProviderEndpointSections(endpoints);
 
   const updateEndpoints = (newEndpoints: APIEndpoint[]) => {
     const first = newEndpoints.find(ep => ep.enabled) || newEndpoints[0];
@@ -280,7 +270,7 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     }));
   };
 
-  const handleGroupToggle = (groupName: string, enable: boolean) => {
+  const handleGroupToggle = (groupName: string | undefined, enable: boolean) => {
     updateEndpoints(endpoints.map((e: APIEndpoint) => {
       if (e.group !== groupName) return e;
       if (enable) {
@@ -684,69 +674,55 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
 
           return (
             <>
-              {/* Named groups */}
-              {groups.map(groupName => {
-                const groupEps = groupedMap.get(groupName) || [];
-                const groupEnabled = groupEps.filter(e => e.enabled).length;
+              {sections.map(section => {
+                const sectionLabel = section.isUngrouped ? (lang === 'zh' ? '未分组' : 'Ungrouped') : section.groupName!;
+                const groupEnabled = section.endpoints.filter(e => e.enabled).length;
                 return (
-                  <div key={groupName} className="space-y-1.5">
+                  <div key={section.key} className="space-y-1.5">
                     {/* Group header */}
                     <div className="flex items-center gap-2">
-                      {editingGroupName === groupName ? (
+                      {!section.isUngrouped && editingGroupName === section.groupName ? (
                         <input
                           autoFocus
                           value={groupNameDraft}
                           onChange={e => setGroupNameDraft(e.target.value)}
-                          onBlur={() => { handleRenameGroup(groupName, groupNameDraft); setEditingGroupName(null); }}
+                          onBlur={() => { handleRenameGroup(section.groupName!, groupNameDraft); setEditingGroupName(null); }}
                           onKeyDown={e => {
-                            if (e.key === 'Enter') { handleRenameGroup(groupName, groupNameDraft); setEditingGroupName(null); }
+                            if (e.key === 'Enter') { handleRenameGroup(section.groupName!, groupNameDraft); setEditingGroupName(null); }
                             if (e.key === 'Escape') setEditingGroupName(null);
                           }}
                           className="text-xs font-semibold text-white bg-transparent border-b border-gray-500 outline-none min-w-0 w-28"
                         />
-                      ) : (
+                      ) : !section.isUngrouped ? (
                         <button
-                          onClick={() => { setEditingGroupName(groupName); setGroupNameDraft(groupName); }}
+                          onClick={() => { setEditingGroupName(section.groupName!); setGroupNameDraft(section.groupName!); }}
                           className="flex items-center gap-1 text-xs font-semibold text-gray-300 hover:text-white transition-colors group"
                           title={lang === 'zh' ? '点击重命名' : 'Click to rename'}
                         >
-                          {groupName}
+                          {sectionLabel}
                           <Pencil size={9} className="opacity-0 group-hover:opacity-40 transition-opacity" />
                         </button>
+                      ) : (
+                        <span className="text-xs font-semibold text-gray-300">{sectionLabel}</span>
                       )}
                       <div className="flex-1 h-px bg-gray-800" />
-                      <span className="text-[10px] text-gray-600">{groupEnabled}/{groupEps.length}</span>
-                      <button onClick={() => handleGroupToggle(groupName, false)}
+                      <span className="text-[10px] text-gray-600">{groupEnabled}/{section.endpoints.length}</span>
+                      <button onClick={() => handleGroupToggle(section.groupName, false)}
                         className="text-[10px] text-gray-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-gray-700 transition-colors">
                         {lang === 'zh' ? '全关' : 'Off'}
                       </button>
-                      <button onClick={() => handleGroupToggle(groupName, true)}
+                      <button onClick={() => handleGroupToggle(section.groupName, true)}
                         className="text-[10px] text-green-400 hover:text-green-300 px-1.5 py-0.5 rounded hover:bg-green-900/20 transition-colors">
                         {lang === 'zh' ? '全开' : 'On'}
                       </button>
                     </div>
                     {/* Endpoints in group */}
                     <div className="space-y-1.5 pl-2 border-l border-gray-800">
-                      {groupEps.map(renderEndpoint)}
+                      {section.endpoints.map(renderEndpoint)}
                     </div>
                   </div>
                 );
               })}
-
-              {/* Ungrouped endpoints */}
-              {ungrouped.length > 0 && (
-                <div className="space-y-1.5">
-                  {groups.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-600">{lang === 'zh' ? '未分组' : 'Ungrouped'}</span>
-                      <div className="flex-1 h-px bg-gray-800" />
-                    </div>
-                  )}
-                  <div className={`space-y-1.5 ${groups.length > 0 ? 'pl-2 border-l border-gray-800' : ''}`}>
-                    {ungrouped.map(renderEndpoint)}
-                  </div>
-                </div>
-              )}
             </>
           );
         })()}
