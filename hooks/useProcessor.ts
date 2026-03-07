@@ -37,6 +37,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         failureCode?: EndpointFailureCode;
         abortedByTrip?: boolean;
         abortedByDisable?: boolean;
+        errorMessage?: string;
     };
 
     type ProcessingRunHandle = {
@@ -417,6 +418,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     protectableFailure: false,
                     abortedByTrip: signal?.reason === 'endpoint_trip',
                     abortedByDisable: signal?.reason === 'endpoint_disabled',
+                    errorMessage: e.message,
                 };
             }
             console.error(`AI Error for ${img.name} (attempt ${attempt + 1}/${retries + 1})`, e);
@@ -449,7 +451,12 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     runId,
                     signal
                 );
-                return { ok: false, protectableFailure: true, failureCode: failure.code };
+                return {
+                    ok: false,
+                    protectableFailure: true,
+                    failureCode: failure.code,
+                    errorMessage: e.message || 'Rate limited - endpoint paused',
+                };
             }
 
             if (shouldProtectNow && protectionMode === 'batch') {
@@ -462,7 +469,12 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     runId,
                     signal
                 );
-                return { ok: false, protectableFailure: true, failureCode: failure.code };
+                return {
+                    ok: false,
+                    protectableFailure: true,
+                    failureCode: failure.code,
+                    errorMessage: e.message || 'Rate limited - endpoint paused',
+                };
             }
 
             // Non-protectable errors: only update protection state on last attempt
@@ -487,7 +499,12 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 runId,
                 signal
             );
-            return { ok: false, protectableFailure: shouldProtectNow, failureCode: failure.code };
+            return {
+                ok: false,
+                protectableFailure: shouldProtectNow,
+                failureCode: failure.code,
+                errorMessage: e.message || 'Unknown error occurred',
+            };
         }
         } // end retry loop
         return { ok: false, protectableFailure: false };
@@ -617,6 +634,70 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             const enabledEndpoints = translateEndpointState?.enabledEndpoints || [];
 
             const useStateMachineV2 = aiConfigRef.current.apiProtectionStateMachineV2 ?? false;
+            const retryBudget = task === 'translate' ? getTranslateRetryBudget() : 0;
+            const maxFailoverAttempts = retryBudget + 1;
+            const retryStateByImage = new Map<string, { attemptCount: number; attemptedEndpointIds: string[]; lastErrorMessage?: string }>();
+
+            const clearRetryState = (imageId: string) => {
+                retryStateByImage.delete(imageId);
+            };
+
+            const finalizeRetryFailure = (img: ImageState, errorMessage?: string) => {
+                const retryState = retryStateByImage.get(img.id);
+                const fallbackMessage = retryState?.lastErrorMessage || 'No available endpoints remain for failover retry';
+                setImagesIfActive(
+                    prev => prev.map(p => p.id === img.id ? {
+                        ...p,
+                        status: 'error',
+                        errorMessage: errorMessage || fallbackMessage,
+                    } : p),
+                    runId,
+                    signal
+                );
+            };
+
+            const scheduleFailoverRetry = (
+                img: ImageState,
+                endpointId: string,
+                errorMessage: string | undefined,
+                protectableFailure: boolean,
+                enqueue: (image: ImageState) => void
+            ) => {
+                const retryState = retryStateByImage.get(img.id) || { attemptCount: 0, attemptedEndpointIds: [] as string[], lastErrorMessage: undefined as string | undefined };
+                retryState.attemptCount += 1;
+                if (!retryState.attemptedEndpointIds.includes(endpointId)) {
+                    retryState.attemptedEndpointIds.push(endpointId);
+                }
+                retryState.lastErrorMessage = errorMessage || retryState.lastErrorMessage || 'Unknown error occurred';
+                retryStateByImage.set(img.id, retryState);
+
+                console.warn(
+                    `translate_failover_retry img=${img.id} endpoint=${endpointId} attempt=${retryState.attemptCount}/${maxFailoverAttempts} protectable=${protectableFailure}`
+                );
+
+                const { availableEndpoints } = getTranslateEndpointState();
+                const hasRemainingBudget = retryState.attemptCount < maxFailoverAttempts;
+
+                if (!hasRemainingBudget || availableEndpoints.length === 0) {
+                    const exhaustedMessage = !hasRemainingBudget
+                        ? retryState.lastErrorMessage
+                        : `No available endpoints remain for failover retry${retryState.lastErrorMessage ? `: ${retryState.lastErrorMessage}` : ''}`;
+                    finalizeRetryFailure(img, exhaustedMessage);
+                    return false;
+                }
+
+                setImagesIfActive(
+                    prev => prev.map(p => p.id === img.id ? {
+                        ...p,
+                        status: 'idle',
+                        errorMessage: undefined,
+                    } : p),
+                    runId,
+                    signal
+                );
+                enqueue(img);
+                return true;
+            };
 
             if (task === 'translate' && enabledEndpoints.length > 0 && useStateMachineV2) {
                 const availableNow = translateEndpointState?.availableEndpoints || [];
@@ -636,6 +717,17 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 >();
                 const activeTasks = new Set<Promise<void>>();
                 let noEnabledEndpointNotified = false;
+
+                const pickPendingImageForEndpoint = (endpointId: string): ImageState | undefined => {
+                    const preferredIndex = pendingQueue.findIndex(candidate => {
+                        const retryState = retryStateByImage.get(candidate.id);
+                        return !retryState || !retryState.attemptedEndpointIds.includes(endpointId);
+                    });
+                    if (preferredIndex >= 0) {
+                        return pendingQueue.splice(preferredIndex, 1)[0];
+                    }
+                    return pendingQueue.shift();
+                };
 
                 const getRuntime = (endpoint: APIEndpoint) => {
                     const existing = runtimeByEndpoint.get(endpoint.id);
@@ -667,11 +759,11 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     endpointInFlight.set(img.id, { img, epoch: requestEpoch, controller: requestController });
                     registerInFlightController(endpoint.id, requestController);
                     const mergedSignal = createMergedAbortSignal([signal, requestController.signal]);
-                    const mergedConfig = mergeEndpointConfig(aiConfigRef.current, endpoint);
+                    const mergedConfig = { ...mergeEndpointConfig(aiConfigRef.current, endpoint), maxRetries: 0 };
 
                     const task = (async () => {
                         let result:
-                            | { ok: boolean; protectableFailure: boolean; failureCode?: EndpointFailureCode; abortedByTrip?: boolean; abortedByDisable?: boolean }
+                            | DetectionRunResult
                             | undefined;
                         try {
                             result = await runDetectionForImage(img, mergedSignal, mergedConfig, endpoint.id, 'batch', runId);
@@ -688,40 +780,46 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                         const latestRuntime = getRuntime(latestEndpoint);
 
                         if (result.abortedByTrip || result.abortedByDisable) {
-                            pendingQueue.unshift(img);
+                            pendingQueue.push(img);
                             return;
                         }
 
                         if (result.protectableFailure) {
-                            if (latestRuntime.trippedEpoch === requestEpoch || latestRuntime.epoch !== requestEpoch) {
-                                return;
+                            if (latestRuntime.trippedEpoch !== requestEpoch && latestRuntime.epoch === requestEpoch) {
+                                latestRuntime.trippedEpoch = requestEpoch;
+                                const failureCode = result.failureCode || FAILURE_CODE_UNKNOWN;
+                                abortInFlightByEndpoint(endpoint.id, 'endpoint_trip');
+
+                                const now = Date.now();
+                                const pauseDurationsMs = (aiConfigRef.current.apiProtectionDurations || []).map(d => d * 1000);
+                                const disableThreshold = aiConfigRef.current.apiProtectionDisableThreshold || 5;
+                                await dispatchEndpointProtectionUpdate(endpoint.id, 'BATCH_FAILED', current =>
+                                    reduceEndpointProtectionState(current, {
+                                        type: 'BATCH_FAILED',
+                                        now,
+                                        pauseDurationsMs,
+                                        disableThreshold,
+                                        failureCodes: [failureCode],
+                                        failedRequestCount: 1,
+                                        totalRequestCount: Math.max(1, latestRuntime.epochRequestCount),
+                                    })
+                                );
+                                latestRuntime.epoch += 1;
+                                latestRuntime.epochRequestCount = 0;
+                                latestRuntime.successNotifiedEpoch = null;
                             }
 
-                            latestRuntime.trippedEpoch = requestEpoch;
-                            const failureCode = result.failureCode || FAILURE_CODE_UNKNOWN;
-                            abortInFlightByEndpoint(endpoint.id, 'endpoint_trip');
+                            scheduleFailoverRetry(img, endpoint.id, result.errorMessage, true, retryImg => pendingQueue.push(retryImg));
+                            return;
+                        }
 
-                            const now = Date.now();
-                            const pauseDurationsMs = (aiConfigRef.current.apiProtectionDurations || []).map(d => d * 1000);
-                            const disableThreshold = aiConfigRef.current.apiProtectionDisableThreshold || 5;
-                            await dispatchEndpointProtectionUpdate(endpoint.id, 'BATCH_FAILED', current =>
-                                reduceEndpointProtectionState(current, {
-                                    type: 'BATCH_FAILED',
-                                    now,
-                                    pauseDurationsMs,
-                                    disableThreshold,
-                                    failureCodes: [failureCode],
-                                    failedRequestCount: 1,
-                                    totalRequestCount: Math.max(1, latestRuntime.epochRequestCount),
-                                })
-                            );
-                            latestRuntime.epoch += 1;
-                            latestRuntime.epochRequestCount = 0;
-                            latestRuntime.successNotifiedEpoch = null;
+                        if (!result.ok) {
+                            scheduleFailoverRetry(img, endpoint.id, result.errorMessage, false, retryImg => pendingQueue.push(retryImg));
                             return;
                         }
 
                         if (result.ok) {
+                            clearRetryState(img.id);
                             const refreshedEndpoint = aiConfigRef.current.endpoints.find(ep => ep.id === endpoint.id);
                             if (!refreshedEndpoint) return;
                             const isDegraded = refreshedEndpoint.protectionMode === 'degraded';
@@ -759,7 +857,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                         }
                         const effectiveConcurrency = Math.max(1, endpoint.effectiveConcurrency || endpoint.concurrency || 1);
                         while (endpointInFlight.size < effectiveConcurrency && pendingQueue.length > 0) {
-                            const nextImg = pendingQueue.shift();
+                            const nextImg = pickPendingImageForEndpoint(endpoint.id);
                             if (!nextImg) break;
                             startRequest(endpoint, nextImg, runtime.epoch);
                         }
@@ -770,14 +868,15 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                         break;
                     }
                     if (pendingQueue.length > 0 && inFlightCount === 0 && availableEndpoints.length === 0) {
-                        const hasEnabledEndpoints = (aiConfigRef.current.endpoints || []).some(ep => ep.enabled);
-                        if (!hasEnabledEndpoints) {
-                            if (!noEnabledEndpointNotified) {
-                                alert('No enabled endpoints available');
-                                noEnabledEndpointNotified = true;
-                            }
-                            break;
+                        const remainingImages = pendingQueue.splice(0, pendingQueue.length);
+                        for (const pendingImage of remainingImages) {
+                            finalizeRetryFailure(pendingImage);
                         }
+                        if (!noEnabledEndpointNotified) {
+                            notifyUnavailableTranslateEndpoints(getTranslateEndpointState().enabledEndpoints);
+                            noEnabledEndpointNotified = true;
+                        }
+                        break;
                     }
 
                     await new Promise(r => setTimeout(r, 60));
@@ -796,12 +895,18 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 const inFlight = new Map<string, number>();
                 const retryQueue: ImageState[] = [];
                 let noEnabledEndpointNotified = false;
-                const pickEndpoint = (): APIEndpoint | null => {
+
+                const pickEndpointForImage = (img: ImageState): APIEndpoint | null => {
                     const latest = (aiConfigRef.current.endpoints || [])
                         .filter(ep => ep.enabled && !isEndpointPaused(ep))
                         .filter(ep => (inFlight.get(ep.id) || 0) < Math.max(1, ep.concurrency || 1));
                     if (latest.length === 0) return null;
-                    return latest.reduce((best, ep) =>
+                    const retryState = retryStateByImage.get(img.id);
+                    const preferred = retryState
+                        ? latest.filter(ep => !retryState.attemptedEndpointIds.includes(ep.id))
+                        : latest;
+                    const candidatePool = preferred.length > 0 ? preferred : latest;
+                    return candidatePool.reduce((best, ep) =>
                         (inFlight.get(ep.id) || 0) < (inFlight.get(best.id) || 0) ? ep : best
                     );
                 };
@@ -814,21 +919,6 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 let nextIndex = 0;
                 const worker = async () => {
                     while (!signal.aborted) {
-                        const endpoint = pickEndpoint();
-                        if (!endpoint) {
-                            const hasEnabledEndpoints = (aiConfigRef.current.endpoints || []).some(ep => ep.enabled);
-                            const inFlightTotal = Array.from(inFlight.values()).reduce((sum, count) => sum + count, 0);
-                            if (!hasEnabledEndpoints && inFlightTotal === 0) {
-                                if (!noEnabledEndpointNotified) {
-                                    alert('No enabled endpoints available');
-                                    noEnabledEndpointNotified = true;
-                                }
-                                return;
-                            }
-                            await new Promise(r => setTimeout(r, 120));
-                            continue;
-                        }
-
                         let img = retryQueue.shift();
                         if (!img) {
                             const idx = nextIndex++;
@@ -841,15 +931,42 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                             img = queue[idx];
                         }
 
+                        const endpoint = pickEndpointForImage(img);
+                        if (!endpoint) {
+                            const inFlightTotal = Array.from(inFlight.values()).reduce((sum, count) => sum + count, 0);
+                            if (inFlightTotal === 0) {
+                                finalizeRetryFailure(img);
+                                for (const retryImg of retryQueue.splice(0, retryQueue.length)) {
+                                    finalizeRetryFailure(retryImg);
+                                }
+                                while (nextIndex < queue.length) {
+                                    finalizeRetryFailure(queue[nextIndex]);
+                                    nextIndex += 1;
+                                }
+                                if (!noEnabledEndpointNotified) {
+                                    notifyUnavailableTranslateEndpoints(getTranslateEndpointState().enabledEndpoints);
+                                    noEnabledEndpointNotified = true;
+                                }
+                                return;
+                            }
+                            retryQueue.unshift(img);
+                            await new Promise(r => setTimeout(r, 120));
+                            continue;
+                        }
+
                         inFlight.set(endpoint.id, (inFlight.get(endpoint.id) || 0) + 1);
                         const requestController = new AbortController();
                         registerInFlightController(endpoint.id, requestController);
                         const mergedSignal = createMergedAbortSignal([signal, requestController.signal]);
-                        const mergedConfig = mergeEndpointConfig(aiConfigRef.current, endpoint);
+                        const mergedConfig = { ...mergeEndpointConfig(aiConfigRef.current, endpoint), maxRetries: 0 };
                         try {
                             const result = await runDetectionForImage(img, mergedSignal, mergedConfig, endpoint.id, 'request', runId);
-                            if (result.abortedByDisable) {
+                            if (result.ok) {
+                                clearRetryState(img.id);
+                            } else if (result.abortedByDisable || result.abortedByTrip) {
                                 retryQueue.push(img);
+                            } else {
+                                scheduleFailoverRetry(img, endpoint.id, result.errorMessage, result.protectableFailure, retryImg => retryQueue.push(retryImg));
                             }
                         } finally {
                             unregisterInFlightController(endpoint.id, requestController);
