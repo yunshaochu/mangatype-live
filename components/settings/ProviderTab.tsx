@@ -5,10 +5,23 @@ import { fetchAvailableModels } from '../../services/geminiService';
 import { AIProvider, APIEndpoint, mergeEndpointConfig } from '../../types';
 import { TabProps } from './types';
 import { isEndpointPaused, getRemainingPauseTime, formatPauseDuration, DEFAULT_API_PROTECTION_CONFIG } from '../../services/apiProtection';
-import { EndpointCapabilityTestResult, runEndpointCapabilityTests } from '../../services/endpointTestService';
+import { DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS, EndpointCapabilityTestResult, EndpointCapabilityTestSettings, runEndpointCapabilityTests } from '../../services/endpointTestService';
 import { clearEndpointModelCache, readEndpointModelCache, writeEndpointModelCache } from '../../services/endpointModelCache';
 import { getDisplayedProviderModels } from '../../services/providerModelFilter';
 import { buildProviderEndpointSections } from '../../services/providerEndpointSections';
+
+const getTestResultMeta = (result: EndpointCapabilityTestResult['basic'], lang: 'zh' | 'en') => {
+  if (result.status === 'pass') {
+    return { color: 'text-green-400', label: lang === 'zh' ? '通过' : 'Pass' };
+  }
+  if (result.status === 'skipped') {
+    return { color: 'text-yellow-400', label: lang === 'zh' ? '已跳过' : 'Skipped' };
+  }
+  if (result.status === 'not_tested') {
+    return { color: 'text-gray-400', label: lang === 'zh' ? '未测试' : 'Not tested' };
+  }
+  return { color: 'text-red-400', label: lang === 'zh' ? '失败' : 'Fail' };
+};
 
 const EndpointEditor: React.FC<{
   endpoint: APIEndpoint;
@@ -212,6 +225,7 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
   const [groupNameDraft, setGroupNameDraft] = useState('');
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, EndpointCapabilityTestResult>>({});
+  const [testSettings, setTestSettings] = useState<Record<string, EndpointCapabilityTestSettings>>({});
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const endpoints = config.endpoints || [];
@@ -260,6 +274,16 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     clearEndpointModelCache(localStorage, id);
     updateEndpoints(endpoints.filter(e => e.id !== id));
     if (editingId === id) setEditingId(null);
+    setTestResults(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setTestSettings(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   };
 
   const handleToggle = (id: string) => {
@@ -339,16 +363,20 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     if (testingId) return;
     setTestingId(endpoint.id);
     try {
-      const result = await runEndpointCapabilityTests(config, endpoint);
+      const endpointTestSettings = {
+        ...DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS,
+        ...(testSettings[endpoint.id] || {}),
+      };
+      const result = await runEndpointCapabilityTests(config, endpoint, endpointTestSettings);
       setTestResults(prev => ({ ...prev, [endpoint.id]: result }));
     } catch (e: any) {
       const message = e?.message || 'Unknown error';
       setTestResults(prev => ({
         ...prev,
         [endpoint.id]: {
-          basic: { ok: false, message, latencyMs: 0 },
-          functionCalling: { ok: false, message: 'Skipped due to basic failure', latencyMs: 0 },
-          jsonMode: { ok: false, message: 'Skipped due to basic failure', latencyMs: 0 },
+          basic: { ok: false, message, latencyMs: 0, status: 'fail' },
+          functionCalling: { ok: false, message: 'Not tested', latencyMs: 0, status: 'not_tested' },
+          jsonMode: { ok: false, message: 'Not tested', latencyMs: 0, status: 'not_tested' },
         },
       }));
     } finally {
@@ -664,20 +692,60 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                     <Trash2 size={14} />
                   </button>
                 </div>
+                <details className="mt-1 rounded-lg border border-gray-800 bg-gray-900/20 px-3 py-2 text-[11px]">
+                  <summary className="cursor-pointer text-gray-300 select-none">{lang === 'zh' ? '测试设置' : 'Test settings'}</summary>
+                  <div className="mt-2 space-y-2">
+                    <p className="text-gray-500">{lang === 'zh' ? '基础测试始终执行；仅在勾选后追加高级测试。' : 'Basic test always runs; advanced tests run only when selected.'}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        aria-pressed={(testSettings[ep.id]?.testFunctionCalling ?? false)}
+                        onClick={() => setTestSettings(prev => ({
+                          ...prev,
+                          [ep.id]: {
+                            ...DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS,
+                            ...(prev[ep.id] || {}),
+                            testFunctionCalling: !(prev[ep.id]?.testFunctionCalling ?? false),
+                          },
+                        }))}
+                        className={`rounded-lg border px-3 py-2 text-left transition-all ${(testSettings[ep.id]?.testFunctionCalling ?? false) ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
+                      >
+                        <div className="font-semibold">{lang === 'zh' ? '测试 FC' : 'Test FC'}</div>
+                        <div className="mt-1 text-[10px] text-current/80">{lang === 'zh' ? '发送 Function Calling 探测请求' : 'Send Function Calling probe request'}</div>
+                      </button>
+                      <button
+                        type="button"
+                        aria-pressed={(testSettings[ep.id]?.testJsonMode ?? false)}
+                        onClick={() => setTestSettings(prev => ({
+                          ...prev,
+                          [ep.id]: {
+                            ...DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS,
+                            ...(prev[ep.id] || {}),
+                            testJsonMode: !(prev[ep.id]?.testJsonMode ?? false),
+                          },
+                        }))}
+                        className={`rounded-lg border px-3 py-2 text-left transition-all ${(testSettings[ep.id]?.testJsonMode ?? false) ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-200' : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
+                      >
+                        <div className="font-semibold">{lang === 'zh' ? '测试 JSON' : 'Test JSON'}</div>
+                        <div className="mt-1 text-[10px] text-current/80">{lang === 'zh' ? '发送 JSON Mode 探测请求' : 'Send JSON mode probe request'}</div>
+                      </button>
+                    </div>
+                  </div>
+                </details>
                 {testResults[ep.id] && (
                   <div className="mt-1 p-2 rounded-lg border border-gray-700 bg-gray-900/40 text-[11px] space-y-1">
-                    <div className={`font-medium ${testResults[ep.id].basic.ok ? 'text-green-400' : 'text-red-400'}`}>
-                      {lang === 'zh' ? '基础可用性' : 'Basic'}: {testResults[ep.id].basic.ok ? (lang === 'zh' ? '通过' : 'Pass') : (lang === 'zh' ? '失败' : 'Fail')}
+                    <div className={`font-medium ${getTestResultMeta(testResults[ep.id].basic, lang).color}`}>
+                      {lang === 'zh' ? '基础可用性' : 'Basic'}: {getTestResultMeta(testResults[ep.id].basic, lang).label}
                       {' '}({testResults[ep.id].basic.latencyMs}ms) - {testResults[ep.id].basic.message}
                     </div>
                     <details>
                       <summary className="cursor-pointer text-gray-300">{lang === 'zh' ? '高级能力测试（可折叠）' : 'Advanced tests (collapsible)'}</summary>
                       <div className="mt-1 space-y-1 pl-2 border-l border-gray-700">
-                        <div className={testResults[ep.id].functionCalling.ok ? 'text-green-400' : 'text-red-400'}>
-                          Function Calling: {testResults[ep.id].functionCalling.ok ? 'Pass' : 'Fail'} ({testResults[ep.id].functionCalling.latencyMs}ms) - {testResults[ep.id].functionCalling.message}
+                        <div className={getTestResultMeta(testResults[ep.id].functionCalling, lang).color}>
+                          Function Calling: {getTestResultMeta(testResults[ep.id].functionCalling, lang).label} ({testResults[ep.id].functionCalling.latencyMs}ms) - {testResults[ep.id].functionCalling.message}
                         </div>
-                        <div className={testResults[ep.id].jsonMode.ok ? 'text-green-400' : 'text-red-400'}>
-                          JSON Mode: {testResults[ep.id].jsonMode.ok ? 'Pass' : 'Fail'} ({testResults[ep.id].jsonMode.latencyMs}ms) - {testResults[ep.id].jsonMode.message}
+                        <div className={getTestResultMeta(testResults[ep.id].jsonMode, lang).color}>
+                          JSON Mode: {getTestResultMeta(testResults[ep.id].jsonMode, lang).label} ({testResults[ep.id].jsonMode.latencyMs}ms) - {testResults[ep.id].jsonMode.message}
                         </div>
                       </div>
                     </details>
