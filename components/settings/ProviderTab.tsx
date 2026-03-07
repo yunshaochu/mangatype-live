@@ -150,20 +150,36 @@ const EndpointEditor: React.FC<{
         {error && <div className="text-xs text-red-400 flex items-center gap-1 mt-1"><AlertCircle size={12}/> {error}</div>}
       </div>
 
-      {/* Capabilities */}
-      <div className="flex gap-4">
-        <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-300">
-          <input type="checkbox" checked={draft.modelSupportsFunctionCalling !== false}
-            onChange={e => setDraft({ ...draft, modelSupportsFunctionCalling: e.target.checked ? undefined : false })}
-            className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-500" />
-          Function Calling
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-300">
-          <input type="checkbox" checked={draft.modelSupportsJsonMode !== false}
-            onChange={e => setDraft({ ...draft, modelSupportsJsonMode: e.target.checked ? undefined : false })}
-            className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-500" />
-          JSON Mode
-        </label>
+      {/* Runtime capability overrides */}
+      <div className="space-y-2">
+        <div className="space-y-1">
+          <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            {lang === 'zh' ? '运行时能力覆盖' : 'Runtime Capability Overrides'}
+          </label>
+          <p className="text-[11px] text-gray-500">
+            {lang === 'zh' ? '仅控制该端点翻译请求的能力字段，不影响测试设置。' : 'Only controls translation request capabilities for this endpoint, not test settings.'}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            aria-pressed={draft.modelSupportsFunctionCalling !== false}
+            onClick={() => setDraft({ ...draft, modelSupportsFunctionCalling: draft.modelSupportsFunctionCalling === false ? undefined : false })}
+            className={`p-3 rounded-lg border text-left transition-all ${draft.modelSupportsFunctionCalling !== false ? 'bg-blue-600/15 border-blue-500/50 text-blue-200 ring-1 ring-blue-500/20' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
+          >
+            <div className="text-xs font-semibold">Function Calling</div>
+            <div className="text-[10px] mt-1 text-current/80">{draft.modelSupportsFunctionCalling !== false ? (lang === 'zh' ? '运行时已启用' : 'Runtime enabled') : (lang === 'zh' ? '运行时已关闭' : 'Runtime disabled')}</div>
+          </button>
+          <button
+            type="button"
+            aria-pressed={draft.modelSupportsJsonMode !== false}
+            onClick={() => setDraft({ ...draft, modelSupportsJsonMode: draft.modelSupportsJsonMode === false ? undefined : false })}
+            className={`p-3 rounded-lg border text-left transition-all ${draft.modelSupportsJsonMode !== false ? 'bg-indigo-600/15 border-indigo-500/50 text-indigo-200 ring-1 ring-indigo-500/20' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
+          >
+            <div className="text-xs font-semibold">JSON Mode</div>
+            <div className="text-[10px] mt-1 text-current/80">{draft.modelSupportsJsonMode !== false ? (lang === 'zh' ? '运行时已启用' : 'Runtime enabled') : (lang === 'zh' ? '运行时已关闭' : 'Runtime disabled')}</div>
+          </button>
+        </div>
       </div>
 
       {/* Concurrency */}
