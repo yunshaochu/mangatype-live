@@ -2,11 +2,12 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { FONTS } from '../types';
-import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, RotateCw, Maximize2, Palette, Minus, Plus, Pipette, Hash, Ban, Square, Circle, Box, BringToFront, SendToBack, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
+import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, RotateCw, Maximize2, Palette, Minus, Plus, Pipette, Hash, Ban, Square, Circle, Box, BringToFront, SendToBack, ChevronLeft, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
 import { t } from '../services/i18n';
 import { shouldShowBubbleContextSection } from '../services/bubbleEditorContext';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { loadBubbleEditorOpenSections, saveBubbleEditorOpenSections } from '../services/bubbleEditorSectionsStorage';
+import { buildActiveBubbleFontSizeUpdate, getActiveBubbleLayoutState, getAdjacentBubbleLayoutIndex } from '../services/layoutVariantProjection';
 
 const PRESET_BG_COLORS = [
   '#ffffff', // White
@@ -132,6 +133,11 @@ export const BubbleEditor: React.FC = () => {
 
   const bubble = currentImage?.bubbles.find(b => b.id === selectedBubbleId);
   if (!bubble) return null;
+  const activeLayout = getActiveBubbleLayoutState(bubble);
+  const applyDisplayedFontSize = (nextFontSize: number) => updateBubble(
+    bubble.id,
+    buildActiveBubbleFontSizeUpdate(bubble, parseFloat(nextFontSize.toFixed(1))),
+  );
 
   const contextSummary = bubble.context?.speaker || bubble.context?.situation || bubble.sourceText || contextLabels.empty;
   const contextItems = [
@@ -191,9 +197,30 @@ export const BubbleEditor: React.FC = () => {
 
         {/* Text Input — always visible */}
         <div className="space-y-2 pb-3">
-          <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">{t('content', lang)}</label>
+          <div className="flex items-center justify-between gap-2">
+            <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">{t('content', lang)}</label>
+            <div className="flex items-center gap-1 rounded border border-gray-800 bg-gray-900/60 px-1.5 py-1 text-[10px] text-gray-400">
+              <button
+                onClick={() => updateBubble(bubble.id, { activeLayoutIndex: getAdjacentBubbleLayoutIndex(bubble, 'prev') })}
+                disabled={activeLayout.activeLayoutIndex === 0}
+                className="rounded p-0.5 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-30"
+                title={t('previousLayoutVariant', lang)}
+              >
+                <ChevronLeft size={12} />
+              </button>
+              <span>{t('layoutVariant', lang)} {activeLayout.activeLayoutIndex}/{activeLayout.totalLayoutCount - 1}</span>
+              <button
+                onClick={() => updateBubble(bubble.id, { activeLayoutIndex: getAdjacentBubbleLayoutIndex(bubble, 'next') })}
+                disabled={activeLayout.activeLayoutIndex >= activeLayout.totalLayoutCount - 1}
+                className="rounded p-0.5 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-30"
+                title={t('nextLayoutVariant', lang)}
+              >
+                <ChevronRight size={12} />
+              </button>
+            </div>
+          </div>
           <textarea
-            value={bubble.text}
+            value={activeLayout.text}
             onChange={(e) => handleTextChange(bubble.id, e.target.value)}
             className="w-full bg-gray-800 border border-gray-700 rounded p-3 text-sm focus:border-blue-500 outline-none resize-none font-sans transition-colors"
             rows={5}
@@ -400,7 +427,7 @@ export const BubbleEditor: React.FC = () => {
             onToggle={() => toggleSection('layout')}
             summary={<>
               {bubble.isVertical ? <AlignVerticalJustifyCenter size={12}/> : <AlignHorizontalJustifyCenter size={12}/>}
-              <span>{bubble.fontSize.toFixed(1)}</span>
+              <span>{activeLayout.fontSize.toFixed(1)}</span>
               {bubble.rotation !== 0 && <span>{bubble.rotation}°</span>}
             </>}
           />
@@ -416,11 +443,11 @@ export const BubbleEditor: React.FC = () => {
               </div>
               {/* Font Size */}
               <div className="space-y-1">
-                <div className="flex justify-between text-[10px] text-gray-400 mb-1"><span>{t('size', lang)}</span><span>{bubble.fontSize.toFixed(1)}</span></div>
+                <div className="flex justify-between text-[10px] text-gray-400 mb-1"><span>{t('size', lang)}</span><span>{activeLayout.fontSize.toFixed(1)}</span></div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => updateBubble(bubble.id, { fontSize: parseFloat(Math.max(0.5, bubble.fontSize - 0.1).toFixed(1)) })} className="p-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-400 hover:text-white"><Minus size={12}/></button>
-                  <input type="range" min="0.5" max="10" step="0.1" value={bubble.fontSize} onChange={(e) => updateBubble(bubble.id, { fontSize: parseFloat(e.target.value) })} className="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"/>
-                  <button onClick={() => updateBubble(bubble.id, { fontSize: parseFloat(Math.min(10, bubble.fontSize + 0.1).toFixed(1)) })} className="p-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-400 hover:text-white"><Plus size={12}/></button>
+                  <button onClick={() => applyDisplayedFontSize(Math.max(0.5, activeLayout.fontSize - 0.1))} className="p-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-400 hover:text-white"><Minus size={12}/></button>
+                  <input type="range" min="0.5" max="10" step="0.1" value={activeLayout.fontSize} onChange={(e) => applyDisplayedFontSize(parseFloat(e.target.value))} className="flex-1 h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-blue-500"/>
+                  <button onClick={() => applyDisplayedFontSize(Math.min(10, activeLayout.fontSize + 0.1))} className="p-1 bg-gray-800 hover:bg-gray-700 rounded border border-gray-700 text-gray-400 hover:text-white"><Plus size={12}/></button>
                 </div>
               </div>
               {/* Letter Spacing */}

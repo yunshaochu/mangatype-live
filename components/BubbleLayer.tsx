@@ -4,6 +4,7 @@ import { Bubble, AIConfig, HandleType } from '../types';
 import { X } from 'lucide-react';
 import { handleStyle, HANDLE_OFFSET, clamp } from '../utils/editorUtils';
 import { getVerticalPunctuationTune } from '../utils/verticalPunctuation';
+import { getActiveBubbleLayoutState } from '../services/layoutVariantProjection';
 
 const tunedVerticalPunctuationStyle: React.CSSProperties = {
   display: 'inline-flex',
@@ -179,10 +180,13 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
       )}
       
       <div className="absolute inset-0 flex items-center justify-center overflow-visible">
+        {(() => {
+          const activeLayout = getActiveBubbleLayoutState(bubble);
+          return (
         <div
           className={`font-${bubble.fontFamily} leading-[1.2]`}
           style={{
-            fontSize: `${bubble.fontSize * 2}cqw`,
+            fontSize: `${activeLayout.fontSize * 2}cqw`,
             fontWeight: bubble.fontFamily === 'noto-bold' ? 900 : 'bold',
             color: bubble.color,
             writingMode: bubble.isVertical ? 'vertical-rl' : 'horizontal-tb',
@@ -195,8 +199,10 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
             paintOrder: 'stroke fill',
           }}
         >
-          {bubble.isVertical ? renderVerticalText(bubble.text) : bubble.text}
+          {bubble.isVertical ? renderVerticalText(activeLayout.text) : activeLayout.text}
         </div>
+          );
+        })()}
       </div>
     </div>
   );

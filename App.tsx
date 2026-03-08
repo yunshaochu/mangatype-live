@@ -14,6 +14,7 @@ import { useCanvasInteraction } from './hooks/useCanvasInteraction';
 import { useProjectContext } from './contexts/ProjectContext';
 import { cropRegionFromImage } from './services/exportService';
 import { initializeBubbleLayoutState } from './services/layoutVariantBubbleState';
+import { getAdjacentBubbleLayoutIndex } from './services/layoutVariantProjection';
 
 const PRESET_FILL_COLORS = ['#ffffff', '#000000', '#f3f4f6', '#d1d5db', '#e5e7eb', '#9ca3af'];
 
@@ -28,7 +29,7 @@ const App: React.FC = () => {
     
     // Actions
     handleUndo, handleRedo, deleteCurrentSelection, navigateImage,
-    processFiles, updateImageBubbles, updateMaskRegion, triggerAutoColorDetection,
+    processFiles, updateBubble, updateImageBubbles, updateMaskRegion, triggerAutoColorDetection,
     handleGlobalColorDetection,
     
     // UI State
@@ -207,6 +208,14 @@ const App: React.FC = () => {
       if (!isInput) {
           if (e.key === 'ArrowLeft') { e.preventDefault(); navigateImage('prev'); }
           else if (e.key === 'ArrowRight') { e.preventDefault(); navigateImage('next'); }
+          else if (selectedBubble && e.altKey && e.key === '[') {
+            e.preventDefault();
+            updateBubble(selectedBubble.id, { activeLayoutIndex: getAdjacentBubbleLayoutIndex(selectedBubble, 'prev') });
+          }
+          else if (selectedBubble && e.altKey && e.key === ']') {
+            e.preventDefault();
+            updateBubble(selectedBubble.id, { activeLayoutIndex: getAdjacentBubbleLayoutIndex(selectedBubble, 'next') });
+          }
       }
       if (!isInput && (e.key === 'Delete' || e.key === 'Backspace')) {
         e.preventDefault();
@@ -215,7 +224,7 @@ const App: React.FC = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleUndo, handleRedo, navigateImage, deleteCurrentSelection]);
+  }, [handleUndo, handleRedo, navigateImage, deleteCurrentSelection, selectedBubble, updateBubble]);
 
   // 4. File Handlers
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => { if (e.target.files?.length) processFiles(e.target.files); if (fileInputRef.current) fileInputRef.current.value = ''; };

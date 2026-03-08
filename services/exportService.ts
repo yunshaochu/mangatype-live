@@ -3,6 +3,7 @@ import { ImageState, Bubble, MaskRegion, DetectionGuideLine, FONTS, getFontStack
 import JSZip from 'jszip';
 import { domToPng } from 'modern-screenshot';
 import { shouldExportOriginalImage } from './translationSemantics';
+import { getActiveBubbleLayoutState } from './layoutVariantProjection';
 import { getVerticalPunctuationTune } from '../utils/verticalPunctuation';
 
 // Helper to escape HTML characters to prevent breaking SVG XML
@@ -1278,11 +1279,12 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
     try {
         // 4. Draw each bubble
         for (const b of bubbles) {
+            const activeLayout = getActiveBubbleLayoutState(b);
             const centerX = width * (b.x / 100);
             const centerY = height * (b.y / 100);
             const bubbleW = width * (b.width / 100);
             const bubbleH = height * (b.height / 100);
-            const fontSize = width * (b.fontSize * 0.02);
+            const fontSize = width * (activeLayout.fontSize * 0.02);
 
             const fontStack = getFontStack(b.fontFamily);
 
@@ -1322,7 +1324,7 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 // actually creates column breaks inside the flex parent
                 const innerBlock = document.createElement('div');
                 innerBlock.style.cssText = `white-space: pre; writing-mode: vertical-rl; text-orientation: mixed; line-height: ${b.lineHeight ?? 1.1}; letter-spacing: ${b.letterSpacing ?? 0.15}em;`;
-                Array.from(b.text).forEach(char => {
+                Array.from(activeLayout.text).forEach(char => {
                     if (char === '\n') {
                         innerBlock.appendChild(document.createTextNode('\n'));
                     } else {
@@ -1343,7 +1345,7 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 });
                 textMeasureEl.appendChild(innerBlock);
             } else {
-                textMeasureEl.textContent = b.text;
+                textMeasureEl.textContent = activeLayout.text;
             }
             measureContainer.appendChild(textMeasureEl);
 
@@ -1424,7 +1426,7 @@ export const compositeImageWithCanvas = async (imageState: ImageState, options?:
                 (ctx as any).letterSpacing = `${b.letterSpacing ?? 0.15}em`;
             }
 
-            const lines = b.text.split('\n');
+            const lines = activeLayout.text.split('\n');
             const lineHeight = fontSize * (b.lineHeight ?? 1.1);
 
             if (b.isVertical) {
@@ -1524,13 +1526,14 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
     const { width, height, bubbles } = imageState;
     
     const bubblesHtml = bubbles.map(b => {
+       const activeLayout = getActiveBubbleLayoutState(b);
        const left = width * (b.x / 100);
        const top = height * (b.y / 100);
        const w = width * (b.width / 100);
        const h = height * (b.height / 100);
        
        // Calculate font size (cqw relative to image width)
-       const fontSize = width * (b.fontSize * 0.02); 
+       const fontSize = width * (activeLayout.fontSize * 0.02); 
        
        const fontStack = getFontStack(b.fontFamily);
        
@@ -1547,9 +1550,9 @@ export const compositeImage = async (imageState: ImageState, options?: ExportOpt
        const blurPx = w * (featherVal * 0.0015) * 10;
        const spreadPx = w * (featherVal * 0.0008) * 10;
 
-       const safeText = escapeHtml(b.text);
+       const safeText = escapeHtml(activeLayout.text);
        // Vertical Text Fix: 牺牲行用于解决 Chrome ForeignObject 竖排第一行缩进 Bug
-       const renderText = b.isVertical ? renderTunedVerticalTextHtml(`\n${b.text}`) : safeText;
+       const renderText = b.isVertical ? renderTunedVerticalTextHtml(`\n${activeLayout.text}`) : safeText;
 
        // 方案 C: 绝对定位手动居中，避免 Flexbox 在 SVG ForeignObject 中的渲染差异
        // 基础 transform: 将文字中心对齐到父容器中心
@@ -1877,6 +1880,7 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
         // 5. Bubbles — replicate BubbleLayer.tsx CSS exactly
         // PLACEHOLDER_BUBBLE_RENDERING
         bubbles.forEach(b => {
+            const activeLayout = getActiveBubbleLayoutState(b);
             const shape = b.maskShape || options?.defaultMaskShape || 'ellipse';
             const radiusVal = b.maskCornerRadius !== undefined ? b.maskCornerRadius : (options?.defaultMaskCornerRadius || 15);
             const featherVal = b.maskFeather !== undefined ? b.maskFeather : (options?.defaultMaskFeather || 10);
@@ -1922,7 +1926,7 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
 
             const textDiv = document.createElement('div');
             textDiv.style.cssText = `
-                font-size: ${b.fontSize * 2}cqw;
+                font-size: ${activeLayout.fontSize * 2}cqw;
                 font-weight: ${b.fontFamily === 'noto-bold' ? '900' : 'bold'};
                 font-family: ${getFontStack(b.fontFamily)};
                 color: ${b.color};
@@ -1935,8 +1939,8 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
                 -webkit-text-stroke: 3px ${strokeColor};
                 paint-order: stroke fill;
             `;
-            if (b.isVertical) appendTunedVerticalTextNodes(textDiv, b.text);
-            else textDiv.textContent = b.text;
+            if (b.isVertical) appendTunedVerticalTextNodes(textDiv, activeLayout.text);
+            else textDiv.textContent = activeLayout.text;
             textWrap.appendChild(textDiv);
             outer.appendChild(textWrap);
 
