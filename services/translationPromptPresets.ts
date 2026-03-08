@@ -67,7 +67,7 @@ ${SHARED_PROMPT_SUFFIX}`.trim();
 const LEGACY_SAMPLE_JSON = `{
   "bubbles": [
     {
-      "text": "很好，增加 JSON 模式作为后备吧",
+      "text": "中文翻译第一行\\n中文翻译第二行",
       "x": 50,
       "y": 45,
       "width": 25,
@@ -88,7 +88,7 @@ const CONTEXTUAL_SAMPLE_JSON = `{
         "postText": "后一句台词，没有就写空字符串",
         "translationHint": "翻译时需要注意的点，简短填写"
       },
-      "text": "很好，增加 JSON 模式作为后备吧",
+      "text": "中文翻译第一行\\n中文翻译第二行",
       "x": 50,
       "y": 45,
       "width": 25,
