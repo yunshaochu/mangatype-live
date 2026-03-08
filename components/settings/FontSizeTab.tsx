@@ -2,6 +2,7 @@ import React from 'react';
 import { ALargeSmall, RotateCcw, Plus, X } from 'lucide-react';
 import { t } from '../../services/i18n';
 import { DEFAULT_FONT_SIZE_DIRECT_PROMPT, DEFAULT_FONT_SIZE_SCALE_PROMPT } from '../../services/geminiService';
+import { MAX_EXTRA_LAYOUT_VARIANT_COUNT, normalizeExtraLayoutVariantCount } from '../../types';
 import { TabProps } from './types';
 
 const DEFAULT_SCALE_ENTRIES = [
@@ -17,6 +18,7 @@ export const FontSizeTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
   const enabled = config.allowAiFontSize !== false;
   const mode = config.fontSizeMode || 'scale';
   const entries = config.fontScaleEntries || DEFAULT_SCALE_ENTRIES;
+  const extraLayoutVariantCount = normalizeExtraLayoutVariantCount(config.extraLayoutVariantCount);
 
   return (
     <div className="space-y-8 animate-fade-in-right">
@@ -182,6 +184,28 @@ export const FontSizeTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
             </div>
           )}
         </div>
+        <div className="p-5 bg-gray-800/30 rounded-xl border border-gray-800 space-y-4">
+          <div className="flex justify-between items-center">
+            <label className="text-sm font-medium text-gray-300 flex items-center gap-2">
+              <ALargeSmall size={16} className="text-rose-400" /> {t('extraLayoutVariantCount', lang)}
+            </label>
+            <span className="text-xs font-mono bg-gray-900 px-2 py-1 rounded-md text-gray-400 border border-gray-700">
+              +{extraLayoutVariantCount}
+            </span>
+          </div>
+          <input
+            type="range"
+            min="0" max={String(MAX_EXTRA_LAYOUT_VARIANT_COUNT)} step="1"
+            value={extraLayoutVariantCount}
+            onChange={(e) => setConfig({
+              ...config,
+              extraLayoutVariantCount: normalizeExtraLayoutVariantCount(parseInt(e.target.value, 10)),
+            })}
+            className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-rose-500 hover:accent-rose-400"
+          />
+          <p className="text-[10px] text-gray-500">{t('extraLayoutVariantCountHint', lang)}</p>
+        </div>
+
         {/* Fallback Font Size */}
         <div className="p-5 bg-gray-800/30 rounded-xl border border-gray-800 space-y-4">
           <div className="flex justify-between items-center">
