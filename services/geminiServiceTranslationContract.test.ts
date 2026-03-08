@@ -24,4 +24,18 @@ const emptyBubbles = extractAndValidateBubblesFromText('{"bubbles":[]}', 'test-e
 assert.equal(Array.isArray(emptyBubbles), true, 'empty bubbles payload should still be an array');
 assert.equal(emptyBubbles.length, 0, 'empty bubbles array should be accepted');
 
+const legacyBubbles = extractAndValidateBubblesFromText(
+  '{"bubbles":[{"text":"hello","x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
+  'test-legacy-bubbles-array',
+);
+assert.equal(legacyBubbles.length, 1, 'legacy core contract should still be accepted');
+assert.equal(legacyBubbles[0].text, 'hello', 'legacy core contract should preserve text');
+
+const contextualBubbles = extractAndValidateBubblesFromText(
+  '{"bubbles":[{"sourceText":"こんにちは","context":{"speaker":"旁白","situation":"说明","preText":"","postText":"","translationHint":"自然一点"},"text":"hello","x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
+  'test-contextual-bubbles-array',
+);
+assert.equal(contextualBubbles.length, 1, 'contextual contract should still be accepted');
+assert.equal(contextualBubbles[0].context.speaker, '旁白', 'contextual contract should preserve context payload');
+
 console.log('geminiServiceTranslationContract tests passed');

@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, FunctionDeclaration, Type, FunctionCallingConfigMode } from "@google/genai";
-import { AIConfig, DEFAULT_TRANSLATION_PROMPT_PRESET, DetectedBubble, MaskRegion } from "../types";
+import { AIConfig, BubbleTranslationContext, DEFAULT_TRANSLATION_PROMPT_PRESET, DetectedBubble, MaskRegion } from "../types";
 import { FAILURE_CODE_PARSE_BUBBLES_INVALID, isProtectableError } from "./apiProtection";
 import { getTranslationPromptPresetDefinition } from "./translationPromptPresets";
 
@@ -90,7 +90,20 @@ const baseGeminiToolSchema: FunctionDeclaration = {
         items: {
           type: Type.OBJECT,
           properties: {
-            text: { type: Type.STRING, description: 'The translated Chinese text.' },
+            sourceText: { type: Type.STRING, description: 'The original Japanese text only. Preserve original line breaks. Do not translate.' },
+            context: {
+              type: Type.OBJECT,
+              description: 'Translation context. Fill this before writing the final translated text.',
+              properties: {
+                speaker: { type: Type.STRING, description: "Who is speaking. Use a role name, or '旁白', '独白', '不明'." },
+                situation: { type: Type.STRING, description: 'Brief scene, tone, or situation for this line.' },
+                preText: { type: Type.STRING, description: 'The most relevant line before this one. Use an empty string if unavailable.' },
+                postText: { type: Type.STRING, description: 'The most relevant line after this one. Use an empty string if unavailable.' },
+                translationHint: { type: Type.STRING, description: 'Short hint for how to translate this line more accurately.' },
+              },
+              required: ['speaker', 'situation', 'preText', 'postText', 'translationHint'],
+            },
+            text: { type: Type.STRING, description: 'The final translated Chinese text. Fill this after sourceText and context are determined.' },
             x: { type: Type.NUMBER, description: 'Center X % (0-100).' },
             y: { type: Type.NUMBER, description: 'Center Y % (0-100).' },
             width: { type: Type.NUMBER, description: 'Width % (0-100).' },
@@ -111,7 +124,7 @@ const baseGeminiToolSchema: FunctionDeclaration = {
             },
             // Rotation will be injected here if enabled
           },
-          required: ['text', 'x', 'y', 'width', 'height', 'isVertical'],
+          required: ['sourceText', 'context', 'text', 'x', 'y', 'width', 'height', 'isVertical'],
         },
       },
     },
@@ -130,7 +143,20 @@ const baseOpenAIToolSchema = {
         items: {
           type: 'object',
           properties: {
-            text: { type: 'string', description: 'The translated Chinese text.' },
+            sourceText: { type: 'string', description: 'The original Japanese text only. Preserve original line breaks. Do not translate.' },
+            context: {
+              type: 'object',
+              description: 'Translation context. Fill this before writing the final translated text.',
+              properties: {
+                speaker: { type: 'string', description: "Who is speaking. Use a role name, or '旁白', '独白', '不明'." },
+                situation: { type: 'string', description: 'Brief scene, tone, or situation for this line.' },
+                preText: { type: 'string', description: 'The most relevant line before this one. Use an empty string if unavailable.' },
+                postText: { type: 'string', description: 'The most relevant line after this one. Use an empty string if unavailable.' },
+                translationHint: { type: 'string', description: 'Short hint for how to translate this line more accurately.' },
+              },
+              required: ['speaker', 'situation', 'preText', 'postText', 'translationHint'],
+            },
+            text: { type: 'string', description: 'The final translated Chinese text. Fill this after sourceText and context are determined.' },
             x: { type: 'number', description: 'Center X % (0-100).' },
             y: { type: 'number', description: 'Center Y % (0-100).' },
             width: { type: 'number', description: 'Width % (0-100).' },
@@ -151,12 +177,46 @@ const baseOpenAIToolSchema = {
             }
             // Rotation will be injected here if enabled
           },
-          required: ['text', 'x', 'y', 'width', 'height', 'isVertical'],
+          required: ['sourceText', 'context', 'text', 'x', 'y', 'width', 'height', 'isVertical'],
         },
       },
     },
     required: ['bubbles'],
   },
+};
+
+const LEGACY_TEXT_DESCRIPTION = 'The translated Chinese text.';
+const CONTEXTUAL_TEXT_DESCRIPTION = 'The final translated Chinese text. Fill this after sourceText and context are determined.';
+
+const applyTranslationContractToBubbleSchema = (bubbleSchema: any, contract: ReturnType<typeof getTranslationPromptPresetDefinition>['contract']) => {
+  bubbleSchema.required = [...contract.requiredBubbleFields];
+
+  if (!contract.supportsSourceText) {
+    delete bubbleSchema.properties.sourceText;
+  }
+
+  if (!contract.supportsContext) {
+    delete bubbleSchema.properties.context;
+  } else if (bubbleSchema.properties.context) {
+    bubbleSchema.properties.context.required = [...contract.contextFields];
+  }
+
+  if (bubbleSchema.properties.text) {
+    bubbleSchema.properties.text.description = contract.requiresContext
+      ? CONTEXTUAL_TEXT_DESCRIPTION
+      : LEGACY_TEXT_DESCRIPTION;
+  }
+};
+
+const createTranslationToolSchemas = (config: AIConfig) => {
+  const presetDefinition = getTranslationPromptPresetDefinition(config.translationPromptPreset);
+  const geminiToolSchema = JSON.parse(JSON.stringify(baseGeminiToolSchema));
+  const openAIToolSchema = JSON.parse(JSON.stringify(baseOpenAIToolSchema));
+
+  applyTranslationContractToBubbleSchema(geminiToolSchema.parameters.properties.bubbles.items, presetDefinition.contract);
+  applyTranslationContractToBubbleSchema(openAIToolSchema.parameters.properties.bubbles.items, presetDefinition.contract);
+
+  return { presetDefinition, geminiToolSchema, openAIToolSchema };
 };
 
 // --- Helpers ---
@@ -168,6 +228,44 @@ const getGeminiClient = (apiKey?: string) => {
 const cleanDetectedText = (text: string): string => {
   if (!text) return "";
   return text.replace(/\\n/g, '\n');
+};
+
+const normalizeOptionalText = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const cleaned = cleanDetectedText(value).trim();
+  return cleaned.length > 0 ? cleaned : undefined;
+};
+
+const normalizeBubbleContext = (bubble: any): BubbleTranslationContext | undefined => {
+  const rawContext = bubble?.context;
+  const contextObject = rawContext && typeof rawContext === 'object' && !Array.isArray(rawContext)
+    ? rawContext
+    : undefined;
+
+  const normalizedContext: BubbleTranslationContext = {
+    speaker: normalizeOptionalText(contextObject?.speaker ?? contextObject?.char ?? bubble?.speaker ?? bubble?.char),
+    situation: normalizeOptionalText(
+      contextObject?.situation
+      ?? contextObject?.scene
+      ?? (typeof rawContext === 'string' ? rawContext : undefined)
+    ),
+    preText: normalizeOptionalText(contextObject?.preText ?? contextObject?.pre_text ?? bubble?.preText ?? bubble?.pre_text),
+    postText: normalizeOptionalText(contextObject?.postText ?? contextObject?.post_text ?? bubble?.postText ?? bubble?.post_text),
+    translationHint: normalizeOptionalText(
+      contextObject?.translationHint
+      ?? contextObject?.hint
+      ?? contextObject?.note
+      ?? contextObject?.think
+      ?? bubble?.translationHint
+      ?? bubble?.think
+    ),
+  };
+
+  if (Object.values(normalizedContext).every(value => value == null || value.length === 0)) {
+    return undefined;
+  }
+
+  return normalizedContext;
 };
 
 const createParseBubblesError = (message: string, cause?: unknown): Error => {
@@ -303,7 +401,12 @@ export const extractAndValidateBubblesFromText = (text: string | undefined | nul
 };
 
 const mapDetectedBubbles = (bubbles: any[]): any[] => {
-  return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text || b.translation) }));
+  return bubbles.map((bubble: any) => ({
+    ...bubble,
+    sourceText: normalizeOptionalText(bubble.sourceText || bubble.source_text || bubble.ori_text),
+    context: normalizeBubbleContext(bubble),
+    text: cleanDetectedText(bubble.text || bubble.translation),
+  }));
 };
 
 export const parseOpenAIToolCallArguments = (toolCall: any): any => {
@@ -557,7 +660,8 @@ export const detectAndTypesetComic = async (
     maskRegions?: MaskRegion[]
 ): Promise<DetectedBubble[]> => {
   const data = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
-  let systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+  const { presetDefinition, geminiToolSchema, openAIToolSchema } = createTranslationToolSchemas(config);
+  let systemPrompt = config.systemPrompt || presetDefinition.defaultSystemPrompt;
 
   if (signal?.aborted) throw createAbortByUserError();
 
@@ -571,10 +675,6 @@ export const detectAndTypesetComic = async (
   if (config.allowAiRotation) {
       systemPrompt += `\n- DETECT ROTATION: Examine the visual orientation of the text. If the text line is tilted, estimate the 'rotation' angle in degrees (e.g., -15 for counter-clockwise, 10 for clockwise). Default is 0.`;
   }
-
-  // Clone schemas so we can modify them non-destructively
-  const geminiToolSchema = JSON.parse(JSON.stringify(baseGeminiToolSchema));
-  const openAIToolSchema = JSON.parse(JSON.stringify(baseOpenAIToolSchema));
 
   if (config.allowAiRotation) {
     geminiToolSchema.parameters.properties.bubbles.items.properties.rotation = { 
