@@ -5,6 +5,7 @@ import { FONTS } from '../types';
 import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, RotateCw, Maximize2, Palette, Minus, Plus, Pipette, Hash, Ban, Square, Circle, Box, BringToFront, SendToBack, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
+import { loadBubbleEditorOpenSections, saveBubbleEditorOpenSections } from '../services/bubbleEditorSectionsStorage';
 
 const PRESET_BG_COLORS = [
   '#ffffff', // White
@@ -58,7 +59,9 @@ const SectionHeader: React.FC<{
 export const BubbleEditor: React.FC = () => {
   const { currentImage, selectedBubbleId, updateBubble, deleteCurrentSelection, aiConfig, reorderBubble, setHistory, historyRef } = useProjectContext();
   const lang = aiConfig.language || 'zh';
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['layout']));
+  const [openSections, setOpenSections] = useState<Set<string>>(() => new Set(
+    loadBubbleEditorOpenSections(typeof window === 'undefined' ? undefined : window.localStorage),
+  ));
   const isContextPreset = aiConfig.translationPromptPreset !== 'legacy_loose_v0';
   const contextLabels = lang === 'zh'
     ? {
@@ -121,6 +124,10 @@ export const BubbleEditor: React.FC = () => {
       }
     };
   }, [selectedBubbleId, commitTextHistory]);
+
+  useEffect(() => {
+    saveBubbleEditorOpenSections(typeof window === 'undefined' ? undefined : window.localStorage, openSections);
+  }, [openSections]);
 
   const bubble = currentImage?.bubbles.find(b => b.id === selectedBubbleId);
   if (!bubble) return null;
