@@ -59,6 +59,26 @@ export const BubbleEditor: React.FC = () => {
   const { currentImage, selectedBubbleId, updateBubble, deleteCurrentSelection, aiConfig, reorderBubble, setHistory, historyRef } = useProjectContext();
   const lang = aiConfig.language || 'zh';
   const [openSections, setOpenSections] = useState<Set<string>>(new Set(['layout']));
+  const isContextPreset = aiConfig.translationPromptPreset !== 'legacy_loose_v0';
+  const contextLabels = lang === 'zh'
+    ? {
+        title: '上下文',
+        speaker: '说话者',
+        situation: '语境',
+        preText: '前文',
+        postText: '后文',
+        translationHint: '翻译提示',
+        empty: '未提供',
+      }
+    : {
+        title: 'Context',
+        speaker: 'Speaker',
+        situation: 'Situation',
+        preText: 'Previous Text',
+        postText: 'Next Text',
+        translationHint: 'Translation Hint',
+        empty: 'Not provided',
+      };
 
   const toggleSection = (id: string) => {
     setOpenSections(prev => {
@@ -104,6 +124,16 @@ export const BubbleEditor: React.FC = () => {
 
   const bubble = currentImage?.bubbles.find(b => b.id === selectedBubbleId);
   if (!bubble) return null;
+
+  const contextSummary = bubble.context?.speaker || bubble.context?.situation || bubble.sourceText || contextLabels.empty;
+  const contextItems = [
+    { label: t('sourceText', lang), value: bubble.sourceText },
+    { label: contextLabels.speaker, value: bubble.context?.speaker },
+    { label: contextLabels.situation, value: bubble.context?.situation },
+    { label: contextLabels.preText, value: bubble.context?.preText },
+    { label: contextLabels.postText, value: bubble.context?.postText },
+    { label: contextLabels.translationHint, value: bubble.context?.translationHint },
+  ];
 
   const isAutoDetectEnabled = bubble.autoDetectBackground ?? aiConfig.autoDetectBackground ?? false;
   const currentShape = bubble.maskShape || aiConfig.defaultMaskShape || 'ellipse';
@@ -162,6 +192,27 @@ export const BubbleEditor: React.FC = () => {
             placeholder={t('enterText', lang)}
           />
         </div>
+        {isContextPreset && (
+          <div className="border-t border-gray-800 pt-1">
+            <SectionHeader
+              icon={<Hash size={14}/>}
+              title={contextLabels.title}
+              isOpen={openSections.has('context')}
+              onToggle={() => toggleSection('context')}
+              summary={<span className="truncate max-w-[140px]">{contextSummary}</span>}
+            />
+            {openSections.has('context') && (
+              <div className="px-3 pb-3 space-y-2 animate-fade-in-down">
+                {contextItems.map(item => (
+                  <div key={item.label} className="rounded-lg border border-gray-800 bg-gray-900/40 px-3 py-2">
+                    <div className="text-[10px] uppercase tracking-wide text-gray-500">{item.label}</div>
+                    <div className="mt-1 whitespace-pre-wrap break-words text-xs text-gray-200">{item.value || contextLabels.empty}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         {/* ===== Section 1: Mask Geometry ===== */}
         <div className="border-t border-gray-800 pt-1">
           <SectionHeader

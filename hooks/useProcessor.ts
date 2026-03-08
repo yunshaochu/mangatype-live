@@ -370,6 +370,8 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 return {
                     id: crypto.randomUUID(),
                     x: d.x, y: d.y, width: d.width, height: d.height,
+                    sourceText: d.sourceText,
+                    context: d.context,
                     text: d.text, isVertical: d.isVertical,
                     fontFamily: (d.fontFamily as any) || effectiveConfig.defaultFontFamily || 'noto',
                     fontSize: (() => {
