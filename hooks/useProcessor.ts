@@ -3,6 +3,7 @@ import { ImageState, AIConfig, APIEndpoint, MaskRegion, Bubble, ContourRegion, m
 import { detectAndTypesetComic, fetchRawDetectedRegions } from '../services/geminiService';
 import { generateMaskedImage, generateAnnotatedImage, generateDetectionGuideImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
+import { initializeBubbleLayoutState } from '../services/layoutVariantBubbleState';
 import { isBubbleInsideMask, isMaskCleaned } from '../utils/editorUtils';
 import {
     EndpointFailureCode,
@@ -367,11 +368,12 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     );
                 }
 
-                return {
+                return initializeBubbleLayoutState({
                     id: crypto.randomUUID(),
                     x: d.x, y: d.y, width: d.width, height: d.height,
                     sourceText: d.sourceText,
                     context: d.context,
+                    layoutVariants: d.layoutVariants,
                     text: d.text, isVertical: d.isVertical,
                     fontFamily: (d.fontFamily as any) || effectiveConfig.defaultFontFamily || 'noto',
                     fontSize: (() => {
@@ -400,7 +402,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     maskCornerRadius: effectiveConfig.defaultMaskCornerRadius,
                     maskFeather: effectiveConfig.defaultMaskFeather,
                     autoDetectBackground: false // Explicitly set to prevent later auto-detection from overriding
-                } as Bubble;
+                } as Bubble);
             }));
 
             setImagesIfActive(

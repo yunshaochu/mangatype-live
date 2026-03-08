@@ -13,6 +13,7 @@ import { t } from './services/i18n';
 import { useCanvasInteraction } from './hooks/useCanvasInteraction';
 import { useProjectContext } from './contexts/ProjectContext';
 import { cropRegionFromImage } from './services/exportService';
+import { initializeBubbleLayoutState } from './services/layoutVariantBubbleState';
 
 const PRESET_FILL_COLORS = ['#ffffff', '#000000', '#f3f4f6', '#d1d5db', '#e5e7eb', '#9ca3af'];
 
@@ -606,7 +607,7 @@ const App: React.FC = () => {
 
       {showSettings && <SettingsModal config={aiConfig} onChange={(newConfig) => { const old = aiConfig.autoDetectBackground; setAiConfig(newConfig); if (newConfig.autoDetectBackground !== old) { if (newConfig.autoDetectBackground) handleGlobalColorDetection(concurrency); else handleGlobalColorReset(); } }} onClose={() => setShowSettings(false)} />}
       {showHelp && <HelpModal lang={lang} onClose={() => setShowHelp(false)} />}
-      {showManualJson && currentId && <ManualJsonModal config={aiConfig} maskRegions={currentImage?.maskRegions} onApply={(detected) => { const newBubbles: Bubble[] = detected.map(d => ({ id: crypto.randomUUID(), x: d.x, y: d.y, width: d.width, height: d.height, sourceText: d.sourceText || d.source_text || d.ori_text || '', context: d.context && typeof d.context === 'object' ? d.context : undefined, text: d.text, isVertical: d.isVertical, fontFamily: 'noto', fontSize: aiConfig.defaultFontSize, color: '#000000', strokeColor: '#ffffff', backgroundColor: '#ffffff', rotation: 0 })); updateImageBubbles(currentId, newBubbles); setShowManualJson(false); }} onClose={() => setShowManualJson(false)} />}
+      {showManualJson && currentId && <ManualJsonModal config={aiConfig} maskRegions={currentImage?.maskRegions} onApply={(detected) => { const newBubbles: Bubble[] = detected.map(d => initializeBubbleLayoutState({ id: crypto.randomUUID(), x: d.x, y: d.y, width: d.width, height: d.height, sourceText: d.sourceText || d.source_text || d.ori_text || '', context: d.context && typeof d.context === 'object' ? d.context : undefined, layoutVariants: d.layoutVariants, text: d.text, isVertical: d.isVertical, fontFamily: 'noto', fontSize: aiConfig.defaultFontSize, color: '#000000', strokeColor: '#ffffff', backgroundColor: '#ffffff', rotation: 0 })); updateImageBubbles(currentId, newBubbles); setShowManualJson(false); }} onClose={() => setShowManualJson(false)} />}
     </div>
   );
 };

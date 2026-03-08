@@ -8,6 +8,7 @@ import { getFillOverlayMode, isBubbleInsideMask, isMaskCleaned } from '../utils/
 import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage, initScreenshotContainer, destroyScreenshotContainer, computeContourRects, dilateMaskImage, applyContourPreFill, bakeContourFillsIntoImage } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 import { loadAiConfigFromStorage, saveAiConfigToStorage } from '../services/aiConfigStorage';
+import { buildMainTextChangeUpdates } from '../services/layoutVariantBubbleState';
 
 // --- Runtime Configuration Injection ---
 declare global {
@@ -855,11 +856,18 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!currentImg) return;
 
     let finalUpdates = { ...updates };
+    const existing = currentImg.bubbles.find(b => b.id === bubbleId);
+
+    if (existing && typeof finalUpdates.text === 'string') {
+      finalUpdates = {
+        ...finalUpdates,
+        ...buildMainTextChangeUpdates(existing, finalUpdates.text),
+      };
+    }
     
     // Default background color handling
     if (finalUpdates.autoDetectBackground === false && !finalUpdates.backgroundColor) {
         // If unsetting auto-detect and no color provided, only set to white if current is not transparent or color
-        const existing = currentImg.bubbles.find(b => b.id === bubbleId);
         if (existing && !existing.backgroundColor) finalUpdates.backgroundColor = '#ffffff';
     }
 
