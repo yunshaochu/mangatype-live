@@ -1,7 +1,8 @@
 
 import { GoogleGenAI, FunctionDeclaration, Type, FunctionCallingConfigMode } from "@google/genai";
-import { AIConfig, DetectedBubble, MaskRegion } from "../types";
+import { AIConfig, DEFAULT_TRANSLATION_PROMPT_PRESET, DetectedBubble, MaskRegion } from "../types";
 import { FAILURE_CODE_PARSE_BUBBLES_INVALID, isProtectableError } from "./apiProtection";
+import { getTranslationPromptPresetDefinition } from "./translationPromptPresets";
 
 export const DEFAULT_FONT_SELECTION_PROMPT = `### 字体选择指南：
 
@@ -73,47 +74,7 @@ export const DEFAULT_FONT_SIZE_DIRECT_PROMPT = `### 字号选择指南（直接�
 别把字号给太大了，不然会超出气泡的。
 `;
 
-export const DEFAULT_SYSTEM_PROMPT = `你是一位专业的漫画嵌字师和翻译师。
-你的任务是识别漫画中的对话气泡，翻译文本并提供布局坐标。
-
-### 工作步骤：
-1. **检测**：识别所有包含有意义对话的气泡。
-   - **忽略**音效（SFX），除非用户明确要求翻译。
-2. **翻译**：将文本翻译为**简体中文**。
-   - 风格：自然、口语化的漫画风格。
-   - **换行**：尽量在视觉上匹配原文的换行方式。**不要过度换行**，仅在语义需要或气泡形状必要时换行。
-3. **字体选择**：根据对话的情绪和语境选择最合适的字体。
-4. **遮罩定位**：计算覆盖原文的边界框（中心x、中心y、宽度、高度，单位为百分比）。
-   - **要求**：遮罩必须**紧密贴合**，完全覆盖文字像素但尽可能小。
-
-### 输出格式（仅JSON）：
-返回严格有效的JSON对象。
-
-示例：
-{
-  "bubbles": [
-    {
-      "text": "第一行\\n第二行",
-      "x": 50.5,
-      "y": 30.0,
-      "width": 10.0,
-      "height": 15.0,
-      "isVertical": true,
-      "fontFamily": "noto"
-    }
-  ]
-}
-
-### 重要约束：
-- **isVertical**：如果气泡是竖排文字（漫画通常如此），'isVertical' 设为 true。
-- **竖排排版**：即使 isVertical 为 true，也不要每2-3个字符就强制换行，应自然换行。
-- **坐标系**：0-100 范围，相对于图片尺寸。
-- **安全输出**：不要在JSON中输出字面的 "\\n" 字符串，使用实际的转义换行符。
-
-### 预检测文本区域：
-如果下方提供了坐标，表示这些是预先检测到的文本区域。
-请将它们作为**参考锚点**——你可以微调坐标以获得更好的贴合效果，如果预检测遗漏或误识别了区域，也可以增加或删除气泡。
-`;
+export const DEFAULT_SYSTEM_PROMPT = getTranslationPromptPresetDefinition(DEFAULT_TRANSLATION_PROMPT_PRESET).defaultSystemPrompt;
 
 // --- Tool Definitions Base ---
 

@@ -1,12 +1,13 @@
 import React from 'react';
 import { RotateCcw, MessageSquarePlus, Trash2, Plus } from 'lucide-react';
 import { t } from '../../services/i18n';
-import { DEFAULT_SYSTEM_PROMPT } from '../../services/geminiService';
+import { getTranslationPromptPresetDefinition } from '../../services/translationPromptPresets';
 import { CustomMessage } from '../../types';
 import { TabProps } from './types';
 
 export const PromptTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
-  const resetPrompt = () => setConfig(prev => ({ ...prev, systemPrompt: DEFAULT_SYSTEM_PROMPT }));
+  const presetDefinition = getTranslationPromptPresetDefinition(config.translationPromptPreset);
+  const resetPrompt = () => setConfig(prev => ({ ...prev, systemPrompt: presetDefinition.defaultSystemPrompt }));
 
   const handleUpdateCustomMessage = (index: number, field: keyof CustomMessage, value: string) => {
     setConfig(prev => {
@@ -33,7 +34,7 @@ export const PromptTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
             </button>
           </div>
           <textarea
-            value={config.systemPrompt || DEFAULT_SYSTEM_PROMPT}
+            value={config.systemPrompt || presetDefinition.defaultSystemPrompt}
             onChange={(e) => setConfig({ ...config, systemPrompt: e.target.value })}
             className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-4 text-xs text-gray-300 focus:border-purple-500 focus:ring-1 focus:ring-purple-500/50 outline-none font-mono leading-relaxed resize-y min-h-[200px]"
             spellCheck={false}
