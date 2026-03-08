@@ -1,5 +1,5 @@
 import React from 'react';
-import { RotateCcw, MessageSquarePlus, Trash2, Plus } from 'lucide-react';
+import { RotateCcw, MessageSquarePlus, Trash2, Plus, ChevronDown } from 'lucide-react';
 import { t } from '../../services/i18n';
 import {
   getTranslationPromptPresetDefinition,
@@ -14,6 +14,18 @@ export const PromptTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
   const restoreCurrentPresetDefault = () => setConfig(prev => ({ ...prev, systemPrompt: presetDefinition.defaultSystemPrompt }));
   const currentPromptValue = config.systemPrompt || presetDefinition.defaultSystemPrompt;
   const isUsingPresetDefault = currentPromptValue === presetDefinition.defaultSystemPrompt;
+  const presetDisplayName = lang === 'zh'
+    ? (presetDefinition.shortLabel || presetDefinition.label)
+    : presetDefinition.label;
+  const presetShortDescription = lang === 'zh'
+    ? (presetDefinition.shortDescription || presetDefinition.description)
+    : presetDefinition.description;
+  const presetDetailsLabel = lang === 'zh' ? '查看说明' : 'Details';
+  const applyPresetLabel = lang === 'zh' ? '应用预设' : 'Apply Preset';
+  const restorePresetLabel = lang === 'zh' ? '恢复当前预设默认值' : 'Restore Preset Default';
+  const selectionHint = lang === 'zh'
+    ? '选择预设后，点击“应用预设”才会覆盖下方提示词。'
+    : 'Selecting a preset does not change the textarea until you apply it.';
 
   const handleUpdateCustomMessage = (index: number, field: keyof CustomMessage, value: string) => {
     setConfig(prev => {
@@ -32,35 +44,49 @@ export const PromptTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
 
       <div className="space-y-6">
         <div className="space-y-3 rounded-xl border border-gray-800 bg-gray-900/40 p-4">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-1">
-              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Translation Preset</label>
-              <p className="text-xs text-gray-500">Changing the preset updates the contract and default prompt source, but it will not overwrite your current textarea until you explicitly apply it.</p>
-            </div>
+          <div className="flex items-center justify-between gap-3">
+            <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Translation Preset</label>
             <button
               onClick={applySelectedPreset}
               className="shrink-0 rounded-lg border border-purple-500/40 bg-purple-500/10 px-3 py-2 text-xs font-medium text-purple-200 transition-colors hover:border-purple-400 hover:bg-purple-500/20"
             >
-              应用预设
+              {applyPresetLabel}
             </button>
           </div>
 
-          <div className="flex flex-col gap-3 md:flex-row md:items-center">
+          <div className="flex flex-col gap-2 md:flex-row md:items-center">
             <select
               value={presetDefinition.id}
               onChange={(e) => setConfig({ ...config, translationPromptPreset: e.target.value as typeof presetDefinition.id })}
               className="min-w-[220px] rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-white outline-none transition-colors focus:border-purple-500"
             >
               {TRANSLATION_PROMPT_PRESET_OPTIONS.map(option => (
-                <option key={option.id} value={option.id}>{option.label}</option>
+                <option key={option.id} value={option.id}>{lang === 'zh' ? (option.shortLabel || option.label) : option.label}</option>
               ))}
             </select>
 
-            <div className="min-w-0 flex-1 rounded-lg border border-gray-800 bg-gray-950/50 px-3 py-2 text-xs text-gray-400">
-              <div className="font-medium text-gray-200">{presetDefinition.label}</div>
-              <div className="mt-1">{presetDefinition.description}</div>
+            <div className="min-w-0 flex-1 rounded-lg border border-gray-800 bg-gray-950/50 px-3 py-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium text-gray-100">{presetDisplayName}</div>
+                  <div className="mt-0.5 truncate text-xs text-gray-400">{presetShortDescription}</div>
+                </div>
+                <span className="shrink-0 rounded-full border border-gray-700 px-2 py-0.5 text-[10px] text-gray-400">
+                  {isUsingPresetDefault ? (lang === 'zh' ? '当前即默认' : 'Using Default') : (lang === 'zh' ? '已自定义' : 'Customized')}
+                </span>
+              </div>
             </div>
           </div>
+
+          <div className="text-[11px] text-gray-500">{selectionHint}</div>
+
+          <details className="group rounded-lg border border-gray-800 bg-gray-950/30 px-3 py-2 text-xs text-gray-400">
+            <summary className="flex cursor-pointer list-none items-center gap-2 text-gray-300">
+              <ChevronDown size={14} className="transition-transform group-open:rotate-180" />
+              <span>{presetDetailsLabel}</span>
+            </summary>
+            <div className="mt-2 leading-relaxed text-gray-400">{presetDefinition.details || presetDefinition.description}</div>
+          </details>
         </div>
 
         {/* System Prompt */}
@@ -73,7 +99,7 @@ export const PromptTab: React.FC<TabProps> = ({ config, setConfig, lang }) => {
               </p>
             </div>
             <button onClick={restoreCurrentPresetDefault} className="text-xs flex items-center gap-1 text-gray-500 hover:text-white transition-colors">
-              <RotateCcw size={12}/> 恢复当前预设默认值
+              <RotateCcw size={12}/> {restorePresetLabel}
             </button>
           </div>
           <textarea

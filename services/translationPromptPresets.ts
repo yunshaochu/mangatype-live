@@ -16,6 +16,9 @@ export type TranslationPromptPresetDefinition = {
   id: TranslationPromptPreset;
   label: string;
   description: string;
+  shortLabel?: string;
+  shortDescription?: string;
+  details?: string;
   defaultSystemPrompt: string;
   manualJsonPrompt: string;
   manualJsonSample: string;
@@ -105,8 +108,11 @@ const CONTEXTUAL_PROMPT = buildPresetPrompt(CONTEXTUAL_SAMPLE_JSON, [
 export const TRANSLATION_PROMPT_PRESET_DEFINITIONS = {
   contextual_v1: {
     id: 'contextual_v1',
-    label: 'Contextual v1',
+    label: 'With Context',
+    shortLabel: '有上下文',
     description: '保留 sourceText + context + text 的上下文翻译契约。',
+    shortDescription: '保留原文和上下文信息。',
+    details: '适合需要保留 sourceText、说话者、语境、前后文和翻译提示的场景。',
     defaultSystemPrompt: CONTEXTUAL_PROMPT,
     manualJsonPrompt: CONTEXTUAL_PROMPT,
     manualJsonSample: CONTEXTUAL_SAMPLE_JSON,
@@ -121,8 +127,11 @@ export const TRANSLATION_PROMPT_PRESET_DEFINITIONS = {
   },
   legacy_loose_v0: {
     id: 'legacy_loose_v0',
-    label: 'Legacy loose v0',
+    label: 'Without Context',
+    shortLabel: '无上下文',
     description: '保留旧版宽松输出契约，不把 context 当作必填。',
+    shortDescription: '只保留译文和定位字段。',
+    details: '适合不想让模型额外补上下文对象，只关注最终译文、尺寸和坐标的场景。',
     defaultSystemPrompt: LEGACY_PROMPT,
     manualJsonPrompt: LEGACY_PROMPT,
     manualJsonSample: LEGACY_SAMPLE_JSON,
@@ -137,9 +146,10 @@ export const TRANSLATION_PROMPT_PRESET_DEFINITIONS = {
   },
 } as const satisfies Record<TranslationPromptPreset, TranslationPromptPresetDefinition>;
 
-export const TRANSLATION_PROMPT_PRESET_OPTIONS = Object.values(TRANSLATION_PROMPT_PRESET_DEFINITIONS).map(({ id, label, description }) => ({
+export const TRANSLATION_PROMPT_PRESET_OPTIONS = Object.values(TRANSLATION_PROMPT_PRESET_DEFINITIONS).map(({ id, label, shortLabel, description }) => ({
   id,
   label,
+  shortLabel,
   description,
 }));
 
