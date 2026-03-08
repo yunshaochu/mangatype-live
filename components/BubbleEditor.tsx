@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { FONTS } from '../types';
 import { Trash2, Type, AlignVerticalJustifyCenter, AlignHorizontalJustifyCenter, RotateCw, Maximize2, Palette, Minus, Plus, Pipette, Hash, Ban, Square, Circle, Box, BringToFront, SendToBack, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
 import { t } from '../services/i18n';
+import { shouldShowBubbleContextSection } from '../services/bubbleEditorContext';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { loadBubbleEditorOpenSections, saveBubbleEditorOpenSections } from '../services/bubbleEditorSectionsStorage';
 
@@ -62,7 +63,7 @@ export const BubbleEditor: React.FC = () => {
   const [openSections, setOpenSections] = useState<Set<string>>(() => new Set(
     loadBubbleEditorOpenSections(typeof window === 'undefined' ? undefined : window.localStorage),
   ));
-  const isContextPreset = aiConfig.translationPromptPreset !== 'legacy_loose_v0';
+  const isContextPreset = shouldShowBubbleContextSection(aiConfig.translationPromptPreset);
   const contextLabels = lang === 'zh'
     ? {
         title: '上下文',
