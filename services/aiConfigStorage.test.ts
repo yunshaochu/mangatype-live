@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import type { AIConfig } from '../types';
+import { DEFAULT_TRANSLATION_PROMPT_PRESET } from '../types';
 import {
   AI_CONFIG_STORAGE_KEY,
   exportAiConfigJson,
@@ -39,6 +40,7 @@ const defaultConfig = {
   model: '',
   endpoints: [],
   systemPrompt: 'prompt',
+  translationPromptPreset: DEFAULT_TRANSLATION_PROMPT_PRESET,
   defaultFontSize: 1,
   language: 'en',
   defaultMaskShape: 'rectangle',
@@ -82,10 +84,12 @@ assert.ok(storedJson, 'saveAiConfigToStorage should persist config');
 const storedPayload = JSON.parse(storedJson!);
 assert.equal('modelCache' in storedPayload, false, 'browser model cache should not be persisted into AIConfig storage');
 assert.equal('endpointTestSettings' in storedPayload, false, 'test settings should not be persisted into AIConfig storage');
+assert.equal(storedPayload.translationPromptPreset, DEFAULT_TRANSLATION_PROMPT_PRESET, 'translation prompt preset should be persisted');
 
 const exportedPayload = JSON.parse(exportAiConfigJson(configWithTransientState));
 assert.equal('modelCache' in exportedPayload, false, 'exported JSON should exclude model cache');
 assert.equal('endpointTestSettings' in exportedPayload, false, 'exported JSON should exclude transient test settings');
+assert.equal(exportedPayload.translationPromptPreset, DEFAULT_TRANSLATION_PROMPT_PRESET, 'exported JSON should include translation prompt preset');
 
 assert.equal(isImportableAiConfig({ provider: 'openai' }), true, 'legacy flat config should remain importable');
 assert.equal(isImportableAiConfig({ language: 'zh' }), true, 'language-only snapshot should remain importable');
@@ -119,5 +123,21 @@ assert.equal(loaded.endpoints[0].modelSupportsFunctionCalling, false, 'migrated 
 assert.equal(loaded.endpoints[0].modelSupportsJsonMode, false, 'migrated endpoint should preserve JSON capability override');
 assert.equal(loaded.textDetectionApiUrl, 'https://runtime.example/text', 'runtime text detection URL should override legacy localhost default');
 assert.equal(loaded.inpaintingUrl, 'https://runtime.example/inpaint', 'runtime inpainting URL should override legacy localhost default');
+assert.equal(loaded.translationPromptPreset, DEFAULT_TRANSLATION_PROMPT_PRESET, 'missing preset should fall back to contextual default');
+
+storage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify({
+  translationPromptPreset: 'broken-preset',
+  systemPrompt: 'custom prompt',
+  customMessages: [{ role: 'assistant', content: 'keep me' }],
+}));
+
+const loadedWithDirtyPreset = loadAiConfigFromStorage(storage, {
+  defaultConfig,
+  runtimeConfig: {},
+});
+
+assert.equal(loadedWithDirtyPreset.translationPromptPreset, DEFAULT_TRANSLATION_PROMPT_PRESET, 'invalid preset should fall back to contextual default');
+assert.equal(loadedWithDirtyPreset.systemPrompt, 'custom prompt', 'systemPrompt should still round-trip when preset falls back');
+assert.deepEqual(loadedWithDirtyPreset.customMessages, [{ role: 'assistant', content: 'keep me' }], 'customMessages should still round-trip when preset falls back');
 
 console.log('aiConfigStorage tests passed');

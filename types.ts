@@ -11,6 +11,19 @@ export type FontFamily =
   | 'longcang'  // 龙藏体 - 手写日记
   | 'liujian';  // 流浪毛草 - 草书艺术
 
+export type TranslationPromptPreset = 'contextual_v1' | 'legacy_loose_v0';
+
+export const DEFAULT_TRANSLATION_PROMPT_PRESET: TranslationPromptPreset = 'contextual_v1';
+
+export const isTranslationPromptPreset = (value: unknown): value is TranslationPromptPreset => (
+  value === 'contextual_v1' || value === 'legacy_loose_v0'
+);
+
+export const normalizeTranslationPromptPreset = (
+  value: unknown,
+  fallback: TranslationPromptPreset = DEFAULT_TRANSLATION_PROMPT_PRESET,
+): TranslationPromptPreset => (isTranslationPromptPreset(value) ? value : fallback);
+
 export interface Bubble {
   id: string;
   x: number; // Center X percentage 0-100
@@ -311,6 +324,7 @@ export interface AIConfig {
   model: string;
   endpoints: APIEndpoint[];
   systemPrompt?: string;
+  translationPromptPreset?: TranslationPromptPreset;
   defaultFontSize: number;
   
   // Detection & Masks Tab

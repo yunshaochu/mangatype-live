@@ -1,4 +1,10 @@
-import { AIConfig, APIEndpoint, normalizeEndpointProtectionState } from '../types';
+import {
+  AIConfig,
+  APIEndpoint,
+  DEFAULT_TRANSLATION_PROMPT_PRESET,
+  normalizeEndpointProtectionState,
+  normalizeTranslationPromptPreset,
+} from '../types';
 
 export const AI_CONFIG_STORAGE_KEY = 'mangatype_live_settings_v1';
 
@@ -20,6 +26,7 @@ const AI_CONFIG_STORAGE_FIELDS = [
   'model',
   'endpoints',
   'systemPrompt',
+  'translationPromptPreset',
   'defaultFontSize',
   'enableMaskedImageMode',
   'useMasksAsHints',
@@ -120,6 +127,11 @@ export const loadAiConfigFromStorage = (
   const parsed = JSON.parse(saved) as Partial<AIConfig>;
   const sanitized = pickStoredAiConfig(parsed);
   const merged: AIConfig = { ...defaultConfig, ...sanitized };
+
+  merged.translationPromptPreset = normalizeTranslationPromptPreset(
+    sanitized.translationPromptPreset,
+    defaultConfig.translationPromptPreset ?? DEFAULT_TRANSLATION_PROMPT_PRESET,
+  );
 
   merged.exportSkippedAsOriginal = true;
 

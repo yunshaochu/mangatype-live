@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion, normalizeEndpointProtectionState } from '../types';
+import { DEFAULT_TRANSLATION_PROMPT_PRESET } from '../types';
 import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
@@ -140,6 +141,7 @@ const DEFAULT_CONFIG: AIConfig = {
     model: '',
   })],
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  translationPromptPreset: DEFAULT_TRANSLATION_PROMPT_PRESET,
   defaultFontSize: 1.0,
   useTextDetectionApi: false,
   textDetectionApiUrl: runtimeConfig.TEXT_DETECTION_API_URL || 'http://localhost:5000',
