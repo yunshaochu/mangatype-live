@@ -1,8 +1,14 @@
 
-import { GoogleGenAI, FunctionDeclaration, Type, FunctionCallingConfigMode } from "@google/genai";
-import { AIConfig, BubbleTranslationContext, DEFAULT_TRANSLATION_PROMPT_PRESET, DetectedBubble, MaskRegion } from "../types";
-import { FAILURE_CODE_PARSE_BUBBLES_INVALID, isProtectableError } from "./apiProtection";
-import { getTranslationPromptPresetDefinition } from "./translationPromptPresets";
+import type { FunctionDeclaration } from "@google/genai";
+import { GoogleGenAI, Type, FunctionCallingConfigMode } from "@google/genai";
+import type { AIConfig, BubbleTranslationContext, DetectedBubble, MaskRegion } from "../types.ts";
+import {
+  DEFAULT_TRANSLATION_PROMPT_PRESET,
+  normalizeDetectedBubbleLayoutState,
+  normalizeExtraLayoutVariantCount,
+} from "../types.ts";
+import { FAILURE_CODE_PARSE_BUBBLES_INVALID, isProtectableError } from "./apiProtection.ts";
+import { getTranslationPromptPresetDefinition } from "./translationPromptPresets.ts";
 
 export const DEFAULT_FONT_SELECTION_PROMPT = `### 字体选择指南：
 
@@ -78,6 +84,70 @@ export const DEFAULT_SYSTEM_PROMPT = getTranslationPromptPresetDefinition(DEFAUL
 
 // --- Tool Definitions Base ---
 
+const createGeminiLayoutVariantSchema = () => ({
+  type: Type.ARRAY,
+  description: 'Optional extra layout candidates for groups 1..N only. Do not repeat the main group-0 text here.',
+  items: {
+    type: Type.OBJECT,
+    properties: {
+      breakAfter: {
+        type: Type.ARRAY,
+        description: 'Optional 1-based break positions. Each number means insert a line break after that visible character in the normalized base text.',
+        items: { type: Type.NUMBER },
+      },
+      fontSize: {
+        type: Type.NUMBER,
+        description: 'Optional fontSize override for this extra candidate in rem.',
+      },
+    },
+  },
+});
+
+const createOpenAiLayoutVariantSchema = () => ({
+  type: 'array',
+  description: 'Optional extra layout candidates for groups 1..N only. Do not repeat the main group-0 text here.',
+  items: {
+    type: 'object',
+    properties: {
+      breakAfter: {
+        type: 'array',
+        description: 'Optional 1-based break positions. Each number means insert a line break after that visible character in the normalized base text.',
+        items: { type: 'number' },
+      },
+      fontSize: {
+        type: 'number',
+        description: 'Optional fontSize override for this extra candidate in rem.',
+      },
+    },
+  },
+});
+
+const buildLayoutVariantArrayDescription = (extraLayoutVariantCount: number): string => {
+  if (extraLayoutVariantCount <= 0) {
+    return 'Optional extra layout candidates for groups 1..N only. extraLayoutVariantCount is 0, so omit this field or return an empty array.';
+  }
+  return `Optional extra layout candidates for groups 1..N only. Return at most ${extraLayoutVariantCount} candidates here, each using breakAfter and/or fontSize only.`;
+};
+
+const buildLayoutVariantPromptInstruction = (extraLayoutVariantCount: number): string => {
+  if (extraLayoutVariantCount <= 0) {
+    return [
+      '[Layout Variants V1]',
+      '- 顶层 text 永远是第 0 组主结果，也就是自然断句的中文译文。',
+      '- 当前 extraLayoutVariantCount = 0，请不要输出额外候选；省略 layoutVariants 或返回空数组。',
+      '- V1 不要输出 baseText。',
+    ].join('\n');
+  }
+
+  return [
+    '[Layout Variants V1]',
+    '- 顶层 text 永远是第 0 组主结果，也就是自然断句的中文译文。',
+    `- 当前 extraLayoutVariantCount = ${extraLayoutVariantCount}，请在 layoutVariants 中输出最多 ${extraLayoutVariantCount} 组额外候选。`,
+    '- layoutVariants 只承载第 1~N 组额外排版候选，不要把第 0 组重复放进去。',
+    '- 每个额外候选只输出 breakAfter（1-based）和可选 fontSize；不要输出 baseText。',
+  ].join('\n');
+};
+
 const baseGeminiToolSchema: FunctionDeclaration = {
   name: 'create_bubbles_for_comic',
   description: 'Detects speech bubbles in a manga page, translates the text to Chinese, and creates layout boxes for typesetting.',
@@ -104,6 +174,7 @@ const baseGeminiToolSchema: FunctionDeclaration = {
               required: ['speaker', 'situation', 'preText', 'postText', 'translationHint'],
             },
             text: { type: Type.STRING, description: 'The final translated Chinese text. Fill this after sourceText and context are determined.' },
+            layoutVariants: createGeminiLayoutVariantSchema(),
             x: { type: Type.NUMBER, description: 'Center X % (0-100).' },
             y: { type: Type.NUMBER, description: 'Center Y % (0-100).' },
             width: { type: Type.NUMBER, description: 'Width % (0-100).' },
@@ -157,6 +228,7 @@ const baseOpenAIToolSchema = {
               required: ['speaker', 'situation', 'preText', 'postText', 'translationHint'],
             },
             text: { type: 'string', description: 'The final translated Chinese text. Fill this after sourceText and context are determined.' },
+            layoutVariants: createOpenAiLayoutVariantSchema(),
             x: { type: 'number', description: 'Center X % (0-100).' },
             y: { type: 'number', description: 'Center Y % (0-100).' },
             width: { type: 'number', description: 'Width % (0-100).' },
@@ -185,8 +257,8 @@ const baseOpenAIToolSchema = {
   },
 };
 
-const LEGACY_TEXT_DESCRIPTION = 'The translated Chinese text.';
-const CONTEXTUAL_TEXT_DESCRIPTION = 'The final translated Chinese text. Fill this after sourceText and context are determined.';
+const LEGACY_TEXT_DESCRIPTION = 'The translated Chinese text for group 0, which must stay the main natural-line-break result.';
+const CONTEXTUAL_TEXT_DESCRIPTION = 'The final translated Chinese text for group 0. Fill this after sourceText and context are determined, and keep it as the main natural-line-break result.';
 
 const applyTranslationContractToBubbleSchema = (bubbleSchema: any, contract: ReturnType<typeof getTranslationPromptPresetDefinition>['contract']) => {
   bubbleSchema.required = [...contract.requiredBubbleFields];
@@ -210,13 +282,17 @@ const applyTranslationContractToBubbleSchema = (bubbleSchema: any, contract: Ret
 
 const createTranslationToolSchemas = (config: AIConfig) => {
   const presetDefinition = getTranslationPromptPresetDefinition(config.translationPromptPreset);
+  const extraLayoutVariantCount = normalizeExtraLayoutVariantCount(config.extraLayoutVariantCount);
   const geminiToolSchema = JSON.parse(JSON.stringify(baseGeminiToolSchema));
   const openAIToolSchema = JSON.parse(JSON.stringify(baseOpenAIToolSchema));
 
   applyTranslationContractToBubbleSchema(geminiToolSchema.parameters.properties.bubbles.items, presetDefinition.contract);
   applyTranslationContractToBubbleSchema(openAIToolSchema.parameters.properties.bubbles.items, presetDefinition.contract);
 
-  return { presetDefinition, geminiToolSchema, openAIToolSchema };
+  geminiToolSchema.parameters.properties.bubbles.items.properties.layoutVariants.description = buildLayoutVariantArrayDescription(extraLayoutVariantCount);
+  openAIToolSchema.parameters.properties.bubbles.items.properties.layoutVariants.description = buildLayoutVariantArrayDescription(extraLayoutVariantCount);
+
+  return { presetDefinition, geminiToolSchema, openAIToolSchema, extraLayoutVariantCount };
 };
 
 // --- Helpers ---
@@ -394,19 +470,37 @@ const ensureNonEmptyResponseText = (text: string | undefined | null, source: str
   return text;
 };
 
-export const extractAndValidateBubblesFromText = (text: string | undefined | null, source: string): any[] => {
+export const extractAndValidateBubblesFromText = (
+  text: string | undefined | null,
+  source: string,
+  options?: { extraLayoutVariantCount?: number },
+): any[] => {
   const nonEmptyText = ensureNonEmptyResponseText(text, source);
   const payload = extractJsonFromText(nonEmptyText);
-  return validateBubblesArray(payload);
+  return mapDetectedBubbles(validateBubblesArray(payload), options?.extraLayoutVariantCount);
 };
 
-const mapDetectedBubbles = (bubbles: any[]): any[] => {
-  return bubbles.map((bubble: any) => ({
-    ...bubble,
-    sourceText: normalizeOptionalText(bubble.sourceText || bubble.source_text || bubble.ori_text),
-    context: normalizeBubbleContext(bubble),
-    text: cleanDetectedText(bubble.text || bubble.translation),
-  }));
+const mapDetectedBubbles = (bubbles: any[], extraLayoutVariantCount?: number): DetectedBubble[] => {
+  const normalizedExtraLayoutVariantCount = normalizeExtraLayoutVariantCount(extraLayoutVariantCount);
+
+  return bubbles.map((bubble: any) => {
+    const normalizedBubble = normalizeDetectedBubbleLayoutState({
+      ...bubble,
+      sourceText: normalizeOptionalText(bubble.sourceText || bubble.source_text || bubble.ori_text),
+      context: normalizeBubbleContext(bubble),
+      text: cleanDetectedText(bubble.text || bubble.translation),
+      layoutVariants: bubble.layoutVariants || bubble.layout_variants || bubble.variants,
+      activeLayoutIndex: bubble.activeLayoutIndex ?? bubble.active_layout_index,
+    } as DetectedBubble);
+
+    return {
+      ...normalizedBubble,
+      activeLayoutIndex: 0,
+      layoutVariants: normalizedExtraLayoutVariantCount > 0
+        ? normalizedBubble.layoutVariants?.slice(0, normalizedExtraLayoutVariantCount)
+        : undefined,
+    };
+  });
 };
 
 export const parseOpenAIToolCallArguments = (toolCall: any): any => {
@@ -660,8 +754,9 @@ export const detectAndTypesetComic = async (
     maskRegions?: MaskRegion[]
 ): Promise<DetectedBubble[]> => {
   const data = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
-  const { presetDefinition, geminiToolSchema, openAIToolSchema } = createTranslationToolSchemas(config);
+  const { presetDefinition, geminiToolSchema, openAIToolSchema, extraLayoutVariantCount } = createTranslationToolSchemas(config);
   let systemPrompt = config.systemPrompt || presetDefinition.defaultSystemPrompt;
+  systemPrompt += `\n\n${buildLayoutVariantPromptInstruction(extraLayoutVariantCount)}`;
 
   if (signal?.aborted) throw createAbortByUserError();
 
@@ -815,8 +910,7 @@ export const detectAndTypesetComic = async (
         ],
         config: { responseMimeType: "application/json" }
       });
-      const bubbles = extractAndValidateBubblesFromText(fallbackResponse.text, "Gemini JSON mode response");
-      return mapDetectedBubbles(bubbles);
+      return extractAndValidateBubblesFromText(fallbackResponse.text, "Gemini JSON mode response", { extraLayoutVariantCount });
     } catch (e: any) {
       if (isAbortByUserError(e)) throw e;
       if (isProtectableError(e).shouldProtect) {
@@ -842,8 +936,7 @@ export const detectAndTypesetComic = async (
             }
         ]
       });
-      const bubbles = extractAndValidateBubblesFromText(rawResponse.text, "Gemini raw response");
-      return mapDetectedBubbles(bubbles);
+      return extractAndValidateBubblesFromText(rawResponse.text, "Gemini raw response", { extraLayoutVariantCount });
     } catch (e: any) {
       if (isAbortByUserError(e)) throw e;
       console.error("Tier 3 (Raw Text) failed too:", e.message);
@@ -911,12 +1004,10 @@ export const detectAndTypesetComic = async (
       
       if (toolCalls && toolCalls.length > 0) {
         const args = parseOpenAIToolCallArguments(toolCalls[0]);
-        const bubbles = validateBubblesArray(args);
-        return mapDetectedBubbles(bubbles);
+        return mapDetectedBubbles(validateBubblesArray(args), extraLayoutVariantCount);
       } else {
         const content = resData.choices?.[0]?.message?.content;
-        const bubbles = extractAndValidateBubblesFromText(content, "OpenAI content response");
-        return mapDetectedBubbles(bubbles);
+        return extractAndValidateBubblesFromText(content, "OpenAI content response", { extraLayoutVariantCount });
       }
     } catch (e: any) {
       if (isAbortByUserError(e)) throw createAbortByUserError();

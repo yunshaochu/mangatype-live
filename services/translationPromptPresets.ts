@@ -1,8 +1,8 @@
+import type { TranslationPromptPreset } from '../types.ts';
 import {
   DEFAULT_TRANSLATION_PROMPT_PRESET,
   normalizeTranslationPromptPreset,
-  TranslationPromptPreset,
-} from '../types';
+} from '../types.ts';
 
 type TranslationPromptContractDefinition = {
   supportsSourceText: boolean;
@@ -51,6 +51,9 @@ const SHARED_CONSTRAINT_LINES = [
   `- **竖排排版**：即使 isVertical 为 true，也不要每2-3个字符就强制换行，应自然换行。`,
   `- **坐标系**：0-100 范围，相对于图片尺寸。`,
   `- **安全输出**：不要在JSON中输出字面的 "\\n" 字符串，使用实际的转义换行符。`,
+  `- **text**：始终表示第 0 组主结果，也就是自然断句的中文译文。`,
+  `- **layoutVariants**：仅用于第 1~N 组额外排版候选，不要把第 0 组重复放进去；运行时会告知 extraLayoutVariantCount，为 0 时请省略或返回空数组。`,
+  `- **V1 边界**：不要输出 baseText；额外候选只输出 breakAfter 和可选 fontSize。`,
 ] as const;
 
 const buildPresetPrompt = (exampleJson: string, extraConstraintLines: readonly string[] = []): string => `
@@ -68,6 +71,9 @@ const LEGACY_SAMPLE_JSON = `{
   "bubbles": [
     {
       "text": "中文翻译第一行\\n中文翻译第二行",
+      "layoutVariants": [
+        { "breakAfter": [4], "fontSize": 1.1 }
+      ],
       "x": 50,
       "y": 45,
       "width": 25,
@@ -89,6 +95,10 @@ const CONTEXTUAL_SAMPLE_JSON = `{
         "translationHint": "翻译时需要注意的点，简短填写"
       },
       "text": "中文翻译第一行\\n中文翻译第二行",
+      "layoutVariants": [
+        { "breakAfter": [4], "fontSize": 1.2 },
+        { "breakAfter": [2, 6], "fontSize": 1.1 }
+      ],
       "x": 50,
       "y": 45,
       "width": 25,
@@ -116,7 +126,7 @@ export const TRANSLATION_PROMPT_PRESET_DEFINITIONS = {
     defaultSystemPrompt: CONTEXTUAL_PROMPT,
     manualJsonPrompt: CONTEXTUAL_PROMPT,
     manualJsonSample: CONTEXTUAL_SAMPLE_JSON,
-    manualJsonPlaceholder: '{ "bubbles": [ { "sourceText": "...", "context": { ... }, "text": "...", "x": 50, ... } ] }',
+    manualJsonPlaceholder: '{ "bubbles": [ { "sourceText": "...", "context": { ... }, "text": "...", "layoutVariants": [ { "breakAfter": [4], "fontSize": 1.1 } ], "x": 50, ... } ] }',
     contract: {
       supportsSourceText: true,
       supportsContext: true,
@@ -135,7 +145,7 @@ export const TRANSLATION_PROMPT_PRESET_DEFINITIONS = {
     defaultSystemPrompt: LEGACY_PROMPT,
     manualJsonPrompt: LEGACY_PROMPT,
     manualJsonSample: LEGACY_SAMPLE_JSON,
-    manualJsonPlaceholder: '{ "bubbles": [ { "text": "...", "x": 50, ... } ] }',
+    manualJsonPlaceholder: '{ "bubbles": [ { "text": "...", "layoutVariants": [ { "breakAfter": [4], "fontSize": 1.1 } ], "x": 50, ... } ] }',
     contract: {
       supportsSourceText: false,
       supportsContext: false,

@@ -1,4 +1,4 @@
-import { APIEndpoint } from '../types';
+import type { APIEndpoint } from '../types.ts';
 
 // Default configuration
 export const DEFAULT_API_PROTECTION_CONFIG = {

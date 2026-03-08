@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { extractAndValidateBubblesFromText } from './geminiService';
-import { FAILURE_CODE_PARSE_BUBBLES_INVALID } from './apiProtection';
+import { extractAndValidateBubblesFromText } from './geminiService.ts';
+import { FAILURE_CODE_PARSE_BUBBLES_INVALID } from './apiProtection.ts';
 
 assert.throws(
   () => extractAndValidateBubblesFromText('', 'test-empty-response'),
@@ -37,5 +37,32 @@ const contextualBubbles = extractAndValidateBubblesFromText(
 );
 assert.equal(contextualBubbles.length, 1, 'contextual contract should still be accepted');
 assert.equal(contextualBubbles[0].context.speaker, '旁白', 'contextual contract should preserve context payload');
+
+const variantBubbles = extractAndValidateBubblesFromText(
+  '{"bubbles":[{"text":"主结果","layoutVariants":[{"breakAfter":[4],"fontSize":1.2},{"breakAfter":[2,5],"fontSize":1.1}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
+  'test-layout-variants-array',
+  { extraLayoutVariantCount: 1 },
+);
+assert.equal(variantBubbles[0].text, '主结果', 'group-0 text should remain on the top-level text field');
+assert.equal(variantBubbles[0].layoutVariants?.length, 1, 'layout variants should respect extraLayoutVariantCount');
+assert.deepEqual(variantBubbles[0].layoutVariants?.[0].breakAfter, [4], 'layout variants should preserve valid breakAfter values');
+
+const zeroVariantBubbles = extractAndValidateBubblesFromText(
+  '{"bubbles":[{"text":"主结果","layoutVariants":[{"breakAfter":[4],"fontSize":1.2}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
+  'test-layout-variants-disabled',
+  { extraLayoutVariantCount: 0 },
+);
+assert.equal(zeroVariantBubbles[0].layoutVariants, undefined, 'zero extra layout variant count should fall back to legacy output');
+
+const normalizedVariantBubbles = extractAndValidateBubblesFromText(
+  '{"bubbles":[{"text":"主结果","layoutVariants":[{"breakAfter":[1,"x",3],"fontSize":1.2},{"foo":1}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
+  'test-layout-variants-normalized',
+  { extraLayoutVariantCount: 2 },
+);
+assert.deepEqual(
+  normalizedVariantBubbles[0].layoutVariants,
+  [{ breakAfter: [1, 3], fontSize: 1.2 }],
+  'invalid layout variant entries should be normalized away',
+);
 
 console.log('geminiServiceTranslationContract tests passed');
