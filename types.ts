@@ -32,6 +32,15 @@ export interface BubbleTranslationContext {
   translationHint?: string;
 }
 
+export interface BubbleLayoutVariant {
+  text?: string;
+  fontSize?: number;
+  breakAfter?: number[];
+}
+
+export const DEFAULT_EXTRA_LAYOUT_VARIANT_COUNT = 0;
+export const MAX_EXTRA_LAYOUT_VARIANT_COUNT = 3;
+
 export interface Bubble {
   id: string;
   x: number; // Center X percentage 0-100
@@ -41,6 +50,9 @@ export interface Bubble {
   sourceText?: string;
   context?: BubbleTranslationContext;
   text: string;
+  baseText?: string;
+  layoutVariants?: BubbleLayoutVariant[];
+  activeLayoutIndex?: number;
   isVertical: boolean;
   fontFamily: FontFamily;
   fontSize: number; // rem
@@ -94,6 +106,9 @@ export interface DetectedBubble {
   sourceText?: string;
   context?: BubbleTranslationContext;
   text: string;
+  baseText?: string;
+  layoutVariants?: BubbleLayoutVariant[];
+  activeLayoutIndex?: number;
   x: number;
   y: number;
   width: number;
@@ -156,8 +171,122 @@ export interface ImageState {
   skipped?: boolean; // If true, skip AI processing but include in export
 }
 
+const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
+
+const normalizeLayoutVariant = (value: unknown): BubbleLayoutVariant | null => {
+  if (!value || typeof value !== 'object') return null;
+
+  const candidate = value as Record<string, unknown>;
+  const normalized: BubbleLayoutVariant = {};
+
+  if (typeof candidate.text === 'string') {
+    normalized.text = candidate.text;
+  }
+
+  if (isFiniteNumber(candidate.fontSize)) {
+    normalized.fontSize = candidate.fontSize;
+  }
+
+  if (Array.isArray(candidate.breakAfter)) {
+    const normalizedBreakAfter = candidate.breakAfter
+      .filter(isFiniteNumber)
+      .map((point) => Math.trunc(point));
+    if (normalizedBreakAfter.length > 0) {
+      normalized.breakAfter = normalizedBreakAfter;
+    }
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null;
+};
+
+const normalizeLayoutVariants = (value: unknown): BubbleLayoutVariant[] | undefined => {
+  if (!Array.isArray(value)) return undefined;
+  const normalized = value
+    .map(normalizeLayoutVariant)
+    .filter((variant): variant is BubbleLayoutVariant => variant !== null);
+  return normalized.length > 0 ? normalized : undefined;
+};
+
+const areNumberArraysEqual = (left?: number[], right?: number[]): boolean => {
+  if (left === right) return true;
+  if (!left || !right) return !left && !right;
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+};
+
+const areLayoutVariantsEqual = (left?: BubbleLayoutVariant[], right?: BubbleLayoutVariant[]): boolean => {
+  if (left === right) return true;
+  if (!left || !right) return !left && !right;
+  if (left.length !== right.length) return false;
+  return left.every((variant, index) => {
+    const other = right[index];
+    return !!other
+      && variant.text === other.text
+      && variant.fontSize === other.fontSize
+      && areNumberArraysEqual(variant.breakAfter, other.breakAfter);
+  });
+};
+
+const normalizeLayoutIndex = (value: unknown): number => (
+  typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : 0
+);
+
+const normalizeBaseText = (value: unknown): string | undefined => (
+  typeof value === 'string' ? value : undefined
+);
+
+export const normalizeBubbleLayoutState = (bubble: Bubble): Bubble => {
+  const normalizedBaseText = normalizeBaseText(bubble.baseText);
+  const normalizedLayoutVariants = normalizeLayoutVariants(bubble.layoutVariants);
+  const normalizedActiveLayoutIndex = normalizeLayoutIndex(bubble.activeLayoutIndex);
+
+  if (
+    normalizedBaseText === bubble.baseText
+    && areLayoutVariantsEqual(normalizedLayoutVariants, bubble.layoutVariants)
+    && normalizedActiveLayoutIndex === bubble.activeLayoutIndex
+  ) {
+    return bubble;
+  }
+
+  return {
+    ...bubble,
+    baseText: normalizedBaseText,
+    layoutVariants: normalizedLayoutVariants,
+    activeLayoutIndex: normalizedActiveLayoutIndex,
+  };
+};
+
+export const normalizeDetectedBubbleLayoutState = (bubble: DetectedBubble): DetectedBubble => {
+  const normalizedBaseText = normalizeBaseText(bubble.baseText);
+  const normalizedLayoutVariants = normalizeLayoutVariants(bubble.layoutVariants);
+  const normalizedActiveLayoutIndex = normalizeLayoutIndex(bubble.activeLayoutIndex);
+
+  if (
+    normalizedBaseText === bubble.baseText
+    && areLayoutVariantsEqual(normalizedLayoutVariants, bubble.layoutVariants)
+    && normalizedActiveLayoutIndex === bubble.activeLayoutIndex
+  ) {
+    return bubble;
+  }
+
+  return {
+    ...bubble,
+    baseText: normalizedBaseText,
+    layoutVariants: normalizedLayoutVariants,
+    activeLayoutIndex: normalizedActiveLayoutIndex,
+  };
+};
+
+export const normalizeExtraLayoutVariantCount = (
+  value: unknown,
+  fallback: number = DEFAULT_EXTRA_LAYOUT_VARIANT_COUNT,
+): number => {
+  if (!isFiniteNumber(value)) return fallback;
+  const normalized = Math.trunc(value);
+  return Math.min(MAX_EXTRA_LAYOUT_VARIANT_COUNT, Math.max(0, normalized));
+};
+
 export const normalizeImageContourState = (image: ImageState): ImageState => {
-  const isFiniteNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
   const legacyContours: ContourRegion[] = (image.maskRegions || [])
     .map((mask) => {
       if (!mask.maskContourBase64) return null;
@@ -206,10 +335,20 @@ export const normalizeImageContourState = (image: ImageState): ImageState => {
     }
   }
 
-  if (image.contourSchemaVersion === contourSchemaVersion && image.contours === mergedContours) {
+  let mergedBubbles = image.bubbles;
+  const normalizedBubbles = image.bubbles.map((bubble) => normalizeBubbleLayoutState(bubble));
+  if (normalizedBubbles.some((bubble, index) => bubble !== image.bubbles[index])) {
+    mergedBubbles = normalizedBubbles;
+  }
+
+  if (
+    image.contourSchemaVersion === contourSchemaVersion
+    && image.contours === mergedContours
+    && image.bubbles === mergedBubbles
+  ) {
     return image;
   }
-  return { ...image, contourSchemaVersion, contours: mergedContours };
+  return { ...image, contourSchemaVersion, contours: mergedContours, bubbles: mergedBubbles };
 };
 
 export type FontOption = {
@@ -338,6 +477,7 @@ export interface AIConfig {
   systemPrompt?: string;
   translationPromptPreset?: TranslationPromptPreset;
   defaultFontSize: number;
+  extraLayoutVariantCount?: number;
   
   // Detection & Masks Tab
   enableMaskedImageMode?: boolean; // New: Only send masked parts if regions exist

@@ -1,10 +1,11 @@
+import type { AIConfig, APIEndpoint } from '../types.ts';
 import {
-  AIConfig,
-  APIEndpoint,
+  DEFAULT_EXTRA_LAYOUT_VARIANT_COUNT,
   DEFAULT_TRANSLATION_PROMPT_PRESET,
+  normalizeExtraLayoutVariantCount,
   normalizeEndpointProtectionState,
   normalizeTranslationPromptPreset,
-} from '../types';
+} from '../types.ts';
 
 export const AI_CONFIG_STORAGE_KEY = 'mangatype_live_settings_v1';
 
@@ -28,6 +29,7 @@ const AI_CONFIG_STORAGE_FIELDS = [
   'systemPrompt',
   'translationPromptPreset',
   'defaultFontSize',
+  'extraLayoutVariantCount',
   'enableMaskedImageMode',
   'useMasksAsHints',
   'drawMasksOnImage',
@@ -92,7 +94,9 @@ const pickStoredAiConfig = (input: Partial<AIConfig>): Partial<AIConfig> => {
   for (const key of AI_CONFIG_STORAGE_FIELDS) {
     const value = input[key];
     if (value !== undefined) {
-      snapshot[key] = cloneSerializable(value);
+      snapshot[key] = key === 'extraLayoutVariantCount'
+        ? normalizeExtraLayoutVariantCount(value)
+        : cloneSerializable(value);
     }
   }
 
@@ -131,6 +135,10 @@ export const loadAiConfigFromStorage = (
   merged.translationPromptPreset = normalizeTranslationPromptPreset(
     sanitized.translationPromptPreset,
     defaultConfig.translationPromptPreset ?? DEFAULT_TRANSLATION_PROMPT_PRESET,
+  );
+  merged.extraLayoutVariantCount = normalizeExtraLayoutVariantCount(
+    sanitized.extraLayoutVariantCount,
+    normalizeExtraLayoutVariantCount(defaultConfig.extraLayoutVariantCount, DEFAULT_EXTRA_LAYOUT_VARIANT_COUNT),
   );
 
   merged.exportSkippedAsOriginal = true;

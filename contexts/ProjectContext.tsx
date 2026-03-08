@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
-import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion, normalizeEndpointProtectionState } from '../types';
+import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion, DEFAULT_EXTRA_LAYOUT_VARIANT_COUNT, normalizeEndpointProtectionState } from '../types';
 import { DEFAULT_TRANSLATION_PROMPT_PRESET } from '../types';
 import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
@@ -143,6 +143,7 @@ const DEFAULT_CONFIG: AIConfig = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   translationPromptPreset: DEFAULT_TRANSLATION_PROMPT_PRESET,
   defaultFontSize: 1.0,
+  extraLayoutVariantCount: DEFAULT_EXTRA_LAYOUT_VARIANT_COUNT,
   useTextDetectionApi: false,
   textDetectionApiUrl: runtimeConfig.TEXT_DETECTION_API_URL || 'http://localhost:5000',
   language: 'zh',
