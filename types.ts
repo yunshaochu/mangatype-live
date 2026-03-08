@@ -24,12 +24,22 @@ export const normalizeTranslationPromptPreset = (
   fallback: TranslationPromptPreset = DEFAULT_TRANSLATION_PROMPT_PRESET,
 ): TranslationPromptPreset => (isTranslationPromptPreset(value) ? value : fallback);
 
+export interface BubbleTranslationContext {
+  speaker?: string;
+  situation?: string;
+  preText?: string;
+  postText?: string;
+  translationHint?: string;
+}
+
 export interface Bubble {
   id: string;
   x: number; // Center X percentage 0-100
   y: number; // Center Y percentage 0-100
   width: number; // Width percentage relative to image width
   height: number; // Height percentage relative to image height
+  sourceText?: string;
+  context?: BubbleTranslationContext;
   text: string;
   isVertical: boolean;
   fontFamily: FontFamily;
@@ -81,6 +91,8 @@ export interface DetectionGuideLine {
 }
 
 export interface DetectedBubble {
+  sourceText?: string;
+  context?: BubbleTranslationContext;
   text: string;
   x: number;
   y: number;
