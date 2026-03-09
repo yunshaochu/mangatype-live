@@ -5,6 +5,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { ManualJsonModal } from './components/ManualJsonModal';
 import { HelpModal } from './components/HelpModal';
 import { Gallery } from './components/Gallery';
+import { ImageInfoPanel } from './components/ImageInfoPanel';
 import { ControlPanel } from './components/ControlPanel';
 import { Workspace } from './components/Workspace';
 import { Bubble } from './types';
@@ -32,6 +33,7 @@ const App: React.FC = () => {
     handleUndo, handleRedo, deleteCurrentSelection, navigateImage,
     processFiles, updateBubble, updateImageBubbles, updateMaskRegion, triggerAutoColorDetection,
     handleGlobalColorDetection,
+    getImageAiResponseDebug,
     
     // UI State
     showSettings, setShowSettings,
@@ -56,6 +58,7 @@ const App: React.FC = () => {
   const selectedBubble = selectedBubbleId ? bubbles.find(b => b.id === selectedBubbleId) : undefined;
   const lang = aiConfig.language;
   const concurrency = 1;
+  const currentImageDebugSnapshot = currentId ? getImageAiResponseDebug(currentId) : undefined;
 
   // Selected Mask Logic
   const maskRegions = currentImage?.maskRegions || [];
@@ -611,6 +614,8 @@ const App: React.FC = () => {
                      </div>
                 </div>
              )
+         ) : currentImage ? (
+             <ImageInfoPanel image={currentImage} debugSnapshot={currentImageDebugSnapshot} lang={lang} />
          ) : (
              <div className="flex-1 flex flex-col items-center justify-center text-gray-600 select-none p-6 text-center"><div className="w-16 h-16 bg-gray-800/50 rounded-full flex items-center justify-center mb-4"><MessageSquareDashed size={32} className="opacity-50"/></div><h3 className="text-sm font-semibold text-gray-500">{t('noBubbleSelected', lang)}</h3><p className="text-xs mt-2 max-w-[200px]">{t('clickBubbleHint', lang)}</p></div>
          )}

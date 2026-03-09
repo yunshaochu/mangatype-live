@@ -369,6 +369,7 @@ type AiDetectionResult = {
 - 增加 `AiResponseJsonModal`
 
 当前实现已把自动翻译成功路径和手动导入成功路径都接到同一个 debug snapshot formatter，上层统一拿 `prettyJson/sourceKind/provider/model/capturedAt/bubbleCount`；失败、取消和异常分支不覆盖已有成功快照。
+当前右侧栏在“有当前图片但未选中 bubble / mask”时也已切换为图片级信息面板，bubble/mask 选中态仍然沿用原有编辑面板。
 
 ### Phase 2：增强体验
 
