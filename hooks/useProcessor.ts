@@ -312,7 +312,8 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint, clea
                 sourceBase64 = await generateAnnotatedImage({ ...img, base64: sourceBase64 });
             }
 
-            const detected = await detectAndTypesetComic(sourceBase64, effectiveConfig, signal, img.maskRegions);
+            const detectionResult = await detectAndTypesetComic(sourceBase64, effectiveConfig, signal, img.maskRegions);
+            const detected = detectionResult.bubbles;
             let finalDetected = detected;
 
             if (effectiveConfig.enableDialogSnap) {

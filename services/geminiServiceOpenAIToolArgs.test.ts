@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import {
   parseOpenAIToolCallArguments,
-} from './geminiService';
-import { FAILURE_CODE_PARSE_BUBBLES_INVALID } from './apiProtection';
+} from './geminiService.ts';
+import { FAILURE_CODE_PARSE_BUBBLES_INVALID } from './apiProtection.ts';
 
 const validResult = parseOpenAIToolCallArguments({
   function: {

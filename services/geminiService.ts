@@ -1,7 +1,7 @@
 
 import type { FunctionDeclaration } from "@google/genai";
 import { GoogleGenAI, Type, FunctionCallingConfigMode } from "@google/genai";
-import type { AIConfig, BubbleTranslationContext, DetectedBubble, MaskRegion } from "../types.ts";
+import type { AIConfig, AiDetectionResult, AiDetectionSourceKind, BubbleTranslationContext, DetectedBubble, MaskRegion } from "../types.ts";
 import {
   DEFAULT_TRANSLATION_PROMPT_PRESET,
   normalizeDetectedBubbleLayoutState,
@@ -471,6 +471,28 @@ export const extractAndValidateBubblesFromText = (
   return mapDetectedBubbles(validateBubblesArray(payload));
 };
 
+export const buildAiDetectionResult = (
+  data: any,
+  sourceKind: AiDetectionSourceKind,
+): AiDetectionResult => {
+  const bubbles = mapDetectedBubbles(validateBubblesArray(data));
+  return {
+    bubbles,
+    rawPayload: { bubbles },
+    sourceKind,
+  };
+};
+
+export const extractAndValidateAiDetectionResultFromText = (
+  text: string | undefined | null,
+  source: string,
+  sourceKind: AiDetectionSourceKind,
+): AiDetectionResult => {
+  const nonEmptyText = ensureNonEmptyResponseText(text, source);
+  const payload = extractJsonFromText(nonEmptyText);
+  return buildAiDetectionResult(payload, sourceKind);
+};
+
 const mapDetectedBubbles = (bubbles: any[]): DetectedBubble[] => {
   return bubbles.map((bubble: any) => {
     const normalizedBubble = normalizeDetectedBubbleLayoutState({
@@ -748,7 +770,7 @@ export const detectAndTypesetComic = async (
     config: AIConfig, 
     signal?: AbortSignal,
     maskRegions?: MaskRegion[]
-): Promise<DetectedBubble[]> => {
+): Promise<AiDetectionResult> => {
   const data = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
   const { presetDefinition, geminiToolSchema, openAIToolSchema } = createTranslationToolSchemas(config);
   let systemPrompt = config.systemPrompt || presetDefinition.defaultSystemPrompt;
@@ -876,8 +898,7 @@ export const detectAndTypesetComic = async (
 
       if (response.functionCalls && response.functionCalls.length > 0) {
         const args = response.functionCalls[0].args as any;
-        const bubbles = validateBubblesArray(args); 
-        return mapDetectedBubbles(bubbles);
+        return buildAiDetectionResult(args, 'gemini_function');
       }
     } catch (e: any) {
       if (isAbortByUserError(e)) throw e;
@@ -906,7 +927,7 @@ export const detectAndTypesetComic = async (
         ],
         config: { responseMimeType: "application/json" }
       });
-      return extractAndValidateBubblesFromText(fallbackResponse.text, "Gemini JSON mode response");
+      return extractAndValidateAiDetectionResultFromText(fallbackResponse.text, "Gemini JSON mode response", 'gemini_json');
     } catch (e: any) {
       if (isAbortByUserError(e)) throw e;
       if (isProtectableError(e).shouldProtect) {
@@ -932,7 +953,7 @@ export const detectAndTypesetComic = async (
             }
         ]
       });
-      return extractAndValidateBubblesFromText(rawResponse.text, "Gemini raw response");
+      return extractAndValidateAiDetectionResultFromText(rawResponse.text, "Gemini raw response", 'gemini_text');
     } catch (e: any) {
       if (isAbortByUserError(e)) throw e;
       console.error("Tier 3 (Raw Text) failed too:", e.message);
@@ -1000,10 +1021,10 @@ export const detectAndTypesetComic = async (
       
       if (toolCalls && toolCalls.length > 0) {
         const args = parseOpenAIToolCallArguments(toolCalls[0]);
-        return mapDetectedBubbles(validateBubblesArray(args));
+        return buildAiDetectionResult(args, 'openai_tool');
       } else {
         const content = resData.choices?.[0]?.message?.content;
-        return extractAndValidateBubblesFromText(content, "OpenAI content response");
+        return extractAndValidateAiDetectionResultFromText(content, "OpenAI content response", 'openai_content');
       }
     } catch (e: any) {
       if (isAbortByUserError(e)) throw createAbortByUserError();

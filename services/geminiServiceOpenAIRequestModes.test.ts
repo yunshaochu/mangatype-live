@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { detectAndTypesetComic } from './geminiService';
-import type { AIConfig, TranslationPromptPreset } from '../types';
+
+import { detectAndTypesetComic } from './geminiService.ts';
+import type { AIConfig, TranslationPromptPreset } from '../types.ts';
 
 const originalFetch = globalThis.fetch;
 
@@ -44,13 +45,13 @@ const createBubblePayload = (preset: PresetCase) => {
     return {
       bubbles: [
         {
-          sourceText: 'こんにちは',
+          sourceText: 'original line',
           context: {
-            speaker: '旁白',
-            situation: '说明当前情况',
+            speaker: 'narrator',
+            situation: 'explaining the scene',
             preText: '',
             postText: '',
-            translationHint: '自然一点',
+            translationHint: 'keep it natural',
           },
           text: 'hello',
           x: 10,
@@ -97,16 +98,24 @@ const assertPresetToolSchema = (body: any, preset: PresetCase, label: string) =>
   assert.equal('context' in bubbleSchema.properties, preset.expectsContext, `${label}: context schema should follow preset contract`);
 };
 
-const assertParsedBubble = (result: any[], preset: PresetCase, label: string) => {
-  assert.equal(result.length, 1, `${label}: should parse one bubble`);
-  assert.equal(result[0].text, 'hello', `${label}: should keep parsed bubble text`);
+const assertParsedBubble = (
+  result: { bubbles: any[]; rawPayload: { bubbles: any[] }; sourceKind: string },
+  preset: PresetCase,
+  label: string,
+  expectedSourceKind: 'openai_tool' | 'openai_content',
+) => {
+  assert.equal(result.sourceKind, expectedSourceKind, `${label}: should expose the expected sourceKind`);
+  assert.equal(result.bubbles.length, 1, `${label}: should parse one bubble`);
+  assert.equal(result.rawPayload.bubbles.length, 1, `${label}: rawPayload should mirror the applied payload`);
+  assert.equal(result.bubbles[0].text, 'hello', `${label}: should keep parsed bubble text`);
+  assert.equal(result.rawPayload.bubbles[0].text, 'hello', `${label}: rawPayload should keep parsed bubble text`);
 
   if (preset.expectsContext) {
-    assert.equal(result[0].sourceText, 'こんにちは', `${label}: should keep parsed source text`);
-    assert.equal(result[0].context?.speaker, '旁白', `${label}: should keep parsed translation context`);
+    assert.equal(result.bubbles[0].sourceText, 'original line', `${label}: should keep parsed source text`);
+    assert.equal(result.bubbles[0].context?.speaker, 'narrator', `${label}: should keep parsed translation context`);
   } else {
-    assert.equal(result[0].sourceText, undefined, `${label}: legacy preset should not synthesize sourceText`);
-    assert.equal(result[0].context, undefined, `${label}: legacy preset should keep context optional`);
+    assert.equal(result.bubbles[0].sourceText, undefined, `${label}: legacy preset should not synthesize sourceText`);
+    assert.equal(result.bubbles[0].context, undefined, `${label}: legacy preset should keep context optional`);
   }
 };
 
@@ -115,12 +124,14 @@ const runCase = async ({
   config,
   preset,
   responseMessage,
+  expectedSourceKind,
   assertBody,
 }: {
   label: string;
   config: AIConfig;
   preset: PresetCase;
   responseMessage: Record<string, unknown>;
+  expectedSourceKind: 'openai_tool' | 'openai_content';
   assertBody: (body: any) => void;
 }) => {
   let capturedBody: any;
@@ -135,7 +146,7 @@ const runCase = async ({
 
   const result = await detectAndTypesetComic('data:image/jpeg;base64,Zm9v', config);
 
-  assertParsedBubble(result, preset, label);
+  assertParsedBubble(result, preset, label, expectedSourceKind);
   assertPresetPrompt(capturedBody, preset, label);
   assertBody(capturedBody);
 };
@@ -152,6 +163,7 @@ const main = async () => {
       responseMessage: {
         tool_calls: [{ function: { arguments: JSON.stringify(payload) } }],
       },
+      expectedSourceKind: 'openai_tool',
       assertBody: body => {
         assert.ok(Array.isArray(body.tools), `${preset.key}:fc+json tools should be present`);
         assert.equal(body.tool_choice, 'auto', `${preset.key}:fc+json tool_choice should be auto`);
@@ -167,6 +179,7 @@ const main = async () => {
       responseMessage: {
         tool_calls: [{ function: { arguments: JSON.stringify(payload) } }],
       },
+      expectedSourceKind: 'openai_tool',
       assertBody: body => {
         assert.ok(Array.isArray(body.tools), `${preset.key}:fc-only tools should be present`);
         assert.equal(body.tool_choice, 'auto', `${preset.key}:fc-only tool_choice should be auto`);
@@ -180,6 +193,7 @@ const main = async () => {
       preset,
       config: { ...config, modelSupportsFunctionCalling: false },
       responseMessage: { content: JSON.stringify(payload) },
+      expectedSourceKind: 'openai_content',
       assertBody: body => {
         assert.equal('tools' in body, false, `${preset.key}:json-only tools should be absent`);
         assert.equal('tool_choice' in body, false, `${preset.key}:json-only tool_choice should be absent`);
@@ -192,6 +206,7 @@ const main = async () => {
       preset,
       config: { ...config, modelSupportsFunctionCalling: false, modelSupportsJsonMode: false },
       responseMessage: { content: JSON.stringify(payload) },
+      expectedSourceKind: 'openai_content',
       assertBody: body => {
         assert.equal('tools' in body, false, `${preset.key}:text-fallback tools should be absent`);
         assert.equal('tool_choice' in body, false, `${preset.key}:text-fallback tool_choice should be absent`);

@@ -365,6 +365,17 @@ export interface ImageAiResponseDebug {
   bubbleCount: number;
 }
 
+export type AiDetectionSourceKind = Exclude<ImageAiResponseSourceKind, 'manual_import'>;
+
+export interface AiDetectionResult {
+  bubbles: DetectedBubble[];
+  // Keep only the normalized bubbles payload that actually reaches the editor.
+  rawPayload: {
+    bubbles: DetectedBubble[];
+  };
+  sourceKind: AiDetectionSourceKind;
+}
+
 export interface APIEndpoint {
   id: string;
   name: string;

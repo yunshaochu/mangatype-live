@@ -81,7 +81,7 @@
 
 ### 3.3 自动翻译链路现在不会保留原始 JSON
 
-当前自动翻译的服务层 `detectAndTypesetComic(...)` 只返回 `DetectedBubble[]`，见 `services/geminiService.ts:746` 到 `services/geminiService.ts:971`。
+当前自动翻译的服务层 `detectAndTypesetComic(...)` 已升级为统一结果对象，向上层同时暴露 `bubbles`、`rawPayload` 和 `sourceKind`，见 `services/geminiService.ts`。
 
 不同 provider / 模式下，原始结构化数据来自不同位置：
 
@@ -93,8 +93,8 @@
 
 但这些原始数据在当前实现里都会立刻被解析/校验/映射为标准化 bubbles，之后就丢掉：
 
-- `extractAndValidateBubblesFromText(...)` 最终只返回 bubbles，见 `services/geminiService.ts:465` 到 `services/geminiService.ts:473`
-- `runDetectionForImage(...)` 拿到 `detectAndTypesetComic(...)` 的结果后，直接转成编辑器用的 `Bubble[]` 并写进图片状态，见 `hooks/useProcessor.ts:314` 到 `hooks/useProcessor.ts:420`
+- `extractAndValidateAiDetectionResultFromText(...)` 会把文本成功路径统一封装成 `{ bubbles, rawPayload, sourceKind }`
+- `runDetectionForImage(...)` 现在从统一结果对象里读取 `bubbles`，同时给后续 debug 写入保留 `rawPayload` 和 `sourceKind` 接口
 
 结论很明确：
 
@@ -257,14 +257,14 @@ Record<string, ImageAiResponseDebug>
 
 ### 7.2 服务层返回值建议升级
 
-当前 `detectAndTypesetComic(...)` 只返回 `DetectedBubble[]`，这会逼着上层只能看到“标准化后的结果”。
+`detectAndTypesetComic(...)` 现在返回统一结果对象，上层不再依赖裸 `DetectedBubble[]`。
 
 更合适的是改成类似：
 
 ```ts
-type DetectionResult = {
+type AiDetectionResult = {
   bubbles: DetectedBubble[];
-  rawPayload: unknown;
+  rawPayload: { bubbles: DetectedBubble[] };
   sourceKind: 'gemini_function' | 'gemini_json' | 'gemini_text' | 'openai_tool' | 'openai_content';
 };
 ```
