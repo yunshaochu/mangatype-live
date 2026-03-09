@@ -345,7 +345,25 @@ export const getFontStack = (fontFamily: FontFamily): string => {
 };
 
 export type AIProvider = 'gemini' | 'openai';
+export type ImageAiResponseSourceKind =
+  | 'gemini_function'
+  | 'gemini_json'
+  | 'gemini_text'
+  | 'openai_tool'
+  | 'openai_content'
+  | 'manual_import';
 export type APIProtectionMode = 'normal' | 'degraded';
+
+export interface ImageAiResponseDebug {
+  // V1 boundary: only the applied bubbles payload plus display metadata.
+  // Do not persist provider envelopes or pre-repair raw strings here.
+  prettyJson: string;
+  sourceKind: ImageAiResponseSourceKind;
+  provider?: AIProvider;
+  model?: string;
+  capturedAt: number;
+  bubbleCount: number;
+}
 
 export interface APIEndpoint {
   id: string;
