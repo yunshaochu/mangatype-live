@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test:ai-json-view": "node --experimental-strip-types services/imageAiResponseDebug.test.ts && node --experimental-strip-types services/imageAiResponseDebugState.test.ts && node --experimental-strip-types services/geminiServiceDetectionResult.test.ts && node --experimental-strip-types services/geminiServiceTranslationContract.test.ts && node --experimental-strip-types services/geminiServiceOpenAIToolArgs.test.ts && node --experimental-strip-types services/geminiServiceOpenAIRequestModes.test.ts",
     "test:layout-variants": "node --experimental-strip-types services/translationPromptPresets.test.ts && node --experimental-strip-types services/geminiServiceTranslationContract.test.ts && node --experimental-strip-types services/aiConfigStorage.test.ts && node --experimental-strip-types services/layoutVariantState.test.ts && node --experimental-strip-types services/layoutVariantBubbleState.test.ts && node --experimental-strip-types services/layoutVariantProjection.test.ts",
     "test:frontend-regressions": "node --experimental-strip-types services/translationSemantics.test.ts",
     "preview": "vite preview",
