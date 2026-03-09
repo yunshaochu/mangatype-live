@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import type { AIConfig } from '../types.ts';
-import { DEFAULT_EXTRA_LAYOUT_VARIANT_COUNT, DEFAULT_TRANSLATION_PROMPT_PRESET } from '../types.ts';
+import { DEFAULT_TRANSLATION_PROMPT_PRESET } from '../types.ts';
 import {
   AI_CONFIG_STORAGE_KEY,
   exportAiConfigJson,
@@ -42,7 +42,6 @@ const defaultConfig = {
   systemPrompt: 'prompt',
   translationPromptPreset: DEFAULT_TRANSLATION_PROMPT_PRESET,
   defaultFontSize: 1,
-  extraLayoutVariantCount: DEFAULT_EXTRA_LAYOUT_VARIANT_COUNT,
   language: 'en',
   defaultMaskShape: 'rectangle',
   defaultMaskCornerRadius: 20,
@@ -72,7 +71,6 @@ const configWithTransientState = {
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
   }],
-  extraLayoutVariantCount: 2,
   modelCache: ['should-not-export'],
   endpointTestSettings: { 'ep-1': { testFunctionCalling: true } },
 } as AIConfig & {
@@ -87,13 +85,13 @@ const storedPayload = JSON.parse(storedJson!);
 assert.equal('modelCache' in storedPayload, false, 'browser model cache should not be persisted into AIConfig storage');
 assert.equal('endpointTestSettings' in storedPayload, false, 'test settings should not be persisted into AIConfig storage');
 assert.equal(storedPayload.translationPromptPreset, DEFAULT_TRANSLATION_PROMPT_PRESET, 'translation prompt preset should be persisted');
-assert.equal(storedPayload.extraLayoutVariantCount, 2, 'extra layout variant count should be persisted');
+assert.equal('extraLayoutVariantCount' in storedPayload, false, 'legacy extra layout variant count should not be persisted');
 
 const exportedPayload = JSON.parse(exportAiConfigJson(configWithTransientState));
 assert.equal('modelCache' in exportedPayload, false, 'exported JSON should exclude model cache');
 assert.equal('endpointTestSettings' in exportedPayload, false, 'exported JSON should exclude transient test settings');
 assert.equal(exportedPayload.translationPromptPreset, DEFAULT_TRANSLATION_PROMPT_PRESET, 'exported JSON should include translation prompt preset');
-assert.equal(exportedPayload.extraLayoutVariantCount, 2, 'exported JSON should include extra layout variant count');
+assert.equal('extraLayoutVariantCount' in exportedPayload, false, 'exported JSON should exclude legacy extra layout variant count');
 
 assert.equal(isImportableAiConfig({ provider: 'openai' }), true, 'legacy flat config should remain importable');
 assert.equal(isImportableAiConfig({ language: 'zh' }), true, 'language-only snapshot should remain importable');
@@ -128,7 +126,7 @@ assert.equal(loaded.endpoints[0].modelSupportsJsonMode, false, 'migrated endpoin
 assert.equal(loaded.textDetectionApiUrl, 'https://runtime.example/text', 'runtime text detection URL should override legacy localhost default');
 assert.equal(loaded.inpaintingUrl, 'https://runtime.example/inpaint', 'runtime inpainting URL should override legacy localhost default');
 assert.equal(loaded.translationPromptPreset, DEFAULT_TRANSLATION_PROMPT_PRESET, 'missing preset should fall back to contextual default');
-assert.equal(loaded.extraLayoutVariantCount, DEFAULT_EXTRA_LAYOUT_VARIANT_COUNT, 'missing extra layout variant count should fall back to default');
+assert.equal('extraLayoutVariantCount' in (loaded as Record<string, unknown>), false, 'legacy extra layout variant count should be dropped on load');
 
 storage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify({
   translationPromptPreset: 'broken-preset',
@@ -144,16 +142,5 @@ const loadedWithDirtyPreset = loadAiConfigFromStorage(storage, {
 assert.equal(loadedWithDirtyPreset.translationPromptPreset, DEFAULT_TRANSLATION_PROMPT_PRESET, 'invalid preset should fall back to contextual default');
 assert.equal(loadedWithDirtyPreset.systemPrompt, 'custom prompt', 'systemPrompt should still round-trip when preset falls back');
 assert.deepEqual(loadedWithDirtyPreset.customMessages, [{ role: 'assistant', content: 'keep me' }], 'customMessages should still round-trip when preset falls back');
-
-storage.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify({
-  extraLayoutVariantCount: 99,
-}));
-
-const loadedWithDirtyLayoutCount = loadAiConfigFromStorage(storage, {
-  defaultConfig,
-  runtimeConfig: {},
-});
-
-assert.equal(loadedWithDirtyLayoutCount.extraLayoutVariantCount, 3, 'invalid large extra layout variant count should clamp to max');
 
 console.log('aiConfigStorage tests passed');

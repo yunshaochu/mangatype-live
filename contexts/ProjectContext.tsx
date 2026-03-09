@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
-import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion, DEFAULT_EXTRA_LAYOUT_VARIANT_COUNT, normalizeEndpointProtectionState } from '../types';
+import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion, normalizeEndpointProtectionState } from '../types';
 import { DEFAULT_TRANSLATION_PROMPT_PRESET } from '../types';
 import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
@@ -144,7 +144,6 @@ const DEFAULT_CONFIG: AIConfig = {
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
   translationPromptPreset: DEFAULT_TRANSLATION_PROMPT_PRESET,
   defaultFontSize: 1.0,
-  extraLayoutVariantCount: DEFAULT_EXTRA_LAYOUT_VARIANT_COUNT,
   useTextDetectionApi: false,
   textDetectionApiUrl: runtimeConfig.TEXT_DETECTION_API_URL || 'http://localhost:5000',
   language: 'zh',
@@ -895,7 +894,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         bubbles: img.bubbles.map(b => b.id === bubbleId ? { ...b, ...finalUpdates } : b)
     } : img), skipHistory);
 
-    if (existing && (finalUpdates.activeLayoutIndex !== undefined || finalUpdates.layoutVariants !== undefined || finalUpdates.baseText !== undefined)) {
+    if (existing && (finalUpdates.activeLayoutIndex !== undefined || finalUpdates.layoutVariants !== undefined)) {
       console.log('[layout-variants]', 'update-bubble-layout-state', {
         bubbleId,
         previousActiveLayoutIndex: existing.activeLayoutIndex,
@@ -904,8 +903,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         nextLayoutVariantCount: finalUpdates.layoutVariants === undefined
           ? existing.layoutVariants?.length ?? 0
           : finalUpdates.layoutVariants?.length ?? 0,
-        previousBaseText: existing.baseText,
-        nextBaseText: finalUpdates.baseText ?? existing.baseText,
       });
     }
 

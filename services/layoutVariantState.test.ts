@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict';
 
 import {
-  DEFAULT_EXTRA_LAYOUT_VARIANT_COUNT,
   normalizeDetectedBubbleLayoutState,
-  normalizeExtraLayoutVariantCount,
   normalizeImageContourState,
 } from '../types.ts';
 
@@ -58,20 +56,12 @@ const detected = normalizeDetectedBubbleLayoutState({
   ],
 });
 
-assert.equal(detected.baseText, undefined, 'non-string baseText should be dropped');
+assert.equal('baseText' in (detected as Record<string, unknown>), false, 'legacy baseText should be stripped from detected bubbles');
 assert.equal(detected.activeLayoutIndex, 0, 'invalid active layout index should fall back to zero');
 assert.deepEqual(
   detected.layoutVariants,
-  [{ text: 'group-0', fontSize: 1.1, breakAfter: [2, 4] }],
-  'layout variants should keep only serializable candidate fields',
+  [{ text: 'group-0', fontSize: 1.1 }],
+  'layout variants should keep only pure-text candidate fields',
 );
-
-assert.equal(
-  normalizeExtraLayoutVariantCount(undefined),
-  DEFAULT_EXTRA_LAYOUT_VARIANT_COUNT,
-  'missing extra layout variant count should use the stable default',
-);
-assert.equal(normalizeExtraLayoutVariantCount(-1), 0, 'negative extra layout variant count should clamp to zero');
-assert.equal(normalizeExtraLayoutVariantCount(7), 3, 'oversized extra layout variant count should clamp to the max');
 
 console.log('layoutVariantState tests passed');

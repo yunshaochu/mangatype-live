@@ -143,14 +143,13 @@ export const BubbleEditor: React.FC = () => {
     console.log('[layout-variants]', 'bubble-editor-active-layout', {
       bubbleId: bubble.id,
       bubbleText: bubble.text,
-      baseText: bubble.baseText,
       activeLayoutIndex: bubble.activeLayoutIndex,
       layoutVariantCount: bubble.layoutVariants?.length ?? 0,
       layoutVariants: bubble.layoutVariants,
       projectedText: activeLayout.text,
       projectedFontSize: activeLayout.fontSize,
     });
-  }, [bubble.id, bubble.text, bubble.baseText, bubble.activeLayoutIndex, bubble.layoutVariants, activeLayout.text, activeLayout.fontSize]);
+  }, [bubble.id, bubble.text, bubble.activeLayoutIndex, bubble.layoutVariants, activeLayout.text, activeLayout.fontSize]);
 
   const contextSummary = bubble.context?.speaker || bubble.context?.situation || bubble.sourceText || contextLabels.empty;
   const contextItems = [
