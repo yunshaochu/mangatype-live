@@ -32,6 +32,7 @@ export interface BubbleTranslationContext {
   translationHint?: string;
 }
 
+// Layout variants are on a hard-cut path to pure-text candidates only.
 export interface BubbleLayoutVariant {
   text?: string;
   fontSize?: number;
