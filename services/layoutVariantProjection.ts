@@ -1,7 +1,5 @@
 import type { Bubble } from '../types.ts';
 
-import { applyBreakAfterToBaseText, deriveBaseText } from './layoutVariantText.ts';
-
 const projectionLogCache = new Map<string, string>();
 
 export type ActiveBubbleLayoutState = {
@@ -21,7 +19,7 @@ export const getClampedBubbleLayoutIndex = (bubble: Pick<Bubble, 'activeLayoutIn
 };
 
 export const getActiveBubbleLayoutState = (
-  bubble: Pick<Bubble, 'id' | 'text' | 'fontSize' | 'baseText' | 'layoutVariants' | 'activeLayoutIndex'>,
+  bubble: Pick<Bubble, 'id' | 'text' | 'fontSize' | 'layoutVariants' | 'activeLayoutIndex'>,
 ): ActiveBubbleLayoutState => {
   const activeLayoutIndex = getClampedBubbleLayoutIndex(bubble);
   const totalLayoutCount = getBubbleLayoutCount(bubble);
@@ -43,7 +41,6 @@ export const getActiveBubbleLayoutState = (
         mode: 'main',
         activeLayoutIndex,
         totalLayoutCount,
-        baseText: bubble.baseText || deriveBaseText(bubble.text),
         projectedText: mainState.text,
         projectedFontSize: mainState.fontSize,
         layoutVariants: bubble.layoutVariants,
@@ -55,7 +52,6 @@ export const getActiveBubbleLayoutState = (
   }
 
   const variant = bubble.layoutVariants[activeLayoutIndex - 1];
-  const baseText = bubble.baseText || deriveBaseText(bubble.text);
 
   const projectedState = {
     activeLayoutIndex,
@@ -63,15 +59,14 @@ export const getActiveBubbleLayoutState = (
     hasVariants: totalLayoutCount > 1,
     text: typeof variant.text === 'string' && variant.text.length > 0
       ? variant.text
-      : applyBreakAfterToBaseText(baseText, variant.breakAfter),
+      : bubble.text,
     fontSize: variant.fontSize ?? bubble.fontSize,
   };
 
   const projectedSignature = JSON.stringify({
     activeLayoutIndex,
     totalLayoutCount,
-    baseText,
-    breakAfter: variant.breakAfter,
+    variantText: variant.text,
     projectedText: projectedState.text,
     projectedFontSize: projectedState.fontSize,
   });
@@ -82,8 +77,6 @@ export const getActiveBubbleLayoutState = (
       mode: 'variant',
       activeLayoutIndex,
       totalLayoutCount,
-      baseText,
-      breakAfter: variant.breakAfter,
       variant,
       projectedText: projectedState.text,
       projectedFontSize: projectedState.fontSize,
