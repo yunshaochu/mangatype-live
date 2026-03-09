@@ -895,6 +895,20 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
         bubbles: img.bubbles.map(b => b.id === bubbleId ? { ...b, ...finalUpdates } : b)
     } : img), skipHistory);
 
+    if (existing && (finalUpdates.activeLayoutIndex !== undefined || finalUpdates.layoutVariants !== undefined || finalUpdates.baseText !== undefined)) {
+      console.log('[layout-variants]', 'update-bubble-layout-state', {
+        bubbleId,
+        previousActiveLayoutIndex: existing.activeLayoutIndex,
+        nextActiveLayoutIndex: finalUpdates.activeLayoutIndex ?? existing.activeLayoutIndex,
+        previousLayoutVariantCount: existing.layoutVariants?.length ?? 0,
+        nextLayoutVariantCount: finalUpdates.layoutVariants === undefined
+          ? existing.layoutVariants?.length ?? 0
+          : finalUpdates.layoutVariants?.length ?? 0,
+        previousBaseText: existing.baseText,
+        nextBaseText: finalUpdates.baseText ?? existing.baseText,
+      });
+    }
+
     if (finalUpdates.autoDetectBackground === true) triggerAutoColorDetection(bubbleId);
   }, [currentId, setImages, triggerAutoColorDetection, historyRef]);
 

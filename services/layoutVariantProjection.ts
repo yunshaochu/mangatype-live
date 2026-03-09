@@ -2,6 +2,8 @@ import type { Bubble } from '../types.ts';
 
 import { applyBreakAfterToBaseText, deriveBaseText } from './layoutVariantText.ts';
 
+const projectionLogCache = new Map<string, string>();
+
 export type ActiveBubbleLayoutState = {
   activeLayoutIndex: number;
   totalLayoutCount: number;
@@ -19,25 +21,43 @@ export const getClampedBubbleLayoutIndex = (bubble: Pick<Bubble, 'activeLayoutIn
 };
 
 export const getActiveBubbleLayoutState = (
-  bubble: Pick<Bubble, 'text' | 'fontSize' | 'baseText' | 'layoutVariants' | 'activeLayoutIndex'>,
+  bubble: Pick<Bubble, 'id' | 'text' | 'fontSize' | 'baseText' | 'layoutVariants' | 'activeLayoutIndex'>,
 ): ActiveBubbleLayoutState => {
   const activeLayoutIndex = getClampedBubbleLayoutIndex(bubble);
   const totalLayoutCount = getBubbleLayoutCount(bubble);
 
   if (activeLayoutIndex === 0 || !bubble.layoutVariants?.[activeLayoutIndex - 1]) {
-    return {
+    const mainState = {
       activeLayoutIndex,
       totalLayoutCount,
       hasVariants: totalLayoutCount > 1,
       text: bubble.text,
       fontSize: bubble.fontSize,
     };
+
+    const mainSignature = JSON.stringify(mainState);
+    const mainCacheKey = bubble.id || `anonymous-main-${bubble.text}`;
+    if (projectionLogCache.get(mainCacheKey) !== mainSignature) {
+      console.log('[layout-variants]', 'project-active-layout', {
+        bubbleId: bubble.id,
+        mode: 'main',
+        activeLayoutIndex,
+        totalLayoutCount,
+        baseText: bubble.baseText || deriveBaseText(bubble.text),
+        projectedText: mainState.text,
+        projectedFontSize: mainState.fontSize,
+        layoutVariants: bubble.layoutVariants,
+      });
+      projectionLogCache.set(mainCacheKey, mainSignature);
+    }
+
+    return mainState;
   }
 
   const variant = bubble.layoutVariants[activeLayoutIndex - 1];
   const baseText = bubble.baseText || deriveBaseText(bubble.text);
 
-  return {
+  const projectedState = {
     activeLayoutIndex,
     totalLayoutCount,
     hasVariants: totalLayoutCount > 1,
@@ -46,6 +66,32 @@ export const getActiveBubbleLayoutState = (
       : applyBreakAfterToBaseText(baseText, variant.breakAfter),
     fontSize: variant.fontSize ?? bubble.fontSize,
   };
+
+  const projectedSignature = JSON.stringify({
+    activeLayoutIndex,
+    totalLayoutCount,
+    baseText,
+    breakAfter: variant.breakAfter,
+    projectedText: projectedState.text,
+    projectedFontSize: projectedState.fontSize,
+  });
+  const projectedCacheKey = bubble.id || `anonymous-variant-${bubble.text}`;
+  if (projectionLogCache.get(projectedCacheKey) !== projectedSignature) {
+    console.log('[layout-variants]', 'project-active-layout', {
+      bubbleId: bubble.id,
+      mode: 'variant',
+      activeLayoutIndex,
+      totalLayoutCount,
+      baseText,
+      breakAfter: variant.breakAfter,
+      variant,
+      projectedText: projectedState.text,
+      projectedFontSize: projectedState.fontSize,
+    });
+    projectionLogCache.set(projectedCacheKey, projectedSignature);
+  }
+
+  return projectedState;
 };
 
 export const getAdjacentBubbleLayoutIndex = (
