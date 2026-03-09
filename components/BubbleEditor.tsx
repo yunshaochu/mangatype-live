@@ -7,7 +7,7 @@ import { t } from '../services/i18n';
 import { shouldShowBubbleContextSection } from '../services/bubbleEditorContext';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { loadBubbleEditorOpenSections, saveBubbleEditorOpenSections } from '../services/bubbleEditorSectionsStorage';
-import { buildActiveBubbleFontSizeUpdate, getActiveBubbleLayoutState, getAdjacentBubbleLayoutIndex } from '../services/layoutVariantProjection';
+import { buildActiveBubbleFontSizeUpdate, getActiveBubbleLayoutState, getAdjacentBubbleLayoutIndex, getBubbleLayoutNavigationState } from '../services/layoutVariantProjection';
 
 const PRESET_BG_COLORS = [
   '#ffffff', // White
@@ -134,6 +134,7 @@ export const BubbleEditor: React.FC = () => {
   const bubble = currentImage?.bubbles.find(b => b.id === selectedBubbleId);
   if (!bubble) return null;
   const activeLayout = getActiveBubbleLayoutState(bubble);
+  const layoutNavigation = getBubbleLayoutNavigationState(bubble);
   const applyDisplayedFontSize = (nextFontSize: number) => updateBubble(
     bubble.id,
     buildActiveBubbleFontSizeUpdate(bubble, parseFloat(nextFontSize.toFixed(1))),
@@ -214,16 +215,20 @@ export const BubbleEditor: React.FC = () => {
             <div className="flex items-center gap-1 rounded border border-gray-800 bg-gray-900/60 px-1.5 py-1 text-[10px] text-gray-400">
               <button
                 onClick={() => updateBubble(bubble.id, { activeLayoutIndex: getAdjacentBubbleLayoutIndex(bubble, 'prev') })}
-                disabled={activeLayout.activeLayoutIndex === 0}
+                disabled={!layoutNavigation.canGoPrev}
                 className="rounded p-0.5 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-30"
                 title={t('previousLayoutVariant', lang)}
               >
                 <ChevronLeft size={12} />
               </button>
-              <span>{t('layoutVariant', lang)} {activeLayout.activeLayoutIndex}/{activeLayout.totalLayoutCount - 1}</span>
+              <span>
+                {layoutNavigation.currentCandidateOrder === null
+                  ? t('layoutVariantMain', lang)
+                  : `${t('layoutVariant', lang)} ${layoutNavigation.currentCandidateOrder}/${layoutNavigation.totalCandidateCount}`}
+              </span>
               <button
                 onClick={() => updateBubble(bubble.id, { activeLayoutIndex: getAdjacentBubbleLayoutIndex(bubble, 'next') })}
-                disabled={activeLayout.activeLayoutIndex >= activeLayout.totalLayoutCount - 1}
+                disabled={!layoutNavigation.canGoNext}
                 className="rounded p-0.5 hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-30"
                 title={t('nextLayoutVariant', lang)}
               >

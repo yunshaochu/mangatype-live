@@ -5,6 +5,7 @@ import {
   buildSteppedActiveBubbleFontSizeUpdate,
   getActiveBubbleLayoutState,
   getAdjacentBubbleLayoutIndex,
+  getBubbleLayoutNavigationState,
 } from './layoutVariantProjection.ts';
 
 const bubble = {
@@ -28,8 +29,43 @@ assert.deepEqual(
   'projection should resolve the active candidate text and font size from a single helper',
 );
 
-assert.equal(getAdjacentBubbleLayoutIndex(bubble, 'prev'), 0, 'previous variant should move back to the main result');
+assert.equal(getAdjacentBubbleLayoutIndex(bubble, 'prev'), 1, 'previous navigation should stay on the smallest available candidate when no even smaller option exists');
+assert.equal(getAdjacentBubbleLayoutIndex(bubble, 'next'), 0, 'next navigation from a smaller candidate should move back toward the main result');
 assert.equal(getAdjacentBubbleLayoutIndex({ activeLayoutIndex: 0, layoutVariants: [{ text: '候选' }] } as any, 'next'), 1, 'next variant should move to the first extra candidate');
+const sortedNavigationBubble = {
+  text: '主结果',
+  fontSize: 1.0,
+  activeLayoutIndex: 0,
+  layoutVariants: [
+    { text: '大号候选', fontSize: 1.2 },
+    { text: '小号候选', fontSize: 0.9 },
+    { text: '中大候选', fontSize: 1.1 },
+    { text: '更小候选', fontSize: 0.8 },
+  ],
+} as any;
+assert.equal(getAdjacentBubbleLayoutIndex(sortedNavigationBubble, 'prev'), 2, 'previous navigation from the main result should prefer the nearest smaller-font candidate');
+assert.equal(getAdjacentBubbleLayoutIndex(sortedNavigationBubble, 'next'), 3, 'next navigation from the main result should prefer the nearest larger-font candidate');
+assert.equal(
+  getAdjacentBubbleLayoutIndex({ ...sortedNavigationBubble, activeLayoutIndex: 2 }, 'prev'),
+  4,
+  'moving further left should continue toward smaller-font candidates',
+);
+assert.equal(
+  getAdjacentBubbleLayoutIndex({ ...sortedNavigationBubble, activeLayoutIndex: 3 }, 'next'),
+  1,
+  'moving further right should continue toward larger-font candidates',
+);
+assert.deepEqual(
+  getBubbleLayoutNavigationState(sortedNavigationBubble),
+  {
+    activeSelectionPosition: 2,
+    canGoPrev: true,
+    canGoNext: true,
+    currentCandidateOrder: null,
+    totalCandidateCount: 4,
+  },
+  'navigation state should place the main result between smaller and larger candidates',
+);
 assert.deepEqual(
   buildActiveBubbleFontSizeUpdate(bubble, 1.4),
   { layoutVariants: [{ text: '一二\n三四\n五六', fontSize: 1.4 }] },

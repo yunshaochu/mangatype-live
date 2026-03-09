@@ -12,10 +12,76 @@ export type ActiveBubbleLayoutState = {
 
 export const getBubbleLayoutCount = (bubble: Pick<Bubble, 'layoutVariants'>): number => 1 + (bubble.layoutVariants?.length ?? 0);
 
+const getBubbleLayoutNavigationOrder = (
+  bubble: Pick<Bubble, 'fontSize' | 'layoutVariants'>,
+): number[] => {
+  const smaller: Array<{ selectionIndex: number; fontSize: number }> = [];
+  const larger: Array<{ selectionIndex: number; fontSize: number }> = [];
+  const equal: Array<{ selectionIndex: number; fontSize: number }> = [];
+
+  bubble.layoutVariants?.forEach((variant, index) => {
+    const selectionIndex = index + 1;
+    const fontSize = variant.fontSize ?? bubble.fontSize;
+
+    if (fontSize < bubble.fontSize) {
+      smaller.push({ selectionIndex, fontSize });
+      return;
+    }
+
+    if (fontSize > bubble.fontSize) {
+      larger.push({ selectionIndex, fontSize });
+      return;
+    }
+
+    equal.push({ selectionIndex, fontSize });
+  });
+
+  const sortByFontSizeThenSelection = (
+    left: { selectionIndex: number; fontSize: number },
+    right: { selectionIndex: number; fontSize: number },
+  ): number => left.fontSize - right.fontSize || left.selectionIndex - right.selectionIndex;
+
+  smaller.sort(sortByFontSizeThenSelection);
+  larger.sort(sortByFontSizeThenSelection);
+  equal.sort(sortByFontSizeThenSelection);
+
+  return [
+    ...smaller.map((item) => item.selectionIndex),
+    0,
+    ...larger.map((item) => item.selectionIndex),
+    ...equal.map((item) => item.selectionIndex),
+  ];
+};
+
 export const getClampedBubbleLayoutIndex = (bubble: Pick<Bubble, 'activeLayoutIndex' | 'layoutVariants'>): number => {
   const totalLayoutCount = getBubbleLayoutCount(bubble);
   const activeLayoutIndex = bubble.activeLayoutIndex ?? 0;
   return Math.min(Math.max(activeLayoutIndex, 0), totalLayoutCount - 1);
+};
+
+export const getBubbleLayoutNavigationState = (
+  bubble: Pick<Bubble, 'fontSize' | 'layoutVariants' | 'activeLayoutIndex'>,
+): {
+  activeSelectionPosition: number;
+  canGoPrev: boolean;
+  canGoNext: boolean;
+  currentCandidateOrder: number | null;
+  totalCandidateCount: number;
+} => {
+  const orderedSelectionIndexes = getBubbleLayoutNavigationOrder(bubble);
+  const activeLayoutIndex = getClampedBubbleLayoutIndex(bubble);
+  const activeSelectionPosition = Math.max(0, orderedSelectionIndexes.indexOf(activeLayoutIndex));
+  const candidateSelectionIndexes = orderedSelectionIndexes.filter((selectionIndex) => selectionIndex !== 0);
+
+  return {
+    activeSelectionPosition,
+    canGoPrev: activeSelectionPosition > 0,
+    canGoNext: activeSelectionPosition < orderedSelectionIndexes.length - 1,
+    currentCandidateOrder: activeLayoutIndex === 0
+      ? null
+      : candidateSelectionIndexes.indexOf(activeLayoutIndex) + 1,
+    totalCandidateCount: candidateSelectionIndexes.length,
+  };
 };
 
 export const getActiveBubbleLayoutState = (
@@ -88,15 +154,22 @@ export const getActiveBubbleLayoutState = (
 };
 
 export const getAdjacentBubbleLayoutIndex = (
-  bubble: Pick<Bubble, 'activeLayoutIndex' | 'layoutVariants'>,
+  bubble: Pick<Bubble, 'fontSize' | 'activeLayoutIndex' | 'layoutVariants'>,
   direction: 'prev' | 'next',
 ): number => {
   const activeLayoutIndex = getClampedBubbleLayoutIndex(bubble);
-  const totalLayoutCount = getBubbleLayoutCount(bubble);
-  if (totalLayoutCount <= 1) return 0;
-  return direction === 'prev'
-    ? Math.max(0, activeLayoutIndex - 1)
-    : Math.min(totalLayoutCount - 1, activeLayoutIndex + 1);
+  const orderedSelectionIndexes = getBubbleLayoutNavigationOrder(bubble);
+  const activeSelectionPosition = Math.max(0, orderedSelectionIndexes.indexOf(activeLayoutIndex));
+
+  if (orderedSelectionIndexes.length <= 1) {
+    return 0;
+  }
+
+  const targetSelectionPosition = direction === 'prev'
+    ? Math.max(0, activeSelectionPosition - 1)
+    : Math.min(orderedSelectionIndexes.length - 1, activeSelectionPosition + 1);
+
+  return orderedSelectionIndexes[targetSelectionPosition] ?? activeLayoutIndex;
 };
 
 export const buildActiveBubbleFontSizeUpdate = (
