@@ -52,7 +52,7 @@ const SHARED_CONSTRAINT_LINES = [
   `- **坐标系**：0-100 范围，相对于图片尺寸。`,
   `- **安全输出**：不要在JSON中输出字面的 "\\n" 字符串，使用实际的转义换行符。`,
   `- **text**：始终表示第 0 组主结果，也就是自然断句的中文译文。`,
-  `- **layoutVariants**：仅用于第 1~N 组额外排版候选，不要把第 0 组重复放进去；运行时会告知 extraLayoutVariantCount，为 0 时请省略或返回空数组。`,
+  `- **layoutVariants**：仅用于第 1~N 组额外排版候选，不要把第 0 组重复放进去；每个候选只输出 breakAfter 和可选 fontSize。`,
   `- **V1 边界**：不要输出 baseText；额外候选只输出 breakAfter 和可选 fontSize。`,
 ] as const;
 

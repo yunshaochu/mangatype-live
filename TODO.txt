@@ -32,7 +32,20 @@
 bug：
 1.api翻译失败是不是没有自动重试？需要确认有没有这个bug
 2.有时，有些图片没有获取到翻译结果，右下角一直在转圈圈。但是api好像已经结束了、已经有返回或者是报错了。所以圈圈无法消失……
-3.重要：只要api的返回值没有bubble，就进入暂停
+3.重要：只要api的返回值没有bubble，就进入暂停。也就是遇到这个错误之后，要进入重试和暂停：
+useProcessor.ts:441
+ AI Error for 1.png (attempt 1/1) Error: Failed to process OpenAI vision request: AI response missing 'bubbles' key. The model failed to follow the schema.
+    at createWrappedError (geminiService.ts:605:24)
+    at detectAndTypesetComic (geminiService.ts:1014:13)
+    at async runDetectionForImage (useProcessor.ts:314:30)
+    at async useProcessor.ts:781:38
+Caused by: Error: AI response missing 'bubbles' key. The model failed to follow the schema.
+    at createParseBubblesError (geminiService.ts:348:20)
+    at validateBubblesArray (geminiService.ts:458:15)
+    at extractAndValidateBubblesFromText (geminiService.ts:480:29)
+    at detectAndTypesetComic (geminiService.ts:1010:16)
+    at async runDetectionForImage (useProcessor.ts:314:30)
+    at async useProcessor.ts:781:38
 
 灵感：
 1. kimi的识图能力不错，起码比ocr强，但是翻译水平渣渣
@@ -76,7 +89,7 @@ __
 ### 输出格式（仅JSON）：
 返回严格有效的JSON对象。
 
-示例：
+示例, 最开始的bubbles不能漏掉：
 {
   "bubbles": [
     {

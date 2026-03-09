@@ -21,6 +21,7 @@ assert.deepEqual(
 assert.match(contextual.defaultSystemPrompt, /sourceText/, 'contextual prompt should mention sourceText');
 assert.match(contextual.manualJsonSample, /"context"/, 'contextual sample should include context');
 assert.match(contextual.defaultSystemPrompt, /layoutVariants/, 'contextual prompt should describe layout variants');
+assert.doesNotMatch(contextual.defaultSystemPrompt, /extraLayoutVariantCount/, 'contextual prompt should not mention extraLayoutVariantCount anymore');
 assert.match(contextual.manualJsonSample, /"layoutVariants"/, 'contextual sample should include layout variants');
 assert.match(contextual.manualJsonPlaceholder, /sourceText/, 'contextual placeholder should include sourceText');
 
@@ -33,6 +34,7 @@ assert.deepEqual(
 assert.doesNotMatch(legacy.defaultSystemPrompt, /sourceText/, 'legacy prompt should not require sourceText');
 assert.doesNotMatch(legacy.manualJsonSample, /"context"/, 'legacy sample should not include context');
 assert.match(legacy.defaultSystemPrompt, /layoutVariants/, 'legacy prompt should also describe layout variants');
+assert.doesNotMatch(legacy.defaultSystemPrompt, /extraLayoutVariantCount/, 'legacy prompt should not mention extraLayoutVariantCount anymore');
 assert.match(legacy.manualJsonSample, /"layoutVariants"/, 'legacy sample should include layout variants');
 assert.doesNotMatch(legacy.manualJsonPlaceholder, /sourceText/, 'legacy placeholder should stay loose');
 

@@ -5,7 +5,6 @@ import type { AIConfig, BubbleTranslationContext, DetectedBubble, MaskRegion } f
 import {
   DEFAULT_TRANSLATION_PROMPT_PRESET,
   normalizeDetectedBubbleLayoutState,
-  normalizeExtraLayoutVariantCount,
 } from "../types.ts";
 import { FAILURE_CODE_PARSE_BUBBLES_INVALID, isProtectableError } from "./apiProtection.ts";
 import { getTranslationPromptPresetDefinition } from "./translationPromptPresets.ts";
@@ -78,6 +77,14 @@ export const DEFAULT_FONT_SIZE_DIRECT_PROMPT = `### 字号选择指南（直接�
 作为参考，常见的字号大约是1.3，你可以以此为基准，结合图片的原文字号大小、气泡空白部分的大小进行判断，看看哪些字要大一点，哪些字要小一点。
 
 别把字号给太大了，不然会超出气泡的。
+
+——————
+### 关于字号与候补断句（极度重要，千万不可遗漏）：
+由于漫画对话框尺寸限制，你必须在 \`layoutVariants\` 字段中提供至少2组备选的断句和字号组合！
+- **fontSize (默认)**：你认为最匹配当前对话框大小的字号。
+- **layoutVariants**：必须包含一个数组，提供额外的排版方案。
+  - **breakAfter**：提供候选的断句位置（按纯中文字符数索引计算，不包含标点和换行）。例如译文是纯文本的“真的非常感谢你”(共7个字)，\`[2]\` 代表在第2个字后断句（真的\n非常感谢你）；\`[2, 4]\` 代表（真的\n非常\n感谢你）。
+  - **fontSize (备选)**：至少提供一个比默认字号**大**的排版，和一个比默认字号**小**的排版。
 `;
 
 export const DEFAULT_SYSTEM_PROMPT = getTranslationPromptPresetDefinition(DEFAULT_TRANSLATION_PROMPT_PRESET).defaultSystemPrompt;
@@ -122,27 +129,12 @@ const createOpenAiLayoutVariantSchema = () => ({
   },
 });
 
-const buildLayoutVariantArrayDescription = (extraLayoutVariantCount: number): string => {
-  if (extraLayoutVariantCount <= 0) {
-    return 'Optional extra layout candidates for groups 1..N only. extraLayoutVariantCount is 0, so omit this field or return an empty array.';
-  }
-  return `Optional extra layout candidates for groups 1..N only. Return at most ${extraLayoutVariantCount} candidates here, each using breakAfter and/or fontSize only.`;
-};
+const LAYOUT_VARIANT_ARRAY_DESCRIPTION = 'Optional extra layout candidates for groups 1..N only. Each candidate should use breakAfter and/or fontSize only, and must not repeat the main group-0 text.';
 
-const buildLayoutVariantPromptInstruction = (extraLayoutVariantCount: number): string => {
-  if (extraLayoutVariantCount <= 0) {
-    return [
-      '[Layout Variants V1]',
-      '- 顶层 text 永远是第 0 组主结果，也就是自然断句的中文译文。',
-      '- 当前 extraLayoutVariantCount = 0，请不要输出额外候选；省略 layoutVariants 或返回空数组。',
-      '- V1 不要输出 baseText。',
-    ].join('\n');
-  }
-
+const buildLayoutVariantPromptInstruction = (): string => {
   return [
     '[Layout Variants V1]',
     '- 顶层 text 永远是第 0 组主结果，也就是自然断句的中文译文。',
-    `- 当前 extraLayoutVariantCount = ${extraLayoutVariantCount}，请在 layoutVariants 中输出最多 ${extraLayoutVariantCount} 组额外候选。`,
     '- layoutVariants 只承载第 1~N 组额外排版候选，不要把第 0 组重复放进去。',
     '- 每个额外候选只输出 breakAfter（1-based）和可选 fontSize；不要输出 baseText。',
   ].join('\n');
@@ -282,17 +274,16 @@ const applyTranslationContractToBubbleSchema = (bubbleSchema: any, contract: Ret
 
 const createTranslationToolSchemas = (config: AIConfig) => {
   const presetDefinition = getTranslationPromptPresetDefinition(config.translationPromptPreset);
-  const extraLayoutVariantCount = normalizeExtraLayoutVariantCount(config.extraLayoutVariantCount);
   const geminiToolSchema = JSON.parse(JSON.stringify(baseGeminiToolSchema));
   const openAIToolSchema = JSON.parse(JSON.stringify(baseOpenAIToolSchema));
 
   applyTranslationContractToBubbleSchema(geminiToolSchema.parameters.properties.bubbles.items, presetDefinition.contract);
   applyTranslationContractToBubbleSchema(openAIToolSchema.parameters.properties.bubbles.items, presetDefinition.contract);
 
-  geminiToolSchema.parameters.properties.bubbles.items.properties.layoutVariants.description = buildLayoutVariantArrayDescription(extraLayoutVariantCount);
-  openAIToolSchema.parameters.properties.bubbles.items.properties.layoutVariants.description = buildLayoutVariantArrayDescription(extraLayoutVariantCount);
+  geminiToolSchema.parameters.properties.bubbles.items.properties.layoutVariants.description = LAYOUT_VARIANT_ARRAY_DESCRIPTION;
+  openAIToolSchema.parameters.properties.bubbles.items.properties.layoutVariants.description = LAYOUT_VARIANT_ARRAY_DESCRIPTION;
 
-  return { presetDefinition, geminiToolSchema, openAIToolSchema, extraLayoutVariantCount };
+  return { presetDefinition, geminiToolSchema, openAIToolSchema };
 };
 
 // --- Helpers ---
@@ -473,16 +464,13 @@ const ensureNonEmptyResponseText = (text: string | undefined | null, source: str
 export const extractAndValidateBubblesFromText = (
   text: string | undefined | null,
   source: string,
-  options?: { extraLayoutVariantCount?: number },
 ): any[] => {
   const nonEmptyText = ensureNonEmptyResponseText(text, source);
   const payload = extractJsonFromText(nonEmptyText);
-  return mapDetectedBubbles(validateBubblesArray(payload), options?.extraLayoutVariantCount);
+  return mapDetectedBubbles(validateBubblesArray(payload));
 };
 
-const mapDetectedBubbles = (bubbles: any[], extraLayoutVariantCount?: number): DetectedBubble[] => {
-  const normalizedExtraLayoutVariantCount = normalizeExtraLayoutVariantCount(extraLayoutVariantCount);
-
+const mapDetectedBubbles = (bubbles: any[]): DetectedBubble[] => {
   return bubbles.map((bubble: any) => {
     const normalizedBubble = normalizeDetectedBubbleLayoutState({
       ...bubble,
@@ -494,8 +482,6 @@ const mapDetectedBubbles = (bubbles: any[], extraLayoutVariantCount?: number): D
     } as DetectedBubble);
 
     console.log('[layout-variants]', 'map-detected-bubble', {
-      extraLayoutVariantCount,
-      normalizedExtraLayoutVariantCount,
       rawKeys: bubble ? Object.keys(bubble) : [],
       rawLayoutVariantCount: bubble?.layoutVariants?.length ?? bubble?.layout_variants?.length ?? bubble?.variants?.length ?? 0,
       rawLayoutVariants: bubble?.layoutVariants ?? bubble?.layout_variants ?? bubble?.variants,
@@ -508,9 +494,7 @@ const mapDetectedBubbles = (bubbles: any[], extraLayoutVariantCount?: number): D
     return {
       ...normalizedBubble,
       activeLayoutIndex: 0,
-      layoutVariants: normalizedExtraLayoutVariantCount > 0
-        ? normalizedBubble.layoutVariants?.slice(0, normalizedExtraLayoutVariantCount)
-        : normalizedBubble.layoutVariants,
+      layoutVariants: normalizedBubble.layoutVariants,
     };
   });
 };
@@ -766,9 +750,9 @@ export const detectAndTypesetComic = async (
     maskRegions?: MaskRegion[]
 ): Promise<DetectedBubble[]> => {
   const data = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
-  const { presetDefinition, geminiToolSchema, openAIToolSchema, extraLayoutVariantCount } = createTranslationToolSchemas(config);
+  const { presetDefinition, geminiToolSchema, openAIToolSchema } = createTranslationToolSchemas(config);
   let systemPrompt = config.systemPrompt || presetDefinition.defaultSystemPrompt;
-  systemPrompt += `\n\n${buildLayoutVariantPromptInstruction(extraLayoutVariantCount)}`;
+  systemPrompt += `\n\n${buildLayoutVariantPromptInstruction()}`;
 
   if (signal?.aborted) throw createAbortByUserError();
 
@@ -922,7 +906,7 @@ export const detectAndTypesetComic = async (
         ],
         config: { responseMimeType: "application/json" }
       });
-      return extractAndValidateBubblesFromText(fallbackResponse.text, "Gemini JSON mode response", { extraLayoutVariantCount });
+      return extractAndValidateBubblesFromText(fallbackResponse.text, "Gemini JSON mode response");
     } catch (e: any) {
       if (isAbortByUserError(e)) throw e;
       if (isProtectableError(e).shouldProtect) {
@@ -948,7 +932,7 @@ export const detectAndTypesetComic = async (
             }
         ]
       });
-      return extractAndValidateBubblesFromText(rawResponse.text, "Gemini raw response", { extraLayoutVariantCount });
+      return extractAndValidateBubblesFromText(rawResponse.text, "Gemini raw response");
     } catch (e: any) {
       if (isAbortByUserError(e)) throw e;
       console.error("Tier 3 (Raw Text) failed too:", e.message);
@@ -1016,10 +1000,10 @@ export const detectAndTypesetComic = async (
       
       if (toolCalls && toolCalls.length > 0) {
         const args = parseOpenAIToolCallArguments(toolCalls[0]);
-        return mapDetectedBubbles(validateBubblesArray(args), extraLayoutVariantCount);
+        return mapDetectedBubbles(validateBubblesArray(args));
       } else {
         const content = resData.choices?.[0]?.message?.content;
-        return extractAndValidateBubblesFromText(content, "OpenAI content response", { extraLayoutVariantCount });
+        return extractAndValidateBubblesFromText(content, "OpenAI content response");
       }
     } catch (e: any) {
       if (isAbortByUserError(e)) throw createAbortByUserError();

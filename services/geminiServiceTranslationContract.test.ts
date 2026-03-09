@@ -32,32 +32,27 @@ assert.equal(legacyBubbles.length, 1, 'legacy core contract should still be acce
 assert.equal(legacyBubbles[0].text, 'hello', 'legacy core contract should preserve text');
 
 const contextualBubbles = extractAndValidateBubblesFromText(
-  '{"bubbles":[{"sourceText":"こんにちは","context":{"speaker":"旁白","situation":"说明","preText":"","postText":"","translationHint":"自然一点"},"text":"hello","x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
+  '{"bubbles":[{"sourceText":"original line","context":{"speaker":"narrator","situation":"explaining","preText":"","postText":"","translationHint":"keep it natural"},"text":"translated line","x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
   'test-contextual-bubbles-array',
 );
 assert.equal(contextualBubbles.length, 1, 'contextual contract should still be accepted');
-assert.equal(contextualBubbles[0].context.speaker, '旁白', 'contextual contract should preserve context payload');
+assert.equal(contextualBubbles[0].context.speaker, 'narrator', 'contextual contract should preserve context payload');
 
 const variantBubbles = extractAndValidateBubblesFromText(
-  '{"bubbles":[{"text":"主结果","layoutVariants":[{"breakAfter":[4],"fontSize":1.2},{"breakAfter":[2,5],"fontSize":1.1}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
+  '{"bubbles":[{"text":"main result","layoutVariants":[{"breakAfter":[4],"fontSize":1.2},{"breakAfter":[2,5],"fontSize":1.1}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
   'test-layout-variants-array',
-  { extraLayoutVariantCount: 1 },
 );
-assert.equal(variantBubbles[0].text, '主结果', 'group-0 text should remain on the top-level text field');
-assert.equal(variantBubbles[0].layoutVariants?.length, 1, 'layout variants should respect extraLayoutVariantCount');
-assert.deepEqual(variantBubbles[0].layoutVariants?.[0].breakAfter, [4], 'layout variants should preserve valid breakAfter values');
-
-const zeroVariantBubbles = extractAndValidateBubblesFromText(
-  '{"bubbles":[{"text":"主结果","layoutVariants":[{"breakAfter":[4],"fontSize":1.2}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
-  'test-layout-variants-disabled',
-  { extraLayoutVariantCount: 0 },
+assert.equal(variantBubbles[0].text, 'main result', 'group-0 text should remain on the top-level text field');
+assert.equal(variantBubbles[0].layoutVariants?.length, 2, 'layout variants should no longer be trimmed by extraLayoutVariantCount');
+assert.deepEqual(
+  variantBubbles[0].layoutVariants?.map(variant => variant.breakAfter),
+  [[4], [2, 5]],
+  'layout variants should preserve every returned candidate',
 );
-assert.equal(zeroVariantBubbles[0].layoutVariants?.length, 1, 'unexpected returned layout variants should be preserved even when request count is zero');
 
 const normalizedVariantBubbles = extractAndValidateBubblesFromText(
-  '{"bubbles":[{"text":"主结果","layoutVariants":[{"breakAfter":[1,"x",3],"fontSize":1.2},{"foo":1}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
+  '{"bubbles":[{"text":"main result","layoutVariants":[{"breakAfter":[1,"x",3],"fontSize":1.2},{"foo":1}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
   'test-layout-variants-normalized',
-  { extraLayoutVariantCount: 2 },
 );
 assert.deepEqual(
   normalizedVariantBubbles[0].layoutVariants,
