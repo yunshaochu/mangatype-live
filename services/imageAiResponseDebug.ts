@@ -23,6 +23,19 @@ export const buildImageAiResponseDebug = ({
   bubbleCount: bubbles.length,
 });
 
+const IMAGE_AI_RESPONSE_SOURCE_LABELS: Record<ImageAiResponseSourceKind, string> = {
+  gemini_function: 'Gemini Function',
+  gemini_json: 'Gemini JSON',
+  gemini_text: 'Gemini Text',
+  openai_tool: 'OpenAI Tool',
+  openai_content: 'OpenAI Content',
+  manual_import: 'Manual Import',
+};
+
+export const formatImageAiResponseSourceKind = (sourceKind: ImageAiResponseSourceKind): string => {
+  return IMAGE_AI_RESPONSE_SOURCE_LABELS[sourceKind];
+};
+
 export const buildImageAiResponseDebugFromDetectionResult = (
   result: AiDetectionResult,
   meta: {

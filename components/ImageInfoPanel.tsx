@@ -2,6 +2,7 @@ import React from 'react';
 import { FileJson, Hash, Layers, Sparkles } from 'lucide-react';
 
 import type { ImageAiResponseDebug, ImageState } from '../types';
+import { formatImageAiResponseSourceKind } from '../services/imageAiResponseDebug';
 import { t } from '../services/i18n';
 
 type ImageInfoPanelProps = {
@@ -16,15 +17,6 @@ const STATUS_META: Record<ImageState['status'], { dot: string; labelKey: 'proces
   processing: { dot: 'bg-blue-400', labelKey: 'processing' },
   done: { dot: 'bg-emerald-400', labelKey: 'done' },
   error: { dot: 'bg-red-400', labelKey: 'error' },
-};
-
-const SOURCE_LABELS: Record<NonNullable<ImageAiResponseDebug['sourceKind']>, string> = {
-  gemini_function: 'Gemini Function',
-  gemini_json: 'Gemini JSON',
-  gemini_text: 'Gemini Text',
-  openai_tool: 'OpenAI Tool',
-  openai_content: 'OpenAI Content',
-  manual_import: 'Manual Import',
 };
 
 const formatTimestamp = (value: number, lang: string) => {
@@ -96,7 +88,7 @@ export const ImageInfoPanel: React.FC<ImageInfoPanelProps> = ({
               <div>
                 <div className="text-[11px] uppercase tracking-[0.16em] text-gray-500">{t('imagePanelLatestSource', lang)}</div>
                 <div className="mt-1 text-sm font-medium text-white">
-                  {debugSnapshot ? SOURCE_LABELS[debugSnapshot.sourceKind] : t('imagePanelNoDebug', lang)}
+                  {debugSnapshot ? formatImageAiResponseSourceKind(debugSnapshot.sourceKind) : t('imagePanelNoDebug', lang)}
                 </div>
               </div>
               <div className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${hasDebugSnapshot ? 'bg-emerald-500/12 text-emerald-300 border border-emerald-500/20' : 'bg-gray-800 text-gray-500 border border-gray-700'}`}>

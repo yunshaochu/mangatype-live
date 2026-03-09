@@ -4,6 +4,7 @@ import { BubbleEditor } from './components/BubbleEditor';
 import { SettingsModal } from './components/SettingsModal';
 import { ManualJsonModal } from './components/ManualJsonModal';
 import { HelpModal } from './components/HelpModal';
+import { AiResponseJsonModal } from './components/AiResponseJsonModal';
 import { Gallery } from './components/Gallery';
 import { ImageInfoPanel } from './components/ImageInfoPanel';
 import { ControlPanel } from './components/ControlPanel';
@@ -69,6 +70,7 @@ const App: React.FC = () => {
 
   // Batch Scope State
   const [batchScope, setBatchScope] = useState<'current' | 'all'>('all');
+  const [showAiResponseJson, setShowAiResponseJson] = useState(false);
 
   // Inpaint Workshop State
   const [workshopResult, setWorkshopResult] = useState<string | null>(null);
@@ -134,6 +136,12 @@ const App: React.FC = () => {
     setWorkshopResult(null);
     setOriginalCropUrl(null);
   }, [selectedMaskId]);
+
+  useEffect(() => {
+    if (!currentImageDebugSnapshot) {
+      setShowAiResponseJson(false);
+    }
+  }, [currentImageDebugSnapshot]);
 
   // Compute original crop for selected purple mask
   useEffect(() => {
@@ -615,7 +623,12 @@ const App: React.FC = () => {
                 </div>
              )
          ) : currentImage ? (
-             <ImageInfoPanel image={currentImage} debugSnapshot={currentImageDebugSnapshot} lang={lang} />
+             <ImageInfoPanel
+               image={currentImage}
+               debugSnapshot={currentImageDebugSnapshot}
+               lang={lang}
+               onOpenJson={currentImageDebugSnapshot ? () => setShowAiResponseJson(true) : undefined}
+             />
          ) : (
              <div className="flex-1 flex flex-col items-center justify-center text-gray-600 select-none p-6 text-center"><div className="w-16 h-16 bg-gray-800/50 rounded-full flex items-center justify-center mb-4"><MessageSquareDashed size={32} className="opacity-50"/></div><h3 className="text-sm font-semibold text-gray-500">{t('noBubbleSelected', lang)}</h3><p className="text-xs mt-2 max-w-[200px]">{t('clickBubbleHint', lang)}</p></div>
          )}
@@ -623,6 +636,14 @@ const App: React.FC = () => {
 
       {showSettings && <SettingsModal config={aiConfig} onChange={(newConfig) => { const old = aiConfig.autoDetectBackground; setAiConfig(newConfig); if (newConfig.autoDetectBackground !== old) { if (newConfig.autoDetectBackground) handleGlobalColorDetection(concurrency); else handleGlobalColorReset(); } }} onClose={() => setShowSettings(false)} />}
       {showHelp && <HelpModal lang={lang} onClose={() => setShowHelp(false)} />}
+      {showAiResponseJson && currentImage && currentImageDebugSnapshot && (
+        <AiResponseJsonModal
+          debugSnapshot={currentImageDebugSnapshot}
+          imageName={currentImage.name}
+          lang={lang}
+          onClose={() => setShowAiResponseJson(false)}
+        />
+      )}
       {showManualJson && currentId && <ManualJsonModal config={aiConfig} maskRegions={currentImage?.maskRegions} onApply={(detected) => { console.log('[layout-variants]', 'manual-json-on-apply', { bubbleCount: detected.length, firstBubbleLayoutVariantCount: detected[0]?.layoutVariants?.length ?? 0, firstBubbleLayoutVariants: detected[0]?.layoutVariants }); const newBubbles: Bubble[] = detected.map(d => initializeBubbleLayoutState({ id: crypto.randomUUID(), x: d.x, y: d.y, width: d.width, height: d.height, sourceText: d.sourceText || '', context: d.context, layoutVariants: d.layoutVariants, text: d.text, isVertical: d.isVertical, fontFamily: 'noto', fontSize: aiConfig.defaultFontSize, color: '#000000', strokeColor: '#ffffff', backgroundColor: '#ffffff', rotation: 0 })); updateImageBubbles(currentId, newBubbles); setImageAiResponseDebug(currentId, buildImageAiResponseDebug({ bubbles: detected, sourceKind: 'manual_import' })); setShowManualJson(false); }} onClose={() => setShowManualJson(false)} />}
     </div>
   );
