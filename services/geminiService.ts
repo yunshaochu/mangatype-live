@@ -493,6 +493,18 @@ const mapDetectedBubbles = (bubbles: any[], extraLayoutVariantCount?: number): D
       activeLayoutIndex: bubble.activeLayoutIndex ?? bubble.active_layout_index,
     } as DetectedBubble);
 
+    console.log('[layout-variants]', 'map-detected-bubble', {
+      extraLayoutVariantCount,
+      normalizedExtraLayoutVariantCount,
+      rawKeys: bubble ? Object.keys(bubble) : [],
+      rawLayoutVariantCount: bubble?.layoutVariants?.length ?? bubble?.layout_variants?.length ?? bubble?.variants?.length ?? 0,
+      rawLayoutVariants: bubble?.layoutVariants ?? bubble?.layout_variants ?? bubble?.variants,
+      normalizedLayoutVariantCount: normalizedBubble.layoutVariants?.length ?? 0,
+      normalizedLayoutVariants: normalizedBubble.layoutVariants,
+      text: normalizedBubble.text,
+      baseText: normalizedBubble.baseText,
+    });
+
     return {
       ...normalizedBubble,
       activeLayoutIndex: 0,

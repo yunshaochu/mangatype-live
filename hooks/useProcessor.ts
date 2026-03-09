@@ -368,6 +368,13 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     );
                 }
 
+                console.log('[layout-variants]', 'processor-detected-bubble-before-initialize', {
+                    text: d.text,
+                    layoutVariantCount: d.layoutVariants?.length ?? 0,
+                    layoutVariants: d.layoutVariants,
+                    activeLayoutIndex: d.activeLayoutIndex,
+                });
+
                 return initializeBubbleLayoutState({
                     id: crypto.randomUUID(),
                     x: d.x, y: d.y, width: d.width, height: d.height,

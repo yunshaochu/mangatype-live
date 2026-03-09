@@ -101,6 +101,13 @@ export const ManualJsonModal: React.FC<ManualJsonModalProps> = ({ onApply, onClo
         throw new Error('JSON must contain a "bubbles" array.');
       }
 
+      console.log('[layout-variants]', 'manual-json-parsed', {
+        bubbleCount: parsed.bubbles.length,
+        firstBubbleKeys: parsed.bubbles[0] ? Object.keys(parsed.bubbles[0]) : [],
+        firstBubbleLayoutVariantCount: parsed.bubbles[0]?.layoutVariants?.length ?? 0,
+        firstBubbleLayoutVariants: parsed.bubbles[0]?.layoutVariants,
+      });
+
       onApply(parsed.bubbles);
     } catch (e: any) {
       setError(e.message || t('jsonError', lang));
