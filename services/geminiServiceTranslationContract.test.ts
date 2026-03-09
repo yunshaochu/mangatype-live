@@ -52,7 +52,7 @@ const zeroVariantBubbles = extractAndValidateBubblesFromText(
   'test-layout-variants-disabled',
   { extraLayoutVariantCount: 0 },
 );
-assert.equal(zeroVariantBubbles[0].layoutVariants, undefined, 'zero extra layout variant count should fall back to legacy output');
+assert.equal(zeroVariantBubbles[0].layoutVariants?.length, 1, 'unexpected returned layout variants should be preserved even when request count is zero');
 
 const normalizedVariantBubbles = extractAndValidateBubblesFromText(
   '{"bubbles":[{"text":"主结果","layoutVariants":[{"breakAfter":[1,"x",3],"fontSize":1.2},{"foo":1}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',

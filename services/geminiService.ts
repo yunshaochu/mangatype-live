@@ -498,7 +498,7 @@ const mapDetectedBubbles = (bubbles: any[], extraLayoutVariantCount?: number): D
       activeLayoutIndex: 0,
       layoutVariants: normalizedExtraLayoutVariantCount > 0
         ? normalizedBubble.layoutVariants?.slice(0, normalizedExtraLayoutVariantCount)
-        : undefined,
+        : normalizedBubble.layoutVariants,
     };
   });
 };

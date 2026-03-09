@@ -208,7 +208,11 @@ export const BubbleEditor: React.FC = () => {
               >
                 <ChevronLeft size={12} />
               </button>
-              <span>{t('layoutVariant', lang)} {activeLayout.activeLayoutIndex}/{activeLayout.totalLayoutCount - 1}</span>
+              <span>
+                {activeLayout.activeLayoutIndex === 0
+                  ? `${t('layoutVariantMain', lang)} · ${t('layoutVariantCount', lang)} ${activeLayout.totalLayoutCount - 1}`
+                  : `${t('layoutVariant', lang)} ${activeLayout.activeLayoutIndex}/${activeLayout.totalLayoutCount - 1}`}
+              </span>
               <button
                 onClick={() => updateBubble(bubble.id, { activeLayoutIndex: getAdjacentBubbleLayoutIndex(bubble, 'next') })}
                 disabled={activeLayout.activeLayoutIndex >= activeLayout.totalLayoutCount - 1}
