@@ -391,3 +391,16 @@ type AiDetectionResult = {
 > “查看 AI 原始 JSON”作为**单图级只读功能**，主入口放在**右侧栏的当前图片信息面板**，正文通过**独立 modal**展示；数据保存为**最近一次成功解析并应用的 bubbles payload**，并带上来源元信息；实现上优先放到 **ProjectContext 的独立 runtime map**，不要先塞进 `ImageState`。”
 
 这是当前代码结构里最顺手、最不拧巴、后续也最容易继续扩展的一种摆法。
+
+## 11. Deferred Scope and Fallback
+
+首版明确不做以下范围：
+
+- 展示完整 provider HTTP envelope 或 provider 专属外壳字段
+- 同时展示“原始坏 JSON / repair 后 JSON / 最终 payload”的三层视图
+- 在底部控制条额外增加快捷查看入口
+
+当前首版的可接受降级路径也要固定：
+
+- 若自动翻译链路因环境、凭证或 provider 配置不可用，`ManualJsonModal` + 图片级信息面板 + `AiResponseJsonModal` 仍然可以单独闭环交付
+- 只有当当前图片存在成功快照时才显示启用的 JSON 查看入口；没有快照时保持禁用，不暴露半成品入口
