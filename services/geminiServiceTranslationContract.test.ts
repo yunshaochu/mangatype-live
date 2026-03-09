@@ -39,25 +39,25 @@ assert.equal(contextualBubbles.length, 1, 'contextual contract should still be a
 assert.equal(contextualBubbles[0].context.speaker, 'narrator', 'contextual contract should preserve context payload');
 
 const variantBubbles = extractAndValidateBubblesFromText(
-  '{"bubbles":[{"text":"main result","layoutVariants":[{"breakAfter":[4],"fontSize":1.2},{"breakAfter":[2,5],"fontSize":1.1}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
+  '{"bubbles":[{"text":"main result","layoutVariants":[{"text":"main\\nresult","fontSize":1.2},{"text":"main result alt","fontSize":1.1}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
   'test-layout-variants-array',
 );
 assert.equal(variantBubbles[0].text, 'main result', 'group-0 text should remain on the top-level text field');
 assert.equal(variantBubbles[0].layoutVariants?.length, 2, 'layout variants should no longer be trimmed by extraLayoutVariantCount');
 assert.deepEqual(
-  variantBubbles[0].layoutVariants?.map(variant => variant.breakAfter),
-  [[4], [2, 5]],
-  'layout variants should preserve every returned candidate',
+  variantBubbles[0].layoutVariants?.map(variant => variant.text),
+  ['main\nresult', 'main result alt'],
+  'layout variants should preserve every full-text candidate',
 );
 
 const normalizedVariantBubbles = extractAndValidateBubblesFromText(
-  '{"bubbles":[{"text":"main result","layoutVariants":[{"breakAfter":[1,"x",3],"fontSize":1.2},{"foo":1}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
+  '{"bubbles":[{"text":"main result","layoutVariants":[{"text":"main\\nresult","breakAfter":[1,"x",3],"fontSize":1.2},{"foo":1}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
   'test-layout-variants-normalized',
 );
 assert.deepEqual(
   normalizedVariantBubbles[0].layoutVariants,
-  [{ breakAfter: [1, 3], fontSize: 1.2 }],
-  'invalid layout variant entries should be normalized away',
+  [{ text: 'main\nresult', fontSize: 1.2 }],
+  'legacy fields should be stripped and invalid layout variant entries should be normalized away',
 );
 
 console.log('geminiServiceTranslationContract tests passed');

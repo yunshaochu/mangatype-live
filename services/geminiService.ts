@@ -79,11 +79,11 @@ export const DEFAULT_FONT_SIZE_DIRECT_PROMPT = `### 字号选择指南（直接�
 别把字号给太大了，不然会超出气泡的。
 
 ——————
-### 关于字号与候补断句（极度重要，千万不可遗漏）：
-由于漫画对话框尺寸限制，你必须在 \`layoutVariants\` 字段中提供至少2组备选的断句和字号组合！
+### 关于字号与候补排版（极度重要，千万不可遗漏）：
+由于漫画对话框尺寸限制，你必须在 \`layoutVariants\` 字段中提供至少2组备选的完整候选文本和字号组合！
 - **fontSize (默认)**：你认为最匹配当前对话框大小的字号。
 - **layoutVariants**：必须包含一个数组，提供额外的排版方案。
-  - **breakAfter**：提供候选的断句位置（按纯中文字符数索引计算，不包含标点和换行）。例如译文是纯文本的“真的非常感谢你”(共7个字)，\`[2]\` 代表在第2个字后断句（真的\n非常感谢你）；\`[2, 4]\` 代表（真的\n非常\n感谢你）。
+  - **text**：直接提供完整候选文本，可以通过真实换行调整排版，但不要改写原句含义。
   - **fontSize (备选)**：至少提供一个比默认字号**大**的排版，和一个比默认字号**小**的排版。
 `;
 
@@ -97,16 +97,16 @@ const createGeminiLayoutVariantSchema = () => ({
   items: {
     type: Type.OBJECT,
     properties: {
-      breakAfter: {
-        type: Type.ARRAY,
-        description: 'Optional 1-based break positions. Each number means insert a line break after that visible character in the normalized base text.',
-        items: { type: Type.NUMBER },
+      text: {
+        type: Type.STRING,
+        description: 'Full alternate candidate text for this extra layout group. Use actual line breaks inside the text when needed.',
       },
       fontSize: {
         type: Type.NUMBER,
         description: 'Optional fontSize override for this extra candidate in rem.',
       },
     },
+    required: ['text'],
   },
 });
 
@@ -116,27 +116,28 @@ const createOpenAiLayoutVariantSchema = () => ({
   items: {
     type: 'object',
     properties: {
-      breakAfter: {
-        type: 'array',
-        description: 'Optional 1-based break positions. Each number means insert a line break after that visible character in the normalized base text.',
-        items: { type: 'number' },
+      text: {
+        type: 'string',
+        description: 'Full alternate candidate text for this extra layout group. Use actual line breaks inside the text when needed.',
       },
       fontSize: {
         type: 'number',
         description: 'Optional fontSize override for this extra candidate in rem.',
       },
     },
+    required: ['text'],
   },
 });
 
-const LAYOUT_VARIANT_ARRAY_DESCRIPTION = 'Optional extra layout candidates for groups 1..N only. Each candidate should use breakAfter and/or fontSize only, and must not repeat the main group-0 text.';
+const LAYOUT_VARIANT_ARRAY_DESCRIPTION = 'Optional extra layout candidates for groups 1..N only. Each candidate must provide full text and may provide fontSize, and must not repeat the main group-0 text.';
 
 const buildLayoutVariantPromptInstruction = (): string => {
   return [
     '[Layout Variants V1]',
     '- 顶层 text 永远是第 0 组主结果，也就是自然断句的中文译文。',
     '- layoutVariants 只承载第 1~N 组额外排版候选，不要把第 0 组重复放进去。',
-    '- 每个额外候选只输出 breakAfter（1-based）和可选 fontSize；不要输出 baseText。',
+    '- 至少返回 2 组额外候选，候选组数只按当前 prompt 要求执行。',
+    '- 每个额外候选必须直接输出完整 text 和可选 fontSize；不要输出其它布局字段。',
   ].join('\n');
 };
 
@@ -488,7 +489,6 @@ const mapDetectedBubbles = (bubbles: any[]): DetectedBubble[] => {
       normalizedLayoutVariantCount: normalizedBubble.layoutVariants?.length ?? 0,
       normalizedLayoutVariants: normalizedBubble.layoutVariants,
       text: normalizedBubble.text,
-      baseText: normalizedBubble.baseText,
     });
 
     return {
