@@ -368,6 +368,8 @@ type AiDetectionResult = {
 - 右侧栏空态改为“当前图片信息面板”
 - 增加 `AiResponseJsonModal`
 
+当前实现已把自动翻译成功路径和手动导入成功路径都接到同一个 debug snapshot formatter，上层统一拿 `prettyJson/sourceKind/provider/model/capturedAt/bubbleCount`；失败、取消和异常分支不覆盖已有成功快照。
+
 ### Phase 2：增强体验
 
 - modal 增加 `下载 JSON`

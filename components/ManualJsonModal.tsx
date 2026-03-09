@@ -2,12 +2,13 @@
 
 import React, { useState } from 'react';
 import { FileJson, X, CheckCircle, AlertCircle, Copy, Terminal, ClipboardCopy } from 'lucide-react';
-import { AIConfig, MaskRegion } from '../types';
+import { AIConfig, DetectedBubble, MaskRegion } from '../types';
 import { t } from '../services/i18n';
+import { normalizeDetectedBubblesPayload } from '../services/geminiService';
 import { getTranslationPromptPresetDefinition } from '../services/translationPromptPresets';
 
 interface ManualJsonModalProps {
-  onApply: (detected: any[]) => void;
+  onApply: (detected: DetectedBubble[]) => void;
   onClose: () => void;
   config: AIConfig;
   maskRegions?: MaskRegion[];
@@ -108,7 +109,7 @@ export const ManualJsonModal: React.FC<ManualJsonModalProps> = ({ onApply, onClo
         firstBubbleLayoutVariants: parsed.bubbles[0]?.layoutVariants,
       });
 
-      onApply(parsed.bubbles);
+      onApply(normalizeDetectedBubblesPayload(parsed));
     } catch (e: any) {
       setError(e.message || t('jsonError', lang));
     }

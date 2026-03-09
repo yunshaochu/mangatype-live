@@ -432,6 +432,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     aiConfig,
     updateEndpoint,
     clearImageAiResponseDebugByIds,
+    setImageAiResponseDebug,
   });
 
   // 4. Inpainting Logic

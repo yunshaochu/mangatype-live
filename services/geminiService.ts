@@ -468,14 +468,18 @@ export const extractAndValidateBubblesFromText = (
 ): any[] => {
   const nonEmptyText = ensureNonEmptyResponseText(text, source);
   const payload = extractJsonFromText(nonEmptyText);
-  return mapDetectedBubbles(validateBubblesArray(payload));
+  return normalizeDetectedBubblesPayload(payload);
+};
+
+export const normalizeDetectedBubblesPayload = (data: any): DetectedBubble[] => {
+  return mapDetectedBubbles(validateBubblesArray(data));
 };
 
 export const buildAiDetectionResult = (
   data: any,
   sourceKind: AiDetectionSourceKind,
 ): AiDetectionResult => {
-  const bubbles = mapDetectedBubbles(validateBubblesArray(data));
+  const bubbles = normalizeDetectedBubblesPayload(data);
   return {
     bubbles,
     rawPayload: { bubbles },

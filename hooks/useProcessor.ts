@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { ImageState, AIConfig, APIEndpoint, MaskRegion, Bubble, ContourRegion, mergeEndpointConfig } from '../types';
+import { ImageState, AIConfig, APIEndpoint, ImageAiResponseDebug, MaskRegion, Bubble, ContourRegion, mergeEndpointConfig } from '../types';
 import { detectAndTypesetComic, fetchRawDetectedRegions } from '../services/geminiService';
 import { generateMaskedImage, generateAnnotatedImage, generateDetectionGuideImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
+import { buildImageAiResponseDebugFromDetectionResult } from '../services/imageAiResponseDebug';
 import { initializeBubbleLayoutState } from '../services/layoutVariantBubbleState';
 import { isBubbleInsideMask, isMaskCleaned } from '../utils/editorUtils';
 import {
@@ -33,9 +34,10 @@ interface UseProcessorProps {
     aiConfig: AIConfig;
     updateEndpoint?: (endpointId: string, updates: Partial<APIEndpoint>) => void;
     clearImageAiResponseDebugByIds?: (imageIds: string[]) => void;
+    setImageAiResponseDebug?: (imageId: string, debug: ImageAiResponseDebug) => void;
 }
 
-export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint, clearImageAiResponseDebugByIds }: UseProcessorProps) => {
+export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint, clearImageAiResponseDebugByIds, setImageAiResponseDebug }: UseProcessorProps) => {
     const [isProcessingBatch, setIsProcessingBatch] = useState(false);
     const [processingType, setProcessingType] = useState<'translate' | 'scan' | 'inpaint' | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -423,6 +425,16 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint, clea
                 runId,
                 signal
             );
+
+            if (canWriteForRun(runId, signal)) {
+                setImageAiResponseDebug?.(
+                    img.id,
+                    buildImageAiResponseDebugFromDetectionResult(detectionResult, {
+                        provider: effectiveConfig.provider,
+                        model: effectiveConfig.model,
+                    }),
+                );
+            }
 
             // Success: Reset endpoint error count
             if (protectionMode === 'request' && endpointId && updateEndpoint) {

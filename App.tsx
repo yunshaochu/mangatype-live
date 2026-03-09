@@ -13,6 +13,7 @@ import { t } from './services/i18n';
 import { useCanvasInteraction } from './hooks/useCanvasInteraction';
 import { useProjectContext } from './contexts/ProjectContext';
 import { cropRegionFromImage } from './services/exportService';
+import { buildImageAiResponseDebug } from './services/imageAiResponseDebug';
 import { initializeBubbleLayoutState } from './services/layoutVariantBubbleState';
 import { getAdjacentBubbleLayoutIndex } from './services/layoutVariantProjection';
 
@@ -38,6 +39,7 @@ const App: React.FC = () => {
     showManualJson, setShowManualJson,
     setAiConfig,
     drawTool, setDrawTool, paintMode, setPaintMode,
+    setImageAiResponseDebug,
 
     // Inpainting
     handleInpaint,
@@ -616,7 +618,7 @@ const App: React.FC = () => {
 
       {showSettings && <SettingsModal config={aiConfig} onChange={(newConfig) => { const old = aiConfig.autoDetectBackground; setAiConfig(newConfig); if (newConfig.autoDetectBackground !== old) { if (newConfig.autoDetectBackground) handleGlobalColorDetection(concurrency); else handleGlobalColorReset(); } }} onClose={() => setShowSettings(false)} />}
       {showHelp && <HelpModal lang={lang} onClose={() => setShowHelp(false)} />}
-      {showManualJson && currentId && <ManualJsonModal config={aiConfig} maskRegions={currentImage?.maskRegions} onApply={(detected) => { console.log('[layout-variants]', 'manual-json-on-apply', { bubbleCount: detected.length, firstBubbleLayoutVariantCount: detected[0]?.layoutVariants?.length ?? 0, firstBubbleLayoutVariants: detected[0]?.layoutVariants }); const newBubbles: Bubble[] = detected.map(d => initializeBubbleLayoutState({ id: crypto.randomUUID(), x: d.x, y: d.y, width: d.width, height: d.height, sourceText: d.sourceText || d.source_text || d.ori_text || '', context: d.context && typeof d.context === 'object' ? d.context : undefined, layoutVariants: d.layoutVariants, text: d.text, isVertical: d.isVertical, fontFamily: 'noto', fontSize: aiConfig.defaultFontSize, color: '#000000', strokeColor: '#ffffff', backgroundColor: '#ffffff', rotation: 0 })); updateImageBubbles(currentId, newBubbles); setShowManualJson(false); }} onClose={() => setShowManualJson(false)} />}
+      {showManualJson && currentId && <ManualJsonModal config={aiConfig} maskRegions={currentImage?.maskRegions} onApply={(detected) => { console.log('[layout-variants]', 'manual-json-on-apply', { bubbleCount: detected.length, firstBubbleLayoutVariantCount: detected[0]?.layoutVariants?.length ?? 0, firstBubbleLayoutVariants: detected[0]?.layoutVariants }); const newBubbles: Bubble[] = detected.map(d => initializeBubbleLayoutState({ id: crypto.randomUUID(), x: d.x, y: d.y, width: d.width, height: d.height, sourceText: d.sourceText || '', context: d.context, layoutVariants: d.layoutVariants, text: d.text, isVertical: d.isVertical, fontFamily: 'noto', fontSize: aiConfig.defaultFontSize, color: '#000000', strokeColor: '#ffffff', backgroundColor: '#ffffff', rotation: 0 })); updateImageBubbles(currentId, newBubbles); setImageAiResponseDebug(currentId, buildImageAiResponseDebug({ bubbles: detected, sourceKind: 'manual_import' })); setShowManualJson(false); }} onClose={() => setShowManualJson(false)} />}
     </div>
   );
 };
