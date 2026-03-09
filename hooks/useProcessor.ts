@@ -32,9 +32,10 @@ interface UseProcessorProps {
     setImages: (newImagesOrUpdater: ImageState[] | ((prev: ImageState[]) => ImageState[]), skipHistory?: boolean) => void;
     aiConfig: AIConfig;
     updateEndpoint?: (endpointId: string, updates: Partial<APIEndpoint>) => void;
+    clearImageAiResponseDebugByIds?: (imageIds: string[]) => void;
 }
 
-export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: UseProcessorProps) => {
+export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint, clearImageAiResponseDebugByIds }: UseProcessorProps) => {
     const [isProcessingBatch, setIsProcessingBatch] = useState(false);
     const [processingType, setProcessingType] = useState<'translate' | 'scan' | 'inpaint' | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -1088,6 +1089,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             : `Reset status for all ${targets.length} images?`;
 
         if (confirm(msg)) {
+             clearImageAiResponseDebugByIds?.(targets.map(img => img.id));
              setImages(prev => prev.map(img => !img.skipped ? {
                  ...img,
                  status: 'idle',

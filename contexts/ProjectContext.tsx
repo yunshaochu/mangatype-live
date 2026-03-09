@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
-import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion, normalizeEndpointProtectionState } from '../types';
+import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion, ImageAiResponseDebug, normalizeEndpointProtectionState } from '../types';
 import { DEFAULT_TRANSLATION_PROMPT_PRESET } from '../types';
 import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
@@ -9,6 +9,11 @@ import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRe
 import { inpaintImage } from '../services/inpaintingService';
 import { loadAiConfigFromStorage, saveAiConfigToStorage } from '../services/aiConfigStorage';
 import { buildMainTextChangeUpdates } from '../services/layoutVariantBubbleState';
+import {
+  clearImageAiResponseDebugEntries,
+  pruneImageAiResponseDebugEntries,
+  setImageAiResponseDebugEntry,
+} from '../services/imageAiResponseDebugState';
 
 // --- Runtime Configuration Injection ---
 declare global {
@@ -236,6 +241,11 @@ interface ProjectContextType {
   flushPendingCommands: (imageId?: string) => Promise<void>;
   handleBoxFill: (imageId: string, maskId: string, color: string) => Promise<void>;
   handleBatchBoxFill: (scope: 'current' | 'all', color: string) => Promise<void>;
+  imageAiResponseDebugById: Record<string, ImageAiResponseDebug>;
+  getImageAiResponseDebug: (imageId: string) => ImageAiResponseDebug | undefined;
+  setImageAiResponseDebug: (imageId: string, debug: ImageAiResponseDebug | null) => void;
+  clearImageAiResponseDebug: (imageId: string) => void;
+  clearAllImageAiResponseDebug: () => void;
 
   // UI State
   drawTool: 'none' | 'bubble' | 'mask' | 'brush';
@@ -353,6 +363,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [zipCancelRequested, setZipCancelRequested] = useState(false);
   const [showGlobalStyles, setShowGlobalStyles] = useState(false);
   const [activeLayer, setActiveLayer] = useState<ViewLayer>('final');
+  const [imageAiResponseDebugById, setImageAiResponseDebugById] = useState<Record<string, ImageAiResponseDebug>>({});
   
   // Brush State
   const [brushColor, setBrushColor] = useState('#ffffff');
@@ -391,8 +402,37 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }));
   }, []);
 
+  const setImageAiResponseDebug = useCallback((imageId: string, debug: ImageAiResponseDebug | null) => {
+    setImageAiResponseDebugById(prev => setImageAiResponseDebugEntry(prev, imageId, debug));
+  }, []);
+
+  const clearImageAiResponseDebug = useCallback((imageId: string) => {
+    setImageAiResponseDebugById(prev => clearImageAiResponseDebugEntries(prev, [imageId]));
+  }, []);
+
+  const clearImageAiResponseDebugByIds = useCallback((imageIds: string[]) => {
+    setImageAiResponseDebugById(prev => clearImageAiResponseDebugEntries(prev, imageIds));
+  }, []);
+
+  const clearAllImageAiResponseDebug = useCallback(() => {
+    setImageAiResponseDebugById(prev => clearImageAiResponseDebugEntries(prev));
+  }, []);
+
+  const getImageAiResponseDebug = useCallback((imageId: string) => imageAiResponseDebugById[imageId], [imageAiResponseDebugById]);
+
+  useEffect(() => {
+    const activeImageIds = images.map(image => image.id);
+    setImageAiResponseDebugById(prev => pruneImageAiResponseDebugEntries(prev, activeImageIds));
+  }, [images]);
+
   // 3. Processor Logic
-  const processor = useProcessor({ images, setImages, aiConfig, updateEndpoint });
+  const processor = useProcessor({
+    images,
+    setImages,
+    aiConfig,
+    updateEndpoint,
+    clearImageAiResponseDebugByIds,
+  });
 
   // 4. Inpainting Logic
   const [isInpainting, setIsInpainting] = useState(false);
@@ -996,6 +1036,11 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     flushPendingCommands,
     handleBoxFill,
     handleBatchBoxFill,
+    imageAiResponseDebugById,
+    getImageAiResponseDebug,
+    setImageAiResponseDebug,
+    clearImageAiResponseDebug,
+    clearAllImageAiResponseDebug,
     // Brush
     brushColor, setBrushColor,
     brushSize, setBrushSize,
