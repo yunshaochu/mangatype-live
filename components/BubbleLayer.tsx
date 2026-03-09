@@ -4,7 +4,7 @@ import { Bubble, AIConfig, HandleType } from '../types';
 import { X } from 'lucide-react';
 import { handleStyle, HANDLE_OFFSET, clamp } from '../utils/editorUtils';
 import { getVerticalPunctuationTune } from '../utils/verticalPunctuation';
-import { getActiveBubbleLayoutState } from '../services/layoutVariantProjection';
+import { buildSteppedActiveBubbleFontSizeUpdate, getActiveBubbleLayoutState } from '../services/layoutVariantProjection';
 
 const tunedVerticalPunctuationStyle: React.CSSProperties = {
   display: 'inline-flex',
@@ -108,9 +108,7 @@ export const BubbleLayer: React.FC<BubbleLayerProps> = React.memo(({
         const delta = e.deltaY > 0 ? -1 : 1;
 
         if (e.ctrlKey || e.metaKey) {
-            const step = 0.1;
-            const newSize = Math.max(0.5, Math.min(10, currentBubble.fontSize + (delta * step)));
-            onUpdate(currentBubble.id, { fontSize: parseFloat(newSize.toFixed(1)) });
+            onUpdate(currentBubble.id, buildSteppedActiveBubbleFontSizeUpdate(currentBubble, delta));
         } else if (e.altKey) {
             const scale = delta > 0 ? 1.05 : 0.95;
             let newWidth = currentBubble.width * scale;

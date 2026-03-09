@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildActiveBubbleFontSizeUpdate,
+  buildSteppedActiveBubbleFontSizeUpdate,
   getActiveBubbleLayoutState,
   getAdjacentBubbleLayoutIndex,
 } from './layoutVariantProjection.ts';
@@ -35,9 +36,19 @@ assert.deepEqual(
   'font size edits on an active candidate should stay on that candidate',
 );
 assert.deepEqual(
+  buildSteppedActiveBubbleFontSizeUpdate(bubble, 1),
+  { layoutVariants: [{ text: '一二\n三四\n五六', fontSize: 1.2 }] },
+  'stepped font size edits should start from the active candidate font size',
+);
+assert.deepEqual(
   buildActiveBubbleFontSizeUpdate({ activeLayoutIndex: 0, layoutVariants: [], fontSize: 1.3 } as any, 1.5),
   { fontSize: 1.5 },
   'font size edits on the main result should keep updating the base bubble fontSize',
+);
+assert.deepEqual(
+  buildSteppedActiveBubbleFontSizeUpdate({ activeLayoutIndex: 1, layoutVariants: [{ text: '候选' }], fontSize: 1.3 } as any, 1),
+  { layoutVariants: [{ text: '候选', fontSize: 1.4 }] },
+  'stepped candidate edits should fall back to the bubble font size when the active candidate has no override yet',
 );
 
 console.log('layoutVariantProjection tests passed');

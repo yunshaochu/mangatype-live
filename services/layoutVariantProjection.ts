@@ -116,3 +116,15 @@ export const buildActiveBubbleFontSizeUpdate = (
 
   return { layoutVariants };
 };
+
+export const buildSteppedActiveBubbleFontSizeUpdate = (
+  bubble: Pick<Bubble, 'fontSize' | 'layoutVariants' | 'activeLayoutIndex'>,
+  deltaSteps: number,
+  stepSize: number = 0.1,
+): Pick<Bubble, 'fontSize' | 'layoutVariants'> => {
+  const activeLayoutIndex = getClampedBubbleLayoutIndex(bubble);
+  const activeVariant = activeLayoutIndex === 0 ? undefined : bubble.layoutVariants?.[activeLayoutIndex - 1];
+  const currentFontSize = activeVariant?.fontSize ?? bubble.fontSize;
+  const nextFontSize = Math.max(0.5, Math.min(10, currentFontSize + (deltaSteps * stepSize)));
+  return buildActiveBubbleFontSizeUpdate(bubble, parseFloat(nextFontSize.toFixed(1)));
+};
