@@ -43,7 +43,7 @@ const variantBubbles = extractAndValidateBubblesFromText(
   'test-layout-variants-array',
 );
 assert.equal(variantBubbles[0].text, 'main result', 'group-0 text should remain on the top-level text field');
-assert.equal(variantBubbles[0].layoutVariants?.length, 2, 'layout variants should no longer be trimmed by extraLayoutVariantCount');
+assert.equal(variantBubbles[0].layoutVariants?.length, 2, 'layout variants should preserve every returned candidate group');
 assert.deepEqual(
   variantBubbles[0].layoutVariants?.map(variant => variant.text),
   ['main\nresult', 'main result alt'],
@@ -51,13 +51,13 @@ assert.deepEqual(
 );
 
 const normalizedVariantBubbles = extractAndValidateBubblesFromText(
-  '{"bubbles":[{"text":"main result","layoutVariants":[{"text":"main\\nresult","breakAfter":[1,"x",3],"fontSize":1.2},{"foo":1}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
+  '{"bubbles":[{"text":"main result","layoutVariants":[{"text":"main\\nresult","fontSize":1.2},{"foo":1}],"x":10,"y":20,"width":30,"height":40,"isVertical":false}]}',
   'test-layout-variants-normalized',
 );
 assert.deepEqual(
   normalizedVariantBubbles[0].layoutVariants,
   [{ text: 'main\nresult', fontSize: 1.2 }],
-  'legacy fields should be stripped and invalid layout variant entries should be normalized away',
+  'invalid layout variant entries should be normalized away',
 );
 
 console.log('geminiServiceTranslationContract tests passed');

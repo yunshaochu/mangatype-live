@@ -10,9 +10,15 @@ const initialized = initializeBubbleLayoutState({
   layoutVariants: [{ text: 'Hello\nworld', fontSize: 1.1 }],
 } as any);
 
-assert.equal('baseText' in (initialized as Record<string, unknown>), false, 'initial layout state should not derive legacy baseText');
-assert.equal(initialized.activeLayoutIndex, 0, 'initial layout state should always start from the main result');
-assert.deepEqual(initialized.layoutVariants, [{ text: 'Hello\nworld', fontSize: 1.1 }], 'initial layout state should keep valid layout variants');
+assert.deepEqual(
+  initialized,
+  {
+    text: 'Hello\nworld',
+    layoutVariants: [{ text: 'Hello\nworld', fontSize: 1.1 }],
+    activeLayoutIndex: 0,
+  },
+  'initial layout state should keep valid layout variants and always start from the main result',
+);
 
 const changeUpdates = buildMainTextChangeUpdates({ text: '主结果' } as any, '新的\n主结果');
 assert.deepEqual(

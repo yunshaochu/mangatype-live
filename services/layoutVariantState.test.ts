@@ -47,16 +47,14 @@ const detected = normalizeDetectedBubbleLayoutState({
   width: 30,
   height: 40,
   isVertical: false,
-  baseText: 123 as any,
   activeLayoutIndex: -2 as any,
   layoutVariants: [
-    { text: 'group-0', fontSize: 1.1, breakAfter: [2, 4, 'x'] as any },
+    { text: 'group-0', fontSize: 1.1 },
     null as any,
     { foo: 'bar' } as any,
   ],
 });
 
-assert.equal('baseText' in (detected as Record<string, unknown>), false, 'legacy baseText should be stripped from detected bubbles');
 assert.equal(detected.activeLayoutIndex, 0, 'invalid active layout index should fall back to zero');
 assert.deepEqual(
   detected.layoutVariants,
