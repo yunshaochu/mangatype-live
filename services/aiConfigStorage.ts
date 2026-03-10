@@ -85,7 +85,14 @@ const AI_CONFIG_STORAGE_FIELDS = [
 
 const cloneSerializable = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
 
-const pickStoredAiConfig = (input: Partial<AIConfig>): Partial<AIConfig> => {
+type PickStoredAiConfigOptions = {
+  stripEffectiveConcurrency?: boolean;
+};
+
+const pickStoredAiConfig = (
+  input: Partial<AIConfig>,
+  { stripEffectiveConcurrency = true }: PickStoredAiConfigOptions = {},
+): Partial<AIConfig> => {
   const snapshot: Partial<AIConfig> = {};
 
   for (const key of AI_CONFIG_STORAGE_FIELDS) {
@@ -95,7 +102,7 @@ const pickStoredAiConfig = (input: Partial<AIConfig>): Partial<AIConfig> => {
     }
   }
 
-  if (Array.isArray(snapshot.endpoints)) {
+  if (stripEffectiveConcurrency && Array.isArray(snapshot.endpoints)) {
     snapshot.endpoints = snapshot.endpoints.map((endpoint: APIEndpoint) => {
       const { effectiveConcurrency, ...rest } = endpoint;
       return rest;
@@ -131,7 +138,7 @@ export const loadAiConfigFromStorage = (
   }
 
   const parsed = JSON.parse(saved) as Partial<AIConfig>;
-  const sanitized = pickStoredAiConfig(parsed);
+  const sanitized = pickStoredAiConfig(parsed, { stripEffectiveConcurrency: false });
   const merged: AIConfig = { ...defaultConfig, ...sanitized };
 
   merged.translationPromptPreset = normalizeTranslationPromptPreset(

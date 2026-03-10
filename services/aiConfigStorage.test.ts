@@ -104,6 +104,54 @@ assert.equal('endpointTestSettings' in exportedPayload, false, 'exported JSON sh
 assert.equal('effectiveConcurrency' in exportedPayload.endpoints[0], false, 'exported JSON should exclude runtime effectiveConcurrency');
 assert.equal(exportedPayload.translationPromptPreset, DEFAULT_TRANSLATION_PROMPT_PRESET, 'exported JSON should include translation prompt preset');
 
+const legacyStorageWithNormalMismatch = createStorage();
+legacyStorageWithNormalMismatch.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify({
+  endpoints: [{
+    id: 'legacy-normal',
+    name: 'Legacy Normal Endpoint',
+    enabled: true,
+    provider: 'openai',
+    apiKey: 'secret',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+    concurrency: 5,
+    effectiveConcurrency: 10,
+    protectionMode: 'normal',
+  }],
+}));
+
+const loadedNormalMismatch = loadAiConfigFromStorage(legacyStorageWithNormalMismatch, {
+  defaultConfig,
+  runtimeConfig: {},
+});
+assert.equal(loadedNormalMismatch.endpoints[0].concurrency, 5, 'normal endpoint concurrency should load');
+assert.equal(loadedNormalMismatch.endpoints[0].effectiveConcurrency, 5, 'normal endpoint should fix legacy U/E mismatch on load');
+assert.equal(loadedNormalMismatch.endpoints[0].protectionMode, 'normal', 'normal endpoint should remain in normal mode');
+
+const legacyStorageWithDegradedOverride = createStorage();
+legacyStorageWithDegradedOverride.setItem(AI_CONFIG_STORAGE_KEY, JSON.stringify({
+  endpoints: [{
+    id: 'legacy-degraded',
+    name: 'Legacy Degraded Endpoint',
+    enabled: true,
+    provider: 'openai',
+    apiKey: 'secret',
+    baseUrl: 'https://api.openai.com/v1',
+    model: 'gpt-4o-mini',
+    concurrency: 5,
+    effectiveConcurrency: 2,
+    protectionMode: 'degraded',
+  }],
+}));
+
+const loadedDegradedOverride = loadAiConfigFromStorage(legacyStorageWithDegradedOverride, {
+  defaultConfig,
+  runtimeConfig: {},
+});
+assert.equal(loadedDegradedOverride.endpoints[0].concurrency, 5, 'degraded endpoint concurrency should load');
+assert.equal(loadedDegradedOverride.endpoints[0].effectiveConcurrency, 2, 'degraded endpoint should preserve effectiveConcurrency override on load');
+assert.equal(loadedDegradedOverride.endpoints[0].protectionMode, 'degraded', 'degraded endpoint should remain degraded');
+
 assert.equal(isImportableAiConfig({ provider: 'openai' }), true, 'legacy flat config should remain importable');
 assert.equal(isImportableAiConfig({ language: 'zh' }), true, 'language-only snapshot should remain importable');
 assert.equal(isImportableAiConfig({ foo: 'bar' }), false, 'unrelated objects should be rejected');
