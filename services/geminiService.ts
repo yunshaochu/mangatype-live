@@ -12,8 +12,6 @@ import { getTranslationPromptPresetDefinition } from "./translationPromptPresets
 export const DEFAULT_FONT_SELECTION_PROMPT = `### 字体选择指南：
 
 大前提：如果漫画原图中有提供字体，请优先使用原图中的字体。
-大前提：如果漫画原图中有提供字体，请优先使用原图中的字体。
-大前提：如果漫画原图中有提供字体，请优先使用原图中的字体。
 
 如果没有，可以参考以下指南进行字体选择：
 - **'noto' (标准黑体)**：默认字体，适用于普通对话、旁白。
@@ -29,8 +27,6 @@ export const DEFAULT_FONT_SELECTION_PROMPT = `### 字体选择指南：
 export const DEFAULT_COLOR_SELECTION_PROMPT = `### 字色选择指南：
 
 大前提：如果漫画原图中有提供字体颜色，请优先使用原图中的颜色。
-大前提：如果漫画原图中有提供字体颜色，请优先使用原图中的颜色。
-大前提：如果漫画原图中有提供字体颜色，请优先使用原图中的颜色。
 
 
 如果没有，可以参考以下指南进行颜色选择：
@@ -42,8 +38,6 @@ export const DEFAULT_COLOR_SELECTION_PROMPT = `### 字色选择指南：
 
 export const DEFAULT_FONT_SIZE_SCALE_PROMPT = `### 字号选择指南：
 
-大前提：如果漫画原图中有提供字体大小，请优先使用原图中的字体大小。
-大前提：如果漫画原图中有提供字体大小，请优先使用原图中的字体大小。
 大前提：如果漫画原图中有提供字体大小，请优先使用原图中的字体大小。
 
 根据气泡的大小、文字的情绪强度和重要性，为每个气泡选择合适的字号档位。
@@ -79,7 +73,7 @@ export const DEFAULT_FONT_SIZE_DIRECT_PROMPT = `### 字号选择指南（直接�
 别把字号给太大了，不然会超出气泡的。
 
 ——————
-### 关于字号与候补排版（极度重要，千万不可遗漏）：
+### 关于字号与候补排版（不可遗漏）：
 由于漫画对话框尺寸限制，你必须在 \`layoutVariants\` 字段中提供至少2组备选的完整候选文本和字号组合！
 - **fontSize (默认)**：你认为最匹配当前对话框大小的字号。
 - **layoutVariants**：必须包含一个数组，提供额外的排版方案。

@@ -40,7 +40,7 @@ const SHARED_PROMPT_PREFIX = `你是一位专业的漫画嵌字师和翻译师�
    - **要求**：遮罩必须**紧密贴合**，完全覆盖文字像素但尽可能小。
 
 ### 输出格式（仅JSON）：
-返回严格有效的JSON对象。`;
+返回严格有效的JSON对象。json中的bubble是重要的key，不可遗漏。`;
 
 const SHARED_PROMPT_SUFFIX = `### 预检测文本区域：
 如果下方提供了坐标，表示这些是预先检测到的文本区域。
