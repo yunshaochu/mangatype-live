@@ -181,6 +181,13 @@ const RATE_LIMIT_KEYWORDS = [
   'requests per minute',
 ];
 
+const RATE_LIMIT_ERROR_TOKENS = new Set([
+  'rate_limit_exceeded',
+  'too_many_requests',
+  'resource_exhausted',
+  'insufficient_quota',
+]);
+
 const NETWORK_FAILURE_KEYWORDS = [
   'failed to fetch',
   'fetch failed',
@@ -349,6 +356,31 @@ export const classifyEndpointFailure = (error: any): EndpointFailureClassificati
       code: FAILURE_CODE_PARSE_BUBBLES_INVALID,
       shouldProtect: true,
       message: rawMessages[0] || 'Invalid bubble parsing failure',
+      rawMessages,
+    };
+  }
+
+  const explicitTokens = [
+    error?.code,
+    error?.type,
+    error?.cause?.code,
+    error?.cause?.type,
+    error?.error?.code,
+    error?.error?.type,
+    error?.response?.data?.error?.code,
+    error?.response?.data?.error?.type,
+    error?.cause?.response?.data?.error?.code,
+    error?.cause?.response?.data?.error?.type,
+  ]
+    .filter((token): token is string => typeof token === 'string' && token.trim().length > 0)
+    .map(token => token.toLowerCase());
+
+  if (explicitTokens.some(token => RATE_LIMIT_ERROR_TOKENS.has(token))) {
+    return {
+      code: FAILURE_CODE_HTTP_429,
+      shouldProtect: true,
+      statusCode: 429,
+      message: rawMessages[0] || 'Rate limit failure',
       rawMessages,
     };
   }

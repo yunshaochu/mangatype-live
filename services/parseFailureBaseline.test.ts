@@ -3,7 +3,7 @@ import {
   FAILURE_CODE_PARSE_BUBBLES_INVALID,
   FAILURE_CODE_UNKNOWN,
   classifyEndpointFailure,
-} from './apiProtection';
+} from './apiProtection.ts';
 
 type BaselineCase = {
   name: string;

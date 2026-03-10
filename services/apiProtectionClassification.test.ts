@@ -8,8 +8,8 @@ import {
   getRemainingPauseTime,
   handleEndpointError,
   isEndpointPaused,
-} from './apiProtection';
-import { APIEndpoint } from '../types';
+} from './apiProtection.ts';
+import type { APIEndpoint } from '../types.ts';
 
 const createEndpoint = (): APIEndpoint => ({
   id: 'ep-classify',
@@ -22,24 +22,79 @@ const createEndpoint = (): APIEndpoint => ({
   concurrency: 5,
 });
 
-const classifyCases = [
+type ClassifyCase = {
+  name: string;
+  input: any;
+  code: string;
+  shouldProtect: boolean;
+  statusCode?: number;
+};
+
+const classifyCases: ClassifyCase[] = [
   {
     name: 'http_429',
     input: { status: 429, message: 'Too Many Requests' },
     code: FAILURE_CODE_HTTP_429,
     shouldProtect: true,
+    statusCode: 429,
   },
   {
     name: 'http_503',
     input: { status: 503, message: 'Service Unavailable' },
     code: FAILURE_CODE_HTTP_503,
     shouldProtect: true,
+    statusCode: 503,
+  },
+  {
+    name: 'rate_limit_structured_response_data_error_code',
+    input: {
+      status: 200,
+      response: { status: 200, data: { error: { code: 'rate_limit_exceeded' } } },
+    },
+    code: FAILURE_CODE_HTTP_429,
+    shouldProtect: true,
+    statusCode: 429,
+  },
+  {
+    name: 'rate_limit_structured_top_level_code',
+    input: { status: 200, code: 'rate_limit_exceeded' },
+    code: FAILURE_CODE_HTTP_429,
+    shouldProtect: true,
+    statusCode: 429,
+  },
+  {
+    name: 'rate_limit_structured_response_data_error_type',
+    input: {
+      status: 200,
+      response: { status: 200, data: { error: { type: 'rate_limit_exceeded' } } },
+    },
+    code: FAILURE_CODE_HTTP_429,
+    shouldProtect: true,
+    statusCode: 429,
+  },
+  {
+    name: 'rate_limit_structured_top_level_type',
+    input: { status: 200, type: 'rate_limit_exceeded' },
+    code: FAILURE_CODE_HTTP_429,
+    shouldProtect: true,
+    statusCode: 429,
+  },
+  {
+    name: 'rate_limit_structured_in_cause_code',
+    input: {
+      message: 'wrapped error',
+      cause: { code: 'rate_limit_exceeded' },
+    },
+    code: FAILURE_CODE_HTTP_429,
+    shouldProtect: true,
+    statusCode: 429,
   },
   {
     name: 'network_failed_to_fetch',
     input: { message: 'Failed to fetch' },
     code: FAILURE_CODE_HTTP_503,
     shouldProtect: true,
+    statusCode: 503,
   },
   {
     name: 'openai_tool_args_parse_failure',
@@ -86,6 +141,9 @@ for (const testCase of classifyCases) {
   const result = classifyEndpointFailure(testCase.input);
   assert.equal(result.code, testCase.code, `code mismatch: ${testCase.name}`);
   assert.equal(result.shouldProtect, testCase.shouldProtect, `protect flag mismatch: ${testCase.name}`);
+  if (typeof testCase.statusCode === 'number') {
+    assert.equal(result.statusCode, testCase.statusCode, `status mismatch: ${testCase.name}`);
+  }
 }
 
 const protectionConfig = { durations: [30, 60, 120, 300, 600], disableThreshold: 2 };
