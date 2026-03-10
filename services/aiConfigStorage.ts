@@ -95,6 +95,13 @@ const pickStoredAiConfig = (input: Partial<AIConfig>): Partial<AIConfig> => {
     }
   }
 
+  if (Array.isArray(snapshot.endpoints)) {
+    snapshot.endpoints = snapshot.endpoints.map((endpoint: APIEndpoint) => {
+      const { effectiveConcurrency, ...rest } = endpoint;
+      return rest;
+    });
+  }
+
   return snapshot;
 };
 

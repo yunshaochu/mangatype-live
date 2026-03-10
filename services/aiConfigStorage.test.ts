@@ -70,6 +70,13 @@ const configWithTransientState = {
     apiKey: 'secret',
     baseUrl: 'https://api.openai.com/v1',
     model: 'gpt-4o-mini',
+    concurrency: 5,
+    effectiveConcurrency: 10,
+    protectionMode: 'normal',
+    pausedUntil: 123,
+    disableReasonCode: 'HTTP_429',
+    disableReasonMessage: 'rate limited',
+    protectionEpoch: 2,
   }],
   modelCache: ['should-not-export'],
   endpointTestSettings: { 'ep-1': { testFunctionCalling: true } },
@@ -84,11 +91,17 @@ assert.ok(storedJson, 'saveAiConfigToStorage should persist config');
 const storedPayload = JSON.parse(storedJson!);
 assert.equal('modelCache' in storedPayload, false, 'browser model cache should not be persisted into AIConfig storage');
 assert.equal('endpointTestSettings' in storedPayload, false, 'test settings should not be persisted into AIConfig storage');
+assert.equal('effectiveConcurrency' in storedPayload.endpoints[0], false, 'runtime effectiveConcurrency should not be persisted into AIConfig storage');
+assert.equal(storedPayload.endpoints[0].pausedUntil, 123, 'pausedUntil should remain persisted to preserve protection semantics');
+assert.equal(storedPayload.endpoints[0].disableReasonCode, 'HTTP_429', 'disableReasonCode should remain persisted to preserve protection semantics');
+assert.equal(storedPayload.endpoints[0].disableReasonMessage, 'rate limited', 'disableReasonMessage should remain persisted to preserve protection semantics');
+assert.equal(storedPayload.endpoints[0].protectionEpoch, 2, 'protectionEpoch should remain persisted to preserve protection semantics');
 assert.equal(storedPayload.translationPromptPreset, DEFAULT_TRANSLATION_PROMPT_PRESET, 'translation prompt preset should be persisted');
 
 const exportedPayload = JSON.parse(exportAiConfigJson(configWithTransientState));
 assert.equal('modelCache' in exportedPayload, false, 'exported JSON should exclude model cache');
 assert.equal('endpointTestSettings' in exportedPayload, false, 'exported JSON should exclude transient test settings');
+assert.equal('effectiveConcurrency' in exportedPayload.endpoints[0], false, 'exported JSON should exclude runtime effectiveConcurrency');
 assert.equal(exportedPayload.translationPromptPreset, DEFAULT_TRANSLATION_PROMPT_PRESET, 'exported JSON should include translation prompt preset');
 
 assert.equal(isImportableAiConfig({ provider: 'openai' }), true, 'legacy flat config should remain importable');
