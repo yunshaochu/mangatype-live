@@ -135,6 +135,16 @@ const classifyCases: ClassifyCase[] = [
     code: FAILURE_CODE_UNKNOWN,
     shouldProtect: false,
   },
+  {
+    name: 'unknown_remote_with_response',
+    input: {
+      status: 200,
+      response: { status: 200, data: { error: { message: 'some remote wrapper failure' } } },
+      message: 'OpenAI API Error: some remote wrapper failure',
+    },
+    code: FAILURE_CODE_UNKNOWN,
+    shouldProtect: true,
+  },
 ];
 
 for (const testCase of classifyCases) {

@@ -223,6 +223,7 @@ const PROTECTABLE_FAILURE_CODES = new Set<EndpointFailureCode>([
   FAILURE_CODE_HTTP_503,
   FAILURE_CODE_HTTP_502_OR_504,
   FAILURE_CODE_PARSE_BUBBLES_INVALID,
+  FAILURE_CODE_UNKNOWN,
 ]);
 
 const collectErrorMessages = (error: any): string[] => {
@@ -410,6 +411,24 @@ export const classifyEndpointFailure = (error: any): EndpointFailureClassificati
       shouldProtect: true,
       statusCode: 503,
       message: rawMessages[0] || 'Network failure',
+      rawMessages,
+    };
+  }
+
+  const hasRemoteSignal =
+    typeof statusFromError === 'number' ||
+    typeof error?.details?.status === 'number' ||
+    typeof error?.details?.statusCode === 'number' ||
+    !!error?.response ||
+    !!error?.details?.response ||
+    combinedMessage.includes('openai api error') ||
+    combinedMessage.includes('gemini request failed');
+
+  if (hasRemoteSignal) {
+    return {
+      code: FAILURE_CODE_UNKNOWN,
+      shouldProtect: true,
+      message: rawMessages[0] || 'Remote unknown failure',
       rawMessages,
     };
   }
