@@ -31,6 +31,13 @@
 2. degraded 端点：构造 `protectionMode='degraded'` 且 `E < U` 的端点（例如触发保护或手工写入），保存 `U` 增大时 `E` 不应被抬高；保存 `U` 降低到小于 `E` 时 `E` 应被约束。
 3. 刷新页面：normal 端点仍保持 `U==E`；degraded 端点保持预期保护语义。
 
+## 附加：UI/调度回归（MT-150）
+
+1. 打开 `apiProtectionStateMachineV2`（如有该开关），确认运行时调度按 `E` 限制并发（见 `hooks/useProcessor.ts:891`）。
+2. Endpoint capability tests：在 Provider Settings 中对端点运行测试，确认仍可执行且保存/编辑流程不报错。
+3. 暂停/停用指示：触发或构造 `pausedUntil/disableReason*` 后，列表徽标仍正确渲染（ProviderTab 的 Clock/Disabled 标签）。
+4. 保存不破坏保护字段：编辑端点并保存后，确认 `pausedUntil/disableReason*/protectionMode` 等保护字段未被意外清空。
+
 ## 关联实现位置
 
 - 保存同步：`components/settings/ProviderTab.tsx:305`
