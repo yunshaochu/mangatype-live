@@ -426,10 +426,12 @@ const normalizeOptionalText = (value: unknown): string | undefined => {
 
 export const normalizeEndpointProtectionState = (endpoint: APIEndpoint): APIEndpoint => {
   const configuredConcurrency = normalizePositiveInt(endpoint.concurrency) ?? DEFAULT_ENDPOINT_CONCURRENCY;
-  const effectiveConcurrency = normalizePositiveInt(endpoint.effectiveConcurrency) ?? configuredConcurrency;
   const protectionMode: APIProtectionMode = endpoint.protectionMode === 'degraded'
     ? 'degraded'
     : DEFAULT_ENDPOINT_PROTECTION_MODE;
+  const effectiveConcurrency = protectionMode === 'degraded'
+    ? normalizePositiveInt(endpoint.effectiveConcurrency) ?? configuredConcurrency
+    : configuredConcurrency;
 
   return {
     ...endpoint,
