@@ -8,6 +8,7 @@ import {
   getRemainingPauseTime,
   handleEndpointError,
   isEndpointPaused,
+  isProtectableError,
 } from './apiProtection.ts';
 import type { APIEndpoint } from '../types.ts';
 
@@ -162,6 +163,20 @@ for (const testCase of classifyCases) {
     assert.equal(result.statusCode, testCase.statusCode, `status mismatch: ${testCase.name}`);
   }
 }
+
+const protectRemoteUnknown = isProtectableError({
+  status: 200,
+  response: { status: 200, data: { error: { message: 'some remote wrapper failure' } } },
+  message: 'OpenAI API Error: some remote wrapper failure',
+});
+assert.equal(protectRemoteUnknown.shouldProtect, true);
+
+const protectLocalUnknown = isProtectableError({ message: 'socket reset by peer' });
+assert.equal(protectLocalUnknown.shouldProtect, false);
+
+const protectChineseRateLimit = isProtectableError({ message: '调用频率限制，请稍后再试' });
+assert.equal(protectChineseRateLimit.shouldProtect, true);
+assert.equal(protectChineseRateLimit.statusCode, 429);
 
 const protectionConfig = { durations: [30, 60, 120, 300, 600], disableThreshold: 2 };
 const endpoint429 = handleEndpointError(createEndpoint(), { status: 429, message: '429' }, protectionConfig);
