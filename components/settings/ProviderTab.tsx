@@ -307,7 +307,19 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     if (previous && (previous.provider !== ep.provider || previous.baseUrl !== ep.baseUrl)) {
       clearEndpointModelCache(localStorage, ep.id);
     }
-    updateEndpoints(endpoints.map(e => e.id === ep.id ? ep : e));
+    const merged: APIEndpoint = previous ? { ...previous, ...ep } : ep;
+    const userConcurrency = Math.max(1, merged.concurrency || 1);
+    const next: APIEndpoint = previous?.protectionMode === 'degraded'
+      ? {
+        ...merged,
+        effectiveConcurrency: Math.min(Math.max(1, previous.effectiveConcurrency || merged.effectiveConcurrency || userConcurrency), userConcurrency),
+      }
+      : {
+        ...merged,
+        effectiveConcurrency: userConcurrency,
+      };
+
+    updateEndpoints(endpoints.map(e => e.id === ep.id ? next : e));
     setTestSettings(prev => ({ ...prev, [ep.id]: nextTestSettings }));
     setEditingId(null);
   };
