@@ -179,6 +179,11 @@ const RATE_LIMIT_KEYWORDS = [
   'exceeded your current quota',
   'requests per min',
   'requests per minute',
+  // Chinese rate-limit phrases observed from proxy providers (keep minimal to avoid overmatching).
+  '调用频率限制',
+  '请求频率限制',
+  '频率限制',
+  '限流',
 ];
 
 const RATE_LIMIT_ERROR_TOKENS = new Set([

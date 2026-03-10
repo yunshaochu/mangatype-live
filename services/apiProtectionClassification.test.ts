@@ -90,6 +90,13 @@ const classifyCases: ClassifyCase[] = [
     statusCode: 429,
   },
   {
+    name: 'rate_limit_chinese_message_keyword',
+    input: { message: '调用频率限制，请稍后再试' },
+    code: FAILURE_CODE_HTTP_429,
+    shouldProtect: true,
+    statusCode: 429,
+  },
+  {
     name: 'network_failed_to_fetch',
     input: { message: 'Failed to fetch' },
     code: FAILURE_CODE_HTTP_503,
