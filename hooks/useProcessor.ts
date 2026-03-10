@@ -465,20 +465,20 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint, clea
             const failure = classifyEndpointFailure(e);
             const shouldProtectNow = protectionEnabled && failure.shouldProtect;
 
-            // IMPORTANT: Protectable errors (429/503 etc.) should pause immediately and stop retrying,
-            // otherwise we keep pressuring the provider.
-            if (shouldProtectNow && endpointId && updateEndpoint && protectionMode === 'request') {
-                const protectionConfig = {
-                    durations: aiConfigRef.current.apiProtectionDurations,
-                    disableThreshold: aiConfigRef.current.apiProtectionDisableThreshold,
-                };
-                dispatchEndpointProtectionUpdate(endpointId, 'REQUEST_FAILED', (endpoint) => {
-                    const { updatedEndpoint, shouldDisable } = handleEndpointError(endpoint, e, protectionConfig);
-                    if (shouldDisable) {
-                        console.warn(`Endpoint ${endpoint.name} auto-disabled due to repeated errors`);
-                    }
-                    return updatedEndpoint;
-                });
+             // IMPORTANT: Protectable errors (429/503 etc.) should pause immediately and stop retrying,
+             // otherwise we keep pressuring the provider.
+             if (shouldProtectNow && endpointId && updateEndpoint && protectionMode === 'request') {
+                 const protectionConfig = {
+                     durations: aiConfigRef.current.apiProtectionDurations,
+                     disableThreshold: aiConfigRef.current.apiProtectionDisableThreshold,
+                 };
+                await dispatchEndpointProtectionUpdate(endpointId, 'REQUEST_FAILED', (endpoint) => {
+                     const { updatedEndpoint, shouldDisable } = handleEndpointError(endpoint, e, protectionConfig);
+                     if (shouldDisable) {
+                         console.warn(`Endpoint ${endpoint.name} auto-disabled due to repeated errors`);
+                     }
+                     return updatedEndpoint;
+                 });
 
                 setImagesIfActive(
                     prev => prev.map(p => p.id === img.id ? {
