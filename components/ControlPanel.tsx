@@ -1,10 +1,11 @@
 ﻿
-import React from 'react';
-import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon, Eraser, Brush, Pipette, Hash, PaintBucket, MousePointerClick, History } from 'lucide-react';
+import React, { useState } from 'react';
+import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon, Eraser, Brush, Pipette, Hash, PaintBucket, MousePointerClick, History, BookOpen } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { createBubble } from '../utils/editorUtils';
 import { compositeImageWithCanvas, downloadAllAsZip, downloadSingleImage, compositeDispatch, ExportOptions } from '../services/exportService';
+import { ExportReaderModal } from './ExportReaderModal';
 
 const PRESET_BRUSH_COLORS = ['#ffffff', '#000000', '#f3f4f6', '#d1d5db'];
 
@@ -34,6 +35,7 @@ export const ControlPanel: React.FC = () => {
   const lang = aiConfig.language;
   const bubbles = currentImage?.bubbles || [];
   const [showZipCancelConfirm, setShowZipCancelConfirm] = React.useState(false);
+  const [showExportReader, setShowExportReader] = useState(false);
   const zipCancelRef = React.useRef(false);
   const zipCancelTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -532,6 +534,14 @@ export const ControlPanel: React.FC = () => {
 
           <div className="flex gap-1">
             <button
+              onClick={() => setShowExportReader(true)}
+              disabled={images.length === 0}
+              className="p-2 text-purple-400 hover:bg-gray-800 rounded disabled:opacity-30 transition-colors"
+              title={lang === 'zh' ? '导出阅读器' : 'Export Reader'}
+            >
+              <BookOpen size={16} />
+            </button>
+            <button
               onClick={onMergeLayers}
               disabled={!currentImage || isMerging || currentImage.bubbles.length === 0}
               className="p-2 text-orange-400 hover:bg-gray-800 rounded disabled:opacity-30 transition-colors"
@@ -581,6 +591,8 @@ export const ControlPanel: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showExportReader && <ExportReaderModal onClose={() => setShowExportReader(false)} />}
     </div>
   );
 };
