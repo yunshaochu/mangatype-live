@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { ImageState, AIConfig, APIEndpoint, MaskRegion, Bubble, ContourRegion, mergeEndpointConfig } from '../types';
-import { detectAndTypesetComic, fetchRawDetectedRegions } from '../services/geminiService';
+import { detectAndTypesetComic, fetchRawDetectedRegions, fetchRawDetectedRegionsV2 } from '../services/geminiService';
 import { generateMaskedImage, generateAnnotatedImage, generateDetectionGuideImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 import { isBubbleInsideMask, isMaskCleaned } from '../utils/editorUtils';
@@ -1126,7 +1126,9 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                             const detectionSource = img.detectionGuideLines && img.detectionGuideLines.length > 0
                                 ? await generateDetectionGuideImage(img.originalBase64 || img.base64, img.detectionGuideLines)
                                 : (img.originalBase64 || img.base64);
-                            const data = await fetchRawDetectedRegions(detectionSource, aiConfig.textDetectionApiUrl!);
+                            const data = aiConfig.detectApiVersion === 'v2'
+                                ? await fetchRawDetectedRegionsV2(detectionSource, aiConfig.textDetectionApiUrl!)
+                                : await fetchRawDetectedRegions(detectionSource, aiConfig.textDetectionApiUrl!);
 
                             // Process Rects (Expansion Logic)
                             const expansion = aiConfig.detectionExpansionRatio || 0;
@@ -1135,6 +1137,9 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                             const contours: ContourRegion[] = [];
 
                             originalRects.forEach((r) => {
+                                // V2: skip bubble detections — only map text to red boxes
+                                if (r.className === 'bubble') return;
+
                                 const maskId = crypto.randomUUID();
                                 const expandedWidth = r.width * (1 + expansion);
                                 const expandedHeight = r.height * (1 + expansion);

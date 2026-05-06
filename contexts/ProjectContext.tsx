@@ -144,6 +144,7 @@ const DEFAULT_CONFIG: AIConfig = {
   translationPromptPreset: DEFAULT_TRANSLATION_PROMPT_PRESET,
   defaultFontSize: 1.0,
   useTextDetectionApi: false,
+  detectApiVersion: 'v1',
   textDetectionApiUrl: runtimeConfig.TEXT_DETECTION_API_URL || 'http://localhost:5000',
   language: 'zh',
   customMessages: [{ role: 'user', content: '翻译' }],

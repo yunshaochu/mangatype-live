@@ -345,6 +345,7 @@ export interface AIConfig {
   drawMasksOnImage?: boolean; // Draw red boxes on image before sending to AI
   appendMasksToManualJson?: boolean; // Append mask coordinates to manual JSON prompt
   useTextDetectionApi?: boolean; // Toggle Local OCR
+  detectApiVersion?: 'v1' | 'v2'; // API version selector (default: 'v1')
   textDetectionApiUrl?: string;
   detectionExpansionRatio?: number; // New: 0.0 - 0.5 (Expansion rate for detected boxes)
   usePreciseFill?: boolean;       // Use text contour mask for fill instead of whole rect

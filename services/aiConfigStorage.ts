@@ -33,6 +33,7 @@ const AI_CONFIG_STORAGE_FIELDS = [
   'drawMasksOnImage',
   'appendMasksToManualJson',
   'useTextDetectionApi',
+  'detectApiVersion',
   'textDetectionApiUrl',
   'detectionExpansionRatio',
   'usePreciseFill',
@@ -139,7 +140,7 @@ export const loadAiConfigFromStorage = (
     merged.customMessages = defaultConfig.customMessages;
   }
 
-  if (runtimeConfig.TEXT_DETECTION_API_URL && sanitized.textDetectionApiUrl === 'http://localhost:5000') {
+  if (runtimeConfig.TEXT_DETECTION_API_URL && (sanitized.textDetectionApiUrl === 'http://localhost:5000' || sanitized.textDetectionApiUrl === 'http://localhost:5001')) {
     merged.textDetectionApiUrl = runtimeConfig.TEXT_DETECTION_API_URL;
   }
 

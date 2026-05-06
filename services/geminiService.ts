@@ -651,6 +651,66 @@ export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: strin
     }
 };
 
+// --- Detection API V2 Helper (RT-DETR-v2) ---
+
+export const fetchRawDetectedRegionsV2 = async (base64Image: string, apiUrl: string): Promise<{
+    rects: {x:number, y:number, width:number, height:number, className?: string}[],
+    maskBase64?: string
+}> => {
+    try {
+        const payload = {
+            image: `data:image/jpeg;base64,${base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "")}`,
+            conf_threshold: 0.5,
+        };
+
+        const response = await fetch(`${apiUrl}/detect`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            throw new Error(`Detection API V2 responded with ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.error || "API V2 returned failure");
+        }
+
+        if (!data.detections || !data.image_size) return { rects: [] };
+
+        const { width: imgW, height: imgH } = data.image_size;
+
+        const rects = data.detections.map((det: any) => {
+            const [x1, y1, x2, y2] = det.bbox;
+            const widthPx = x2 - x1;
+            const heightPx = y2 - y1;
+            const cxPx = x1 + widthPx / 2;
+            const cyPx = y1 + heightPx / 2;
+
+            const x = (cxPx / imgW) * 100;
+            const y = (cyPx / imgH) * 100;
+            const w = (widthPx / imgW) * 100;
+            const h = (heightPx / imgH) * 100;
+
+            return {
+                x,
+                y,
+                width: w,
+                height: h,
+                className: det.class_name,
+            };
+        });
+
+        return { rects };
+
+    } catch (e) {
+        console.warn("External detection API V2 failed:", e);
+        throw e;
+    }
+};
+
 // --- Main Function ---
 
 export const detectAndTypesetComic = async (
