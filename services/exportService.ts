@@ -1,5 +1,5 @@
 
-import { ImageState, Bubble, MaskRegion, DetectionGuideLine, FONTS, getFontStack } from '../types';
+import { ImageState, Bubble, MaskRegion, FONTS, getFontStack } from '../types';
 import JSZip from 'jszip';
 import { domToPng } from 'modern-screenshot';
 import { shouldExportOriginalImage } from './translationSemantics';
@@ -996,44 +996,6 @@ export const generateAnnotatedImage = async (image: ImageState): Promise<string>
         });
     }
     return canvas.toDataURL('image/jpeg', 0.9);
-};
-
-export const generateDetectionGuideImage = async (imageSrc: string, guideLines: DetectionGuideLine[]): Promise<string> => {
-    const img = await loadImage(imageSrc);
-    const canvas = document.createElement('canvas');
-    canvas.width = img.width;
-    canvas.height = img.height;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return imageSrc;
-
-    ctx.drawImage(img, 0, 0);
-
-    const outerWidth = Math.max(8, Math.round(Math.min(img.width, img.height) / 140));
-    const innerWidth = Math.max(4, Math.round(outerWidth * 0.55));
-
-    const drawStroke = (strokeStyle: string, lineWidth: number) => {
-        ctx.strokeStyle = strokeStyle;
-        ctx.lineWidth = lineWidth;
-        ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-
-        guideLines.forEach((guideLine) => {
-            if (!guideLine.points || guideLine.points.length < 2) return;
-            ctx.beginPath();
-            guideLine.points.forEach((point, index) => {
-                const x = (point.x / 100) * canvas.width;
-                const y = (point.y / 100) * canvas.height;
-                if (index === 0) ctx.moveTo(x, y);
-                else ctx.lineTo(x, y);
-            });
-            ctx.stroke();
-        });
-    };
-
-    drawStroke('#111111', outerWidth);
-    drawStroke('#22D3EE', innerWidth);
-
-    return canvas.toDataURL('image/jpeg', 0.95);
 };
 
 /**

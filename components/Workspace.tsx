@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { BubbleLayer } from './BubbleLayer';
 import { RegionLayer } from './RegionLayer';
-import { HandleType, DetectionPoint } from '../types';
+import { HandleType } from '../types';
 import { Maximize, Layers, Image as ImageIcon, Eraser, Trash2, Brush, MousePointerClick, Square } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
@@ -33,7 +33,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
     updateBubble, triggerAutoColorDetection,
     updateMaskRegion, // Added
     registerPaintFlushHandler,
-    isDetectionGuideMode, setIsDetectionGuideMode,
     // Brush
     brushColor, brushSize, setBrushColor, handlePaintSave, paintMode, setPaintMode,
     brushType, // 'paint' | 'restore'
@@ -58,7 +57,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   const [paintSaveError, setPaintSaveError] = useState<string | null>(null);
   const [legacyBrushCursorPos, setLegacyBrushCursorPos] = useState<{ x: number; y: number; d: number } | null>(null);
   const lastPos = useRef<{x: number, y: number} | null>(null);
-  const [guideDraftPoints, setGuideDraftPoints] = useState<DetectionPoint[] | null>(null);
 
   // --- Zoom / Pan State ---
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -80,7 +78,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   const perfFlagsRef = useRef({ phase1Enabled, phase2Enabled });
   const bubbles = currentImage?.bubbles || [];
   const maskRegions = currentImage?.maskRegions || [];
-  const detectionGuideLines = currentImage?.detectionGuideLines || [];
   const contours = currentImage?.contours || [];
   const phase2LowResThresholdPixels = Math.max(1, aiConfig.freehandLowResThresholdMp ?? 4) * 1_000_000;
   const phase2PreviewTargetPixels = Math.max(250_000, aiConfig.freehandPreviewTargetPixels ?? 1_500_000);
@@ -190,68 +187,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
 
     return layers;
   }, [maskRegions, contours]);
-
-  const detectionGuideDisplayLines = useMemo(() => {
-    const lines = detectionGuideLines
-      .map((line) => ({
-        key: line.id,
-        points: line.points.map(point => `${point.x},${point.y}`).join(' '),
-      }))
-      .filter(line => line.points);
-
-    if (guideDraftPoints && guideDraftPoints.length >= 2) {
-      lines.push({
-        key: 'draft-guide-line',
-        points: guideDraftPoints.map(point => `${point.x},${point.y}`).join(' '),
-      });
-    }
-
-    return lines;
-  }, [detectionGuideLines, guideDraftPoints]);
-
-  const getGuideCoords = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 100;
-    const y = ((e.clientY - rect.top) / rect.height) * 100;
-    return {
-      x: Math.max(0, Math.min(100, parseFloat(x.toFixed(2)))),
-      y: Math.max(0, Math.min(100, parseFloat(y.toFixed(2)))),
-    };
-  }, []);
-
-  const commitGuideLine = useCallback((points: DetectionPoint[] | null) => {
-    if (!currentId || !points || points.length < 2) return;
-    const [start, end] = points;
-    const distance = Math.hypot(end.x - start.x, end.y - start.y);
-    if (distance < 1) return;
-
-    setImages(prev => prev.map(img => img.id === currentId ? {
-      ...img,
-      detectionGuideLines: [...(img.detectionGuideLines || []), { id: crypto.randomUUID(), points }],
-    } : img));
-  }, [currentId, setImages]);
-
-  const handleGuideStart = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isDetectionGuideMode || drawTool !== 'mask' || spaceHeld.current) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const point = getGuideCoords(e);
-    setGuideDraftPoints([point, point]);
-  }, [drawTool, getGuideCoords, isDetectionGuideMode]);
-
-  const handleGuideMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (!guideDraftPoints || guideDraftPoints.length === 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const point = getGuideCoords(e);
-    setGuideDraftPoints([guideDraftPoints[0], point]);
-  }, [getGuideCoords, guideDraftPoints]);
-
-  const finishGuideLine = useCallback(() => {
-    if (!guideDraftPoints) return;
-    commitGuideLine(guideDraftPoints);
-    setGuideDraftPoints(null);
-  }, [commitGuideLine, guideDraftPoints]);
 
   // Determine display URL based strictly on Active Layer
   let displayUrl = currentImage ? (currentImage.originalUrl || currentImage.url) : '';
@@ -864,11 +799,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
   // Space key for panning mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.code === 'Escape' && isDetectionGuideMode) {
-        setGuideDraftPoints(null);
-        setIsDetectionGuideMode(false);
-        return;
-      }
       if (e.code === 'Space' && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
         e.preventDefault();
         if (!e.repeat) {
@@ -891,7 +821,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [isDetectionGuideMode, setIsDetectionGuideMode]);
+  }, []);
 
   // Pan mouse handlers
   const handlePanMouseDown = useCallback((e: MouseEvent) => {
@@ -1192,49 +1122,8 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               />
           ))}
 
-          {detectionGuideDisplayLines.length > 0 && (
-            <svg
-              className="absolute inset-0 z-[24] h-full w-full pointer-events-none"
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-            >
-              {detectionGuideDisplayLines.map(line => (
-                <React.Fragment key={line.key}>
-                  <polyline
-                    points={line.points}
-                    fill="none"
-                    stroke="#111111"
-                    strokeWidth="1.05"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                  <polyline
-                    points={line.points}
-                    fill="none"
-                    stroke="#22D3EE"
-                    strokeWidth="0.58"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </React.Fragment>
-              ))}
-            </svg>
-          )}
-
-          {drawTool === 'mask' && isDetectionGuideMode && !showPaintCanvas && (
-            <div
-              className="absolute inset-0 z-[25] cursor-crosshair pointer-events-auto"
-              onMouseDown={handleGuideStart}
-              onMouseMove={handleGuideMove}
-              onMouseUp={finishGuideLine}
-              onMouseLeave={finishGuideLine}
-            />
-          )}
-
           {/* Main Interaction Layer */}
-          {!showPaintCanvas && !isDetectionGuideMode && (
+          {!showPaintCanvas && (
               <div
                 className={`absolute inset-0 z-0 pointer-events-auto ${isPanMode ? 'cursor-grab' : drawTool !== 'none' ? 'cursor-crosshair' : 'cursor-default'}`}
                 onMouseDown={(e) => { if (!spaceHeld.current) onCanvasMouseDown(e); }}
@@ -1247,7 +1136,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               key={region.id}
               region={region}
               isSelected={selectedMaskId === region.id}
-              isInteractive={!showPaintCanvas && !isDetectionGuideMode}
+              isInteractive={!showPaintCanvas}
               onMouseDown={(e) => onMaskMouseDown(e, region.id)}
               onResizeStart={(e, handle) => onResizeStart(e, region.id, 'mask', handle)}
               onDelete={() => onDeleteMask(region.id)}
@@ -1262,7 +1151,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
               bubble={bubble}
               config={aiConfig}
               isSelected={selectedBubbleId === bubble.id}
-              isInteractive={!showPaintCanvas && !isDetectionGuideMode}
+              isInteractive={!showPaintCanvas}
               onMouseDown={(e) => onBubbleMouseDown(e, bubble.id)}
               onResizeStart={(e, handle) => onResizeStart(e, bubble.id, 'bubble', handle)}
               onUpdate={updateBubble}

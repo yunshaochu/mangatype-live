@@ -246,8 +246,6 @@ interface ProjectContextType {
   setShowManualJson: (show: boolean) => void;
   showHelp: boolean;
   setShowHelp: (show: boolean) => void;
-  isDetectionGuideMode: boolean;
-  setIsDetectionGuideMode: (enabled: boolean) => void;
   concurrency: number;
   setConcurrency: (n: number) => void;
   isMerging: boolean;
@@ -339,7 +337,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [showSettings, setShowSettings] = useState(false);
   const [showManualJson, setShowManualJson] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-  const [isDetectionGuideMode, setIsDetectionGuideMode] = useState(false);
   const [concurrency, setConcurrency] = useState(aiConfig.concurrency || 1);
 
   // Sync concurrency to aiConfig for persistence
@@ -945,7 +942,6 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
     showSettings, setShowSettings,
     showManualJson, setShowManualJson,
     showHelp, setShowHelp,
-    isDetectionGuideMode, setIsDetectionGuideMode,
     concurrency, setConcurrency: handleSetConcurrency,
     isMerging, setIsMerging,
     isZipping, setIsZipping,

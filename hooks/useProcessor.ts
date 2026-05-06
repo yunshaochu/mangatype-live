@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ImageState, AIConfig, APIEndpoint, MaskRegion, Bubble, ContourRegion, mergeEndpointConfig } from '../types';
 import { detectAndTypesetComic, fetchRawDetectedRegions, fetchRawDetectedRegionsV2 } from '../services/geminiService';
-import { generateMaskedImage, generateAnnotatedImage, generateDetectionGuideImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
+import { generateMaskedImage, generateAnnotatedImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 import { isBubbleInsideMask, isMaskCleaned } from '../utils/editorUtils';
 import {
@@ -1123,9 +1123,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                         if (controller.signal.aborted) return;
                         setImages(prev => prev.map(p => p.id === img.id ? { ...p, detectionStatus: 'processing' } : p));
                         try {
-                            const detectionSource = img.detectionGuideLines && img.detectionGuideLines.length > 0
-                                ? await generateDetectionGuideImage(img.originalBase64 || img.base64, img.detectionGuideLines)
-                                : (img.originalBase64 || img.base64);
+                            const detectionSource = img.originalBase64 || img.base64;
                             const data = aiConfig.detectApiVersion === 'v2'
                                 ? await fetchRawDetectedRegionsV2(detectionSource, aiConfig.textDetectionApiUrl!)
                                 : await fetchRawDetectedRegions(detectionSource, aiConfig.textDetectionApiUrl!);
@@ -1172,7 +1170,6 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                                 maskRegions,
                                 contours,
                                 maskRefinedBase64: maskRefinedBase64,
-                                detectionGuideLines: undefined,
                                 detectionStatus: 'done'
                             } : p));
                             return; // Success

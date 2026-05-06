@@ -80,16 +80,6 @@ export interface MaskRegion {
   fillMode?: 'rect' | 'contour' | 'baked'; // Overlay control: rect/contour render DOM overlay, baked hides overlay because pixels are already in image
 }
 
-export interface DetectionPoint {
-  x: number;
-  y: number;
-}
-
-export interface DetectionGuideLine {
-  id: string;
-  points: DetectionPoint[];
-}
-
 export interface DetectedBubble {
   sourceText?: string;
   context?: BubbleTranslationContext;
@@ -136,7 +126,6 @@ export interface ImageState {
   height: number;
   bubbles: Bubble[];
   maskRegions?: MaskRegion[]; // Store Mode 2 regions (Red Boxes)
-  detectionGuideLines?: DetectionGuideLine[]; // Temporary separator lines used only when rescanning detection
   contourSchemaVersion?: number;
   contours?: ContourRegion[];
   
