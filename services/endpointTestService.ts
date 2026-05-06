@@ -5,6 +5,7 @@ export interface EndpointSingleTestResult {
   ok: boolean;
   message: string;
   latencyMs: number;
+  status: 'pass' | 'fail' | 'skipped' | 'not_tested';
 }
 
 export interface EndpointCapabilityTestResult {
@@ -12,6 +13,31 @@ export interface EndpointCapabilityTestResult {
   functionCalling: EndpointSingleTestResult;
   jsonMode: EndpointSingleTestResult;
 }
+
+export interface EndpointCapabilityTestSettings {
+  testFunctionCalling: boolean;
+  testJsonMode: boolean;
+}
+
+export const DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS: EndpointCapabilityTestSettings = {
+  testFunctionCalling: false,
+  testJsonMode: false,
+};
+
+const buildTestResult = (
+  ok: boolean,
+  message: string,
+  latencyMs: number,
+  status: EndpointSingleTestResult['status'] = ok ? 'pass' : 'fail',
+): EndpointSingleTestResult => ({ ok, message, latencyMs, status });
+
+const createNotTestedResult = (message = 'Not tested'): EndpointSingleTestResult => (
+  buildTestResult(false, message, 0, 'not_tested')
+);
+
+const createSkippedResult = (message = 'Skipped'): EndpointSingleTestResult => (
+  buildTestResult(false, message, 0, 'skipped')
+);
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
@@ -35,9 +61,9 @@ const runGeminiBasic = async (config: AIConfig): Promise<EndpointSingleTestResul
     });
     const text = (response.text || '').trim().toLowerCase();
     const ok = text.includes('ok');
-    return { ok, message: ok ? 'Basic request succeeded' : 'No expected response text', latencyMs: Math.round(now() - start) };
+    return buildTestResult(ok, ok ? 'Basic request succeeded' : 'No expected response text', Math.round(now() - start));
   } catch (e: any) {
-    return { ok: false, message: formatErr(e), latencyMs: Math.round(now() - start) };
+    return buildTestResult(false, formatErr(e), Math.round(now() - start));
   }
 };
 
@@ -65,9 +91,9 @@ const runGeminiFunctionCalling = async (config: AIConfig): Promise<EndpointSingl
     });
 
     const called = !!response.functionCalls && response.functionCalls.length > 0;
-    return { ok: called, message: called ? 'Function call returned' : 'No function call returned', latencyMs: Math.round(now() - start) };
+    return buildTestResult(called, called ? 'Function call returned' : 'No function call returned', Math.round(now() - start));
   } catch (e: any) {
-    return { ok: false, message: formatErr(e), latencyMs: Math.round(now() - start) };
+    return buildTestResult(false, formatErr(e), Math.round(now() - start));
   }
 };
 
@@ -82,9 +108,9 @@ const runGeminiJsonMode = async (config: AIConfig): Promise<EndpointSingleTestRe
     });
     const parsed = JSON.parse(response.text || '{}');
     const ok = parsed?.ok === true;
-    return { ok, message: ok ? 'Valid JSON response' : 'JSON parsed but expected key missing', latencyMs: Math.round(now() - start) };
+    return buildTestResult(ok, ok ? 'Valid JSON response' : 'JSON parsed but expected key missing', Math.round(now() - start));
   } catch (e: any) {
-    return { ok: false, message: formatErr(e), latencyMs: Math.round(now() - start) };
+    return buildTestResult(false, formatErr(e), Math.round(now() - start));
   }
 };
 
@@ -102,13 +128,13 @@ const runOpenAIBasic = async (config: AIConfig): Promise<EndpointSingleTestResul
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      return { ok: false, message: data?.error?.message || `HTTP ${response.status}`, latencyMs: Math.round(now() - start) };
+      return buildTestResult(false, data?.error?.message || `HTTP ${response.status}`, Math.round(now() - start));
     }
     const text = (data?.choices?.[0]?.message?.content || '').toLowerCase();
     const ok = text.includes('ok');
-    return { ok, message: ok ? 'Basic request succeeded' : 'No expected response text', latencyMs: Math.round(now() - start) };
+    return buildTestResult(ok, ok ? 'Basic request succeeded' : 'No expected response text', Math.round(now() - start));
   } catch (e: any) {
-    return { ok: false, message: formatErr(e), latencyMs: Math.round(now() - start) };
+    return buildTestResult(false, formatErr(e), Math.round(now() - start));
   }
 };
 
@@ -140,13 +166,13 @@ const runOpenAIFunctionCalling = async (config: AIConfig): Promise<EndpointSingl
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      return { ok: false, message: data?.error?.message || `HTTP ${response.status}`, latencyMs: Math.round(now() - start) };
+      return buildTestResult(false, data?.error?.message || `HTTP ${response.status}`, Math.round(now() - start));
     }
     const toolCalls = data?.choices?.[0]?.message?.tool_calls || [];
     const ok = toolCalls.length > 0;
-    return { ok, message: ok ? 'Function call returned' : 'No function call returned', latencyMs: Math.round(now() - start) };
+    return buildTestResult(ok, ok ? 'Function call returned' : 'No function call returned', Math.round(now() - start));
   } catch (e: any) {
-    return { ok: false, message: formatErr(e), latencyMs: Math.round(now() - start) };
+    return buildTestResult(false, formatErr(e), Math.round(now() - start));
   }
 };
 
@@ -166,37 +192,64 @@ const runOpenAIJsonMode = async (config: AIConfig): Promise<EndpointSingleTestRe
 
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
-      return { ok: false, message: data?.error?.message || `HTTP ${response.status}`, latencyMs: Math.round(now() - start) };
+      return buildTestResult(false, data?.error?.message || `HTTP ${response.status}`, Math.round(now() - start));
     }
 
     const content = data?.choices?.[0]?.message?.content || '{}';
     const parsed = JSON.parse(content);
     const ok = parsed?.ok === true;
-    return { ok, message: ok ? 'Valid JSON response' : 'JSON parsed but expected key missing', latencyMs: Math.round(now() - start) };
+    return buildTestResult(ok, ok ? 'Valid JSON response' : 'JSON parsed but expected key missing', Math.round(now() - start));
   } catch (e: any) {
-    return { ok: false, message: formatErr(e), latencyMs: Math.round(now() - start) };
+    return buildTestResult(false, formatErr(e), Math.round(now() - start));
   }
+};
+
+export const runConfiguredEndpointCapabilityTests = async (
+  settings: EndpointCapabilityTestSettings,
+  runners: {
+    runBasic: () => Promise<EndpointSingleTestResult>;
+    runFunctionCalling: () => Promise<EndpointSingleTestResult>;
+    runJsonMode: () => Promise<EndpointSingleTestResult>;
+  },
+): Promise<EndpointCapabilityTestResult> => {
+  const basic = await runners.runBasic();
+
+  if (!basic.ok) {
+    return {
+      basic,
+      functionCalling: settings.testFunctionCalling ? createSkippedResult('Skipped due to basic failure') : createNotTestedResult(),
+      jsonMode: settings.testJsonMode ? createSkippedResult('Skipped due to basic failure') : createNotTestedResult(),
+    };
+  }
+
+  const functionCalling = settings.testFunctionCalling
+    ? await runners.runFunctionCalling()
+    : createNotTestedResult();
+  const jsonMode = settings.testJsonMode
+    ? await runners.runJsonMode()
+    : createNotTestedResult();
+
+  return { basic, functionCalling, jsonMode };
 };
 
 export const runEndpointCapabilityTests = async (
   globalConfig: AIConfig,
-  endpoint: APIEndpoint
+  endpoint: APIEndpoint,
+  settings: EndpointCapabilityTestSettings = DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS,
 ): Promise<EndpointCapabilityTestResult> => {
   const merged = mergeEndpointConfig(globalConfig, endpoint);
 
   if (endpoint.provider === 'gemini') {
-    const [basic, functionCalling, jsonMode] = await Promise.all([
-      runGeminiBasic(merged),
-      runGeminiFunctionCalling(merged),
-      runGeminiJsonMode(merged),
-    ]);
-    return { basic, functionCalling, jsonMode };
+    return runConfiguredEndpointCapabilityTests(settings, {
+      runBasic: () => runGeminiBasic(merged),
+      runFunctionCalling: () => runGeminiFunctionCalling(merged),
+      runJsonMode: () => runGeminiJsonMode(merged),
+    });
   }
 
-  const [basic, functionCalling, jsonMode] = await Promise.all([
-    runOpenAIBasic(merged),
-    runOpenAIFunctionCalling(merged),
-    runOpenAIJsonMode(merged),
-  ]);
-  return { basic, functionCalling, jsonMode };
+  return runConfiguredEndpointCapabilityTests(settings, {
+    runBasic: () => runOpenAIBasic(merged),
+    runFunctionCalling: () => runOpenAIFunctionCalling(merged),
+    runJsonMode: () => runOpenAIJsonMode(merged),
+  });
 };

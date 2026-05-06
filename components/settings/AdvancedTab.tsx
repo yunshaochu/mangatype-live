@@ -92,101 +92,216 @@ export const AdvancedTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
               <div className="mt-1 p-1.5 bg-amber-500/10 rounded text-amber-400"><RotateCw size={18}/></div>
               <div>
                 <h4 className="text-sm font-medium text-white mb-1">
-                  {lang === 'zh' ? 'Freehand 性能阶段开关' : 'Freehand Perf Phase Flags'}
+                  {lang === 'zh' ? '自由涂抹性能' : 'Freehand Performance'}
                 </h4>
                 <p className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors leading-relaxed">
                   {lang === 'zh'
-                    ? 'Phase1 可回退到旧直画链路；Phase2 预留灰度开关。'
-                    : 'Phase1 can rollback to legacy full-res path; Phase2 is rollout gate for future runtime.'}
+                    ? '只影响画笔、擦除、还原这类手动涂抹操作。详细说明按需展开查看。'
+                    : 'Only affects manual paint, erase, and restore actions. Expand the details only when you need them.'}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="mt-4 space-y-3">
-            <label className="flex items-center justify-between gap-3 rounded-lg border border-gray-700/70 bg-gray-900/40 px-3 py-2">
-              <div>
-                <p className="text-xs font-semibold text-gray-200">Phase1</p>
-                <p className="text-[11px] text-gray-500">
-                  {lang === 'zh' ? '热路径优化 + 异步保存 + history 合并' : 'Hot-path + async save + history merge'}
-                </p>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-gray-700/70 bg-gray-900/40 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-semibold text-gray-100">
+                      {lang === 'zh' ? '流畅画笔模式' : 'Smooth Brush Mode'}
+                    </p>
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                      {lang === 'zh' ? '推荐' : 'Recommended'}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-gray-400">
+                    {lang === 'zh'
+                      ? '让画笔更跟手，并减少抬笔保存时的卡顿。'
+                      : 'Makes the brush feel more responsive and reduces hitching after pen-up.'}
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={config.freehandPerfPhase1Enabled !== false}
+                    onChange={(e) => setConfig({ ...config, freehandPerfPhase1Enabled: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                </label>
               </div>
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-amber-500"
-                checked={config.freehandPerfPhase1Enabled !== false}
-                onChange={(e) => setConfig({ ...config, freehandPerfPhase1Enabled: e.target.checked })}
-              />
-            </label>
+              <details className="mt-3 rounded-lg border border-gray-800 bg-black/10 px-3 py-2 text-[11px] text-gray-400">
+                <summary className="cursor-pointer select-none text-gray-300 hover:text-white">
+                  {lang === 'zh' ? '了解更多' : 'Learn more'}
+                </summary>
+                <div className="mt-2 space-y-1 leading-relaxed">
+                  <p>
+                    {lang === 'zh'
+                      ? '开启后，自由涂抹会走更轻量的绘制路径，画笔移动更顺。'
+                      : 'When enabled, freehand drawing uses a lighter rendering path for smoother brush movement.'}
+                  </p>
+                  <p>
+                    {lang === 'zh'
+                      ? '抬笔后的保存会改到后台处理，减少“抬笔卡一下”的感觉。'
+                      : 'Saving after pen-up runs in the background to reduce the visible hitch right after you finish a stroke.'}
+                  </p>
+                  <p>
+                    {lang === 'zh'
+                      ? '短时间内连续的小涂抹会合并成一次撤销记录。关闭后会回到旧的兼容路径。'
+                      : 'Short back-to-back strokes are merged into a cleaner undo step. Turning it off falls back to the older compatibility path.'}
+                  </p>
+                </div>
+              </details>
+            </div>
 
-            <label className="flex items-center justify-between gap-3 rounded-lg border border-gray-700/70 bg-gray-900/40 px-3 py-2">
-              <div>
-                <p className="text-xs font-semibold text-gray-200">Phase2</p>
-                <p className="text-[11px] text-gray-500">
-                  {lang === 'zh' ? '预览/高清双层运行时（灰度预留）' : 'preview/working dual runtime (rollout gate)'}
-                </p>
+            <div className="rounded-xl border border-gray-700/70 bg-gray-900/40 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-semibold text-gray-100">
+                      {lang === 'zh' ? '大图加速模式' : 'Large Image Acceleration'}
+                    </p>
+                    <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                      {lang === 'zh' ? '实验' : 'Experimental'}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-relaxed text-gray-400">
+                    {lang === 'zh'
+                      ? '大图时先在缩小预览上即时显示笔迹，再后台同步到高清图。'
+                      : 'On large images, strokes appear first on a smaller preview and sync to the full-resolution image in the background.'}
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    className="sr-only peer"
+                    checked={config.freehandPerfPhase2Enabled === true}
+                    onChange={(e) => setConfig({ ...config, freehandPerfPhase2Enabled: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-amber-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-600"></div>
+                </label>
               </div>
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-amber-500"
-                checked={config.freehandPerfPhase2Enabled === true}
-                onChange={(e) => setConfig({ ...config, freehandPerfPhase2Enabled: e.target.checked })}
-              />
-            </label>
-
-            <div className="rounded-lg border border-gray-700/70 bg-gray-900/40 px-3 py-2 space-y-2">
-              <div className="grid grid-cols-3 gap-2 items-center">
-                <p className="text-[11px] text-gray-300">
-                  {lang === 'zh' ? '低清切换阈值(MP)' : 'Low-res Threshold (MP)'}
-                </p>
-                <input
-                  type="number"
-                  min={1}
-                  max={64}
-                  value={config.freehandLowResThresholdMp ?? 4}
-                  onChange={(e) => {
-                    const v = Math.max(1, Math.min(64, Number(e.target.value) || 4));
-                    setConfig({ ...config, freehandLowResThresholdMp: v });
-                  }}
-                  className="col-span-2 h-7 rounded border border-gray-600 bg-gray-800 px-2 text-xs text-gray-200 outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 items-center">
-                <p className="text-[11px] text-gray-300">
-                  {lang === 'zh' ? 'preview 目标像素' : 'Preview Target Pixels'}
-                </p>
-                <input
-                  type="number"
-                  min={250000}
-                  step={50000}
-                  value={config.freehandPreviewTargetPixels ?? 1500000}
-                  onChange={(e) => {
-                    const v = Math.max(250000, Number(e.target.value) || 1500000);
-                    setConfig({ ...config, freehandPreviewTargetPixels: v });
-                  }}
-                  className="col-span-2 h-7 rounded border border-gray-600 bg-gray-800 px-2 text-xs text-gray-200 outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-3 gap-2 items-center">
-                <p className="text-[11px] text-gray-300">
-                  {lang === 'zh' ? 'replay 批大小' : 'Replay Batch Size'}
-                </p>
-                <input
-                  type="number"
-                  min={8}
-                  max={4096}
-                  value={config.freehandReplayBatchSize ?? 120}
-                  onChange={(e) => {
-                    const v = Math.max(8, Math.min(4096, Number(e.target.value) || 120));
-                    setConfig({ ...config, freehandReplayBatchSize: v });
-                  }}
-                  className="col-span-2 h-7 rounded border border-gray-600 bg-gray-800 px-2 text-xs text-gray-200 outline-none focus:border-amber-500"
-                />
-              </div>
+              <details className="mt-3 rounded-lg border border-gray-800 bg-black/10 px-3 py-2 text-[11px] text-gray-400">
+                <summary className="cursor-pointer select-none text-gray-300 hover:text-white">
+                  {lang === 'zh' ? '了解更多' : 'Learn more'}
+                </summary>
+                <div className="mt-2 space-y-1 leading-relaxed">
+                  <p>
+                    {lang === 'zh'
+                      ? '这个模式只在超大图片上更明显：你看到的是更轻的预览层，后台会把同样的笔迹补到原始高清图。'
+                      : 'This is most noticeable on very large images: you interact with a lighter preview layer while the same stroke is replayed in the background on the original full-resolution image.'}
+                  </p>
+                  <p>
+                    {lang === 'zh'
+                      ? '最终保存仍以高清图为准，不会把成品降清晰度。'
+                      : 'Final saves still use the full-resolution image, so output quality is not reduced.'}
+                  </p>
+                  <p>
+                    {lang === 'zh'
+                      ? '代价是极大图片上可能会有很短暂的后台补算延迟；如果感觉异常，直接关闭即可。'
+                      : 'The tradeoff is a brief background catch-up delay on extremely large images. If it feels off, just turn it off.'}
+                  </p>
+                </div>
+              </details>
             </div>
           </div>
+
+          {config.freehandPerfPhase2Enabled === true ? (
+            <div className="mt-3 rounded-xl border border-gray-700/70 bg-gray-900/40 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-gray-100">
+                    {lang === 'zh' ? '大图加速参数' : 'Acceleration Settings'}
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-500">
+                    {lang === 'zh'
+                      ? '不确定怎么调时，保持默认值通常最稳。'
+                      : 'If you are unsure, the default values are usually the safest choice.'}
+                  </p>
+                </div>
+                <span className="rounded-full bg-gray-800 px-2 py-1 text-[10px] text-gray-400">
+                  {lang === 'zh' ? '仅实验模式生效' : 'Used only in experimental mode'}
+                </span>
+              </div>
+
+              <div className="mt-3 grid gap-3 md:grid-cols-3">
+                <label className="space-y-1">
+                  <span className="text-[11px] font-medium text-gray-200">
+                    {lang === 'zh' ? '启用阈值（MP）' : 'Threshold (MP)'}
+                  </span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={64}
+                    value={config.freehandLowResThresholdMp ?? 4}
+                    onChange={(e) => {
+                      const v = Math.max(1, Math.min(64, Number(e.target.value) || 4));
+                      setConfig({ ...config, freehandLowResThresholdMp: v });
+                    }}
+                    className="h-8 w-full rounded border border-gray-600 bg-gray-800 px-2 text-xs text-gray-200 outline-none focus:border-amber-500"
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-[11px] font-medium text-gray-200">
+                    {lang === 'zh' ? '预览清晰度' : 'Preview Clarity'}
+                  </span>
+                  <input
+                    type="number"
+                    min={250000}
+                    step={50000}
+                    value={config.freehandPreviewTargetPixels ?? 1500000}
+                    onChange={(e) => {
+                      const v = Math.max(250000, Number(e.target.value) || 1500000);
+                      setConfig({ ...config, freehandPreviewTargetPixels: v });
+                    }}
+                    className="h-8 w-full rounded border border-gray-600 bg-gray-800 px-2 text-xs text-gray-200 outline-none focus:border-amber-500"
+                  />
+                </label>
+
+                <label className="space-y-1">
+                  <span className="text-[11px] font-medium text-gray-200">
+                    {lang === 'zh' ? '补算速度' : 'Catch-up Speed'}
+                  </span>
+                  <input
+                    type="number"
+                    min={8}
+                    max={4096}
+                    value={config.freehandReplayBatchSize ?? 120}
+                    onChange={(e) => {
+                      const v = Math.max(8, Math.min(4096, Number(e.target.value) || 120));
+                      setConfig({ ...config, freehandReplayBatchSize: v });
+                    }}
+                    className="h-8 w-full rounded border border-gray-600 bg-gray-800 px-2 text-xs text-gray-200 outline-none focus:border-amber-500"
+                  />
+                </label>
+              </div>
+
+              <details className="mt-3 rounded-lg border border-gray-800 bg-black/10 px-3 py-2 text-[11px] text-gray-400">
+                <summary className="cursor-pointer select-none text-gray-300 hover:text-white">
+                  {lang === 'zh' ? '参数说明' : 'What these settings mean'}
+                </summary>
+                <div className="mt-2 space-y-1 leading-relaxed">
+                  <p>
+                    {lang === 'zh'
+                      ? '启用阈值：图片超过这个大小后，才会启用“先低清预览、后台补高清”的模式。'
+                      : 'Threshold: acceleration starts only when the image is larger than this size.'}
+                  </p>
+                  <p>
+                    {lang === 'zh'
+                      ? '预览清晰度：数值越高，编辑时看到的预览越清楚，但也更吃性能。'
+                      : 'Preview Clarity: higher values make the preview look sharper, but use more performance.'}
+                  </p>
+                  <p>
+                    {lang === 'zh'
+                      ? '补算速度：数值越高，后台把笔迹补到高清图上的速度越快，但也可能更占资源。'
+                      : 'Catch-up Speed: higher values replay strokes to the full-resolution image faster, but may use more resources.'}
+                  </p>
+                </div>
+              </details>
+            </div>
+          ) : null}
         </div>
 
         {/* Skipped Export Behavior */}
@@ -199,12 +314,13 @@ export const AdvancedTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                 <p className="text-xs text-gray-500 group-hover:text-gray-400 transition-colors leading-relaxed">{t('exportSkippedAsOriginalHint', lang)}</p>
               </div>
             </div>
-            <label className="relative inline-flex items-center cursor-pointer">
+            <label className="relative inline-flex items-center cursor-not-allowed opacity-70">
               <input
                 type="checkbox"
                 className="sr-only peer"
-                checked={config.exportSkippedAsOriginal === true}
-                onChange={(e) => setConfig({ ...config, exportSkippedAsOriginal: e.target.checked })}
+                checked={true}
+                disabled
+                readOnly
               />
               <div className="w-11 h-6 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-emerald-500/50 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
             </label>

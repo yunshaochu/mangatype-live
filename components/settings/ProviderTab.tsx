@@ -5,17 +5,38 @@ import { fetchAvailableModels } from '../../services/geminiService';
 import { AIProvider, APIEndpoint, mergeEndpointConfig } from '../../types';
 import { TabProps } from './types';
 import { isEndpointPaused, getRemainingPauseTime, formatPauseDuration, DEFAULT_API_PROTECTION_CONFIG } from '../../services/apiProtection';
-import { EndpointCapabilityTestResult, runEndpointCapabilityTests } from '../../services/endpointTestService';
+import { DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS, EndpointCapabilityTestResult, EndpointCapabilityTestSettings, runEndpointCapabilityTests } from '../../services/endpointTestService';
+import { clearEndpointModelCache, readEndpointModelCache, writeEndpointModelCache } from '../../services/endpointModelCache';
+import { getDisplayedProviderModels } from '../../services/providerModelFilter';
+import { buildProviderEndpointSections } from '../../services/providerEndpointSections';
+
+const getTestResultMeta = (result: EndpointCapabilityTestResult['basic'], lang: 'zh' | 'en') => {
+  if (result.status === 'pass') {
+    return { color: 'text-green-400', label: lang === 'zh' ? '通过' : 'Pass' };
+  }
+  if (result.status === 'skipped') {
+    return { color: 'text-yellow-400', label: lang === 'zh' ? '已跳过' : 'Skipped' };
+  }
+  if (result.status === 'not_tested') {
+    return { color: 'text-gray-400', label: lang === 'zh' ? '未测试' : 'Not tested' };
+  }
+  return { color: 'text-red-400', label: lang === 'zh' ? '失败' : 'Fail' };
+};
 
 const EndpointEditor: React.FC<{
   endpoint: APIEndpoint;
   config: any;
   lang: 'zh' | 'en';
   groups: string[];
-  onSave: (ep: APIEndpoint) => void;
+  testSettings: EndpointCapabilityTestSettings;
+  onSave: (ep: APIEndpoint, testSettings: EndpointCapabilityTestSettings) => void;
   onCancel: () => void;
-}> = ({ endpoint, config, lang, groups, onSave, onCancel }) => {
+}> = ({ endpoint, config, lang, groups, testSettings, onSave, onCancel }) => {
   const [draft, setDraft] = useState<APIEndpoint>({ ...endpoint });
+  const [draftTestSettings, setDraftTestSettings] = useState<EndpointCapabilityTestSettings>({
+    ...DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS,
+    ...testSettings,
+  });
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,14 +53,20 @@ const EndpointEditor: React.FC<{
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  useEffect(() => {
+    const cachedModels = readEndpointModelCache(localStorage, draft);
+    setAvailableModels(cachedModels ?? []);
+  }, [draft.id, draft.provider, draft.baseUrl]);
+
   const handleFetchModels = async () => {
     setLoadingModels(true);
     setError(null);
     try {
       const merged = mergeEndpointConfig(config, draft);
       const models = await fetchAvailableModels(merged);
+      setAvailableModels(models);
+      writeEndpointModelCache(localStorage, draft, models);
       if (models.length > 0) {
-        setAvailableModels(models);
         setIsDropdownOpen(true);
       } else {
         setError(draft.provider === 'openai' ? t('noModels', lang) : t('failedFetch', lang));
@@ -50,12 +77,7 @@ const EndpointEditor: React.FC<{
       setLoadingModels(false);
     }
   };
-  const displayedModels = (() => {
-    const current = draft.model.trim().toLowerCase();
-    if (!current) return availableModels;
-    const filtered = availableModels.filter(m => m.toLowerCase().includes(current));
-    return filtered.length > 0 ? filtered : availableModels;
-  })();
+  const displayedModels = getDisplayedProviderModels(availableModels, draft.model);
 
   return (
     <div className="p-4 bg-gray-800/50 rounded-xl border border-gray-700 space-y-4">
@@ -146,21 +168,73 @@ const EndpointEditor: React.FC<{
         {error && <div className="text-xs text-red-400 flex items-center gap-1 mt-1"><AlertCircle size={12}/> {error}</div>}
       </div>
 
-      {/* Capabilities */}
-      <div className="flex gap-4">
-        <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-300">
-          <input type="checkbox" checked={draft.modelSupportsFunctionCalling !== false}
-            onChange={e => setDraft({ ...draft, modelSupportsFunctionCalling: e.target.checked ? undefined : false })}
-            className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-500" />
-          Function Calling
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer text-xs text-gray-300">
-          <input type="checkbox" checked={draft.modelSupportsJsonMode !== false}
-            onChange={e => setDraft({ ...draft, modelSupportsJsonMode: e.target.checked ? undefined : false })}
-            className="w-3.5 h-3.5 rounded border-gray-600 bg-gray-700 text-blue-500" />
-          JSON Mode
-        </label>
-      </div>
+      <details className="rounded-xl border border-gray-700 bg-gray-900/30 px-3 py-3">
+        <summary className="cursor-pointer select-none text-xs font-semibold uppercase tracking-wider text-gray-300">
+          {lang === 'zh' ? '高级能力' : 'Advanced Capabilities'}
+        </summary>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div className="space-y-2 rounded-lg border border-gray-800 bg-black/10 p-3">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                {lang === 'zh' ? '运行时能力覆盖' : 'Runtime Capability Overrides'}
+              </label>
+              <p className="text-[11px] text-gray-500">
+                {lang === 'zh' ? '仅控制该端点翻译请求的能力字段。' : 'Only controls translation request capabilities for this endpoint.'}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                aria-pressed={draft.modelSupportsFunctionCalling !== false}
+                onClick={() => setDraft({ ...draft, modelSupportsFunctionCalling: draft.modelSupportsFunctionCalling === false ? undefined : false })}
+                className={`p-3 rounded-lg border text-left transition-all ${draft.modelSupportsFunctionCalling !== false ? 'bg-blue-600/15 border-blue-500/50 text-blue-200 ring-1 ring-blue-500/20' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
+              >
+                <div className="text-xs font-semibold">Function Calling</div>
+                <div className="text-[10px] mt-1 text-current/80">{draft.modelSupportsFunctionCalling !== false ? (lang === 'zh' ? '运行时已启用' : 'Runtime enabled') : (lang === 'zh' ? '运行时已关闭' : 'Runtime disabled')}</div>
+              </button>
+              <button
+                type="button"
+                aria-pressed={draft.modelSupportsJsonMode !== false}
+                onClick={() => setDraft({ ...draft, modelSupportsJsonMode: draft.modelSupportsJsonMode === false ? undefined : false })}
+                className={`p-3 rounded-lg border text-left transition-all ${draft.modelSupportsJsonMode !== false ? 'bg-indigo-600/15 border-indigo-500/50 text-indigo-200 ring-1 ring-indigo-500/20' : 'bg-gray-900 border-gray-700 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
+              >
+                <div className="text-xs font-semibold">JSON Mode</div>
+                <div className="text-[10px] mt-1 text-current/80">{draft.modelSupportsJsonMode !== false ? (lang === 'zh' ? '运行时已启用' : 'Runtime enabled') : (lang === 'zh' ? '运行时已关闭' : 'Runtime disabled')}</div>
+              </button>
+            </div>
+          </div>
+          <div className="space-y-2 rounded-lg border border-gray-800 bg-black/10 p-3">
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                {lang === 'zh' ? '测试设置' : 'Test Settings'}
+              </label>
+              <p className="text-[11px] text-gray-500">
+                {lang === 'zh' ? '基础测试始终执行；仅在勾选后追加高级测试。' : 'Basic test always runs; advanced tests run only when selected.'}
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                aria-pressed={draftTestSettings.testFunctionCalling}
+                onClick={() => setDraftTestSettings(prev => ({ ...prev, testFunctionCalling: !prev.testFunctionCalling }))}
+                className={`rounded-lg border px-3 py-2 text-left transition-all ${draftTestSettings.testFunctionCalling ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-200' : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
+              >
+                <div className="font-semibold">{lang === 'zh' ? '测试 FC' : 'Test FC'}</div>
+                <div className="mt-1 text-[10px] text-current/80">{lang === 'zh' ? '发送 Function Calling 探测请求' : 'Send Function Calling probe request'}</div>
+              </button>
+              <button
+                type="button"
+                aria-pressed={draftTestSettings.testJsonMode}
+                onClick={() => setDraftTestSettings(prev => ({ ...prev, testJsonMode: !prev.testJsonMode }))}
+                className={`rounded-lg border px-3 py-2 text-left transition-all ${draftTestSettings.testJsonMode ? 'border-indigo-500/50 bg-indigo-500/10 text-indigo-200' : 'border-gray-700 bg-gray-900 text-gray-400 hover:border-gray-600 hover:text-gray-200'}`}
+              >
+                <div className="font-semibold">{lang === 'zh' ? '测试 JSON' : 'Test JSON'}</div>
+                <div className="mt-1 text-[10px] text-current/80">{lang === 'zh' ? '发送 JSON Mode 探测请求' : 'Send JSON mode probe request'}</div>
+              </button>
+            </div>
+          </div>
+        </div>
+      </details>
 
       {/* Concurrency */}
       <div className="space-y-1">
@@ -174,7 +248,7 @@ const EndpointEditor: React.FC<{
 
       {/* Save / Cancel */}
       <div className="flex gap-2 pt-2">
-        <button onClick={() => onSave(draft)}
+        <button onClick={() => onSave(draft, draftTestSettings)}
           className="flex-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg py-2 text-xs font-bold transition-colors">
           {lang === 'zh' ? '保存' : 'Save'}
         </button>
@@ -192,6 +266,7 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
   const [groupNameDraft, setGroupNameDraft] = useState('');
   const [testingId, setTestingId] = useState<string | null>(null);
   const [testResults, setTestResults] = useState<Record<string, EndpointCapabilityTestResult>>({});
+  const [testSettings, setTestSettings] = useState<Record<string, EndpointCapabilityTestSettings>>({});
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   const endpoints = config.endpoints || [];
@@ -200,18 +275,7 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
 
   // Derive ordered unique groups from endpoint array
   const groups = Array.from(new Set(endpoints.map((ep: APIEndpoint) => ep.group).filter(Boolean))) as string[];
-
-  // Build group → endpoints map (preserving array order)
-  const groupedMap = new Map<string, APIEndpoint[]>();
-  const ungrouped: APIEndpoint[] = [];
-  endpoints.forEach((ep: APIEndpoint) => {
-    if (ep.group) {
-      if (!groupedMap.has(ep.group)) groupedMap.set(ep.group, []);
-      groupedMap.get(ep.group)!.push(ep);
-    } else {
-      ungrouped.push(ep);
-    }
-  });
+  const sections = buildProviderEndpointSections(endpoints);
 
   const updateEndpoints = (newEndpoints: APIEndpoint[]) => {
     const first = newEndpoints.find(ep => ep.enabled) || newEndpoints[0];
@@ -238,14 +302,30 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     setEditingId(newEp.id);
   };
 
-  const handleSave = (ep: APIEndpoint) => {
+  const handleSave = (ep: APIEndpoint, nextTestSettings: EndpointCapabilityTestSettings) => {
+    const previous = endpoints.find(e => e.id === ep.id);
+    if (previous && (previous.provider !== ep.provider || previous.baseUrl !== ep.baseUrl)) {
+      clearEndpointModelCache(localStorage, ep.id);
+    }
     updateEndpoints(endpoints.map(e => e.id === ep.id ? ep : e));
+    setTestSettings(prev => ({ ...prev, [ep.id]: nextTestSettings }));
     setEditingId(null);
   };
 
   const handleDelete = (id: string) => {
+    clearEndpointModelCache(localStorage, id);
     updateEndpoints(endpoints.filter(e => e.id !== id));
     if (editingId === id) setEditingId(null);
+    setTestResults(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+    setTestSettings(prev => {
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
   };
 
   const handleToggle = (id: string) => {
@@ -272,7 +352,7 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     }));
   };
 
-  const handleGroupToggle = (groupName: string, enable: boolean) => {
+  const handleGroupToggle = (groupName: string | undefined, enable: boolean) => {
     updateEndpoints(endpoints.map((e: APIEndpoint) => {
       if (e.group !== groupName) return e;
       if (enable) {
@@ -325,16 +405,20 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
     if (testingId) return;
     setTestingId(endpoint.id);
     try {
-      const result = await runEndpointCapabilityTests(config, endpoint);
+      const endpointTestSettings = {
+        ...DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS,
+        ...(testSettings[endpoint.id] || {}),
+      };
+      const result = await runEndpointCapabilityTests(config, endpoint, endpointTestSettings);
       setTestResults(prev => ({ ...prev, [endpoint.id]: result }));
     } catch (e: any) {
       const message = e?.message || 'Unknown error';
       setTestResults(prev => ({
         ...prev,
         [endpoint.id]: {
-          basic: { ok: false, message, latencyMs: 0 },
-          functionCalling: { ok: false, message: 'Skipped due to basic failure', latencyMs: 0 },
-          jsonMode: { ok: false, message: 'Skipped due to basic failure', latencyMs: 0 },
+          basic: { ok: false, message, latencyMs: 0, status: 'fail' },
+          functionCalling: { ok: false, message: 'Not tested', latencyMs: 0, status: 'not_tested' },
+          jsonMode: { ok: false, message: 'Not tested', latencyMs: 0, status: 'not_tested' },
         },
       }));
     } finally {
@@ -576,7 +660,7 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
           const renderEndpoint = (ep: APIEndpoint) => (
             <div key={ep.id}>
               {editingId === ep.id ? (
-                <EndpointEditor endpoint={ep} config={config} lang={lang} groups={groups} onSave={handleSave} onCancel={() => setEditingId(null)} />
+                <EndpointEditor endpoint={ep} config={config} lang={lang} groups={groups} testSettings={testSettings[ep.id] || DEFAULT_ENDPOINT_CAPABILITY_TEST_SETTINGS} onSave={handleSave} onCancel={() => setEditingId(null)} />
               ) : (
                 <>
                 <div className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${ep.enabled ? 'bg-gray-800/40 border-gray-700' : 'bg-gray-900/30 border-gray-800 opacity-50'}`}>
@@ -652,18 +736,18 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
                 </div>
                 {testResults[ep.id] && (
                   <div className="mt-1 p-2 rounded-lg border border-gray-700 bg-gray-900/40 text-[11px] space-y-1">
-                    <div className={`font-medium ${testResults[ep.id].basic.ok ? 'text-green-400' : 'text-red-400'}`}>
-                      {lang === 'zh' ? '基础可用性' : 'Basic'}: {testResults[ep.id].basic.ok ? (lang === 'zh' ? '通过' : 'Pass') : (lang === 'zh' ? '失败' : 'Fail')}
+                    <div className={`font-medium ${getTestResultMeta(testResults[ep.id].basic, lang).color}`}>
+                      {lang === 'zh' ? '基础可用性' : 'Basic'}: {getTestResultMeta(testResults[ep.id].basic, lang).label}
                       {' '}({testResults[ep.id].basic.latencyMs}ms) - {testResults[ep.id].basic.message}
                     </div>
                     <details>
                       <summary className="cursor-pointer text-gray-300">{lang === 'zh' ? '高级能力测试（可折叠）' : 'Advanced tests (collapsible)'}</summary>
                       <div className="mt-1 space-y-1 pl-2 border-l border-gray-700">
-                        <div className={testResults[ep.id].functionCalling.ok ? 'text-green-400' : 'text-red-400'}>
-                          Function Calling: {testResults[ep.id].functionCalling.ok ? 'Pass' : 'Fail'} ({testResults[ep.id].functionCalling.latencyMs}ms) - {testResults[ep.id].functionCalling.message}
+                        <div className={getTestResultMeta(testResults[ep.id].functionCalling, lang).color}>
+                          Function Calling: {getTestResultMeta(testResults[ep.id].functionCalling, lang).label} ({testResults[ep.id].functionCalling.latencyMs}ms) - {testResults[ep.id].functionCalling.message}
                         </div>
-                        <div className={testResults[ep.id].jsonMode.ok ? 'text-green-400' : 'text-red-400'}>
-                          JSON Mode: {testResults[ep.id].jsonMode.ok ? 'Pass' : 'Fail'} ({testResults[ep.id].jsonMode.latencyMs}ms) - {testResults[ep.id].jsonMode.message}
+                        <div className={getTestResultMeta(testResults[ep.id].jsonMode, lang).color}>
+                          JSON Mode: {getTestResultMeta(testResults[ep.id].jsonMode, lang).label} ({testResults[ep.id].jsonMode.latencyMs}ms) - {testResults[ep.id].jsonMode.message}
                         </div>
                       </div>
                     </details>
@@ -676,69 +760,55 @@ export const ProviderTab: React.FC<TabProps> = ({ config, setConfig, lang }) => 
 
           return (
             <>
-              {/* Named groups */}
-              {groups.map(groupName => {
-                const groupEps = groupedMap.get(groupName) || [];
-                const groupEnabled = groupEps.filter(e => e.enabled).length;
+              {sections.map(section => {
+                const sectionLabel = section.isUngrouped ? (lang === 'zh' ? '未分组' : 'Ungrouped') : section.groupName!;
+                const groupEnabled = section.endpoints.filter(e => e.enabled).length;
                 return (
-                  <div key={groupName} className="space-y-1.5">
+                  <div key={section.key} className="space-y-1.5">
                     {/* Group header */}
                     <div className="flex items-center gap-2">
-                      {editingGroupName === groupName ? (
+                      {!section.isUngrouped && editingGroupName === section.groupName ? (
                         <input
                           autoFocus
                           value={groupNameDraft}
                           onChange={e => setGroupNameDraft(e.target.value)}
-                          onBlur={() => { handleRenameGroup(groupName, groupNameDraft); setEditingGroupName(null); }}
+                          onBlur={() => { handleRenameGroup(section.groupName!, groupNameDraft); setEditingGroupName(null); }}
                           onKeyDown={e => {
-                            if (e.key === 'Enter') { handleRenameGroup(groupName, groupNameDraft); setEditingGroupName(null); }
+                            if (e.key === 'Enter') { handleRenameGroup(section.groupName!, groupNameDraft); setEditingGroupName(null); }
                             if (e.key === 'Escape') setEditingGroupName(null);
                           }}
                           className="text-xs font-semibold text-white bg-transparent border-b border-gray-500 outline-none min-w-0 w-28"
                         />
-                      ) : (
+                      ) : !section.isUngrouped ? (
                         <button
-                          onClick={() => { setEditingGroupName(groupName); setGroupNameDraft(groupName); }}
+                          onClick={() => { setEditingGroupName(section.groupName!); setGroupNameDraft(section.groupName!); }}
                           className="flex items-center gap-1 text-xs font-semibold text-gray-300 hover:text-white transition-colors group"
                           title={lang === 'zh' ? '点击重命名' : 'Click to rename'}
                         >
-                          {groupName}
+                          {sectionLabel}
                           <Pencil size={9} className="opacity-0 group-hover:opacity-40 transition-opacity" />
                         </button>
+                      ) : (
+                        <span className="text-xs font-semibold text-gray-300">{sectionLabel}</span>
                       )}
                       <div className="flex-1 h-px bg-gray-800" />
-                      <span className="text-[10px] text-gray-600">{groupEnabled}/{groupEps.length}</span>
-                      <button onClick={() => handleGroupToggle(groupName, false)}
+                      <span className="text-[10px] text-gray-600">{groupEnabled}/{section.endpoints.length}</span>
+                      <button onClick={() => handleGroupToggle(section.groupName, false)}
                         className="text-[10px] text-gray-400 hover:text-white px-1.5 py-0.5 rounded hover:bg-gray-700 transition-colors">
                         {lang === 'zh' ? '全关' : 'Off'}
                       </button>
-                      <button onClick={() => handleGroupToggle(groupName, true)}
+                      <button onClick={() => handleGroupToggle(section.groupName, true)}
                         className="text-[10px] text-green-400 hover:text-green-300 px-1.5 py-0.5 rounded hover:bg-green-900/20 transition-colors">
                         {lang === 'zh' ? '全开' : 'On'}
                       </button>
                     </div>
                     {/* Endpoints in group */}
                     <div className="space-y-1.5 pl-2 border-l border-gray-800">
-                      {groupEps.map(renderEndpoint)}
+                      {section.endpoints.map(renderEndpoint)}
                     </div>
                   </div>
                 );
               })}
-
-              {/* Ungrouped endpoints */}
-              {ungrouped.length > 0 && (
-                <div className="space-y-1.5">
-                  {groups.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-600">{lang === 'zh' ? '未分组' : 'Ungrouped'}</span>
-                      <div className="flex-1 h-px bg-gray-800" />
-                    </div>
-                  )}
-                  <div className={`space-y-1.5 ${groups.length > 0 ? 'pl-2 border-l border-gray-800' : ''}`}>
-                    {ungrouped.map(renderEndpoint)}
-                  </div>
-                </div>
-              )}
             </>
           );
         })()}

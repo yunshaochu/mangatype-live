@@ -1,13 +1,13 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import { ImageState, Bubble, AIConfig, APIEndpoint, ViewLayer, MaskRegion, normalizeEndpointProtectionState } from '../types';
+import { DEFAULT_TRANSLATION_PROMPT_PRESET } from '../types';
 import { useProjectState } from '../hooks/useProjectState';
 import { useProcessor } from '../hooks/useProcessor';
 import { DEFAULT_SYSTEM_PROMPT } from '../services/geminiService';
 import { getFillOverlayMode, isBubbleInsideMask, isMaskCleaned } from '../utils/editorUtils';
 import { detectBubbleColor, generateInpaintMask, restoreImageRegion, compositeRegionIntoImage, initScreenshotContainer, destroyScreenshotContainer, computeContourRects, dilateMaskImage, applyContourPreFill, bakeContourFillsIntoImage } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
-
-const STORAGE_KEY = 'mangatype_live_settings_v1';
+import { loadAiConfigFromStorage, saveAiConfigToStorage } from '../services/aiConfigStorage';
 
 // --- Runtime Configuration Injection ---
 declare global {
@@ -54,6 +54,7 @@ const buildContourIntersectionMasks = (image: ImageState, targetMasks: MaskRegio
       const top = contourY - contourH / 2;
       return {
         id: contour.id,
+        sourceMaskId: contour.sourceMaskId,
         base64: contour.base64,
         contourX,
         contourY,
@@ -67,6 +68,7 @@ const buildContourIntersectionMasks = (image: ImageState, targetMasks: MaskRegio
     })
     .filter((contour): contour is {
       id: string;
+      sourceMaskId?: string;
       base64: string;
       contourX: number;
       contourY: number;
@@ -89,6 +91,7 @@ const buildContourIntersectionMasks = (image: ImageState, targetMasks: MaskRegio
     const intersections: MaskRegion[] = [];
 
     for (const contour of preparedContours) {
+      if (contour.sourceMaskId && contour.sourceMaskId !== mask.id) continue;
       const contourX = contour.contourX;
       const contourY = contour.contourY;
       const contourW = contour.contourW;
@@ -138,8 +141,10 @@ const DEFAULT_CONFIG: AIConfig = {
     model: '',
   })],
   systemPrompt: DEFAULT_SYSTEM_PROMPT,
+  translationPromptPreset: DEFAULT_TRANSLATION_PROMPT_PRESET,
   defaultFontSize: 1.0,
   useTextDetectionApi: false,
+  detectApiVersion: 'v1',
   textDetectionApiUrl: runtimeConfig.TEXT_DETECTION_API_URL || 'http://localhost:5000',
   language: 'zh',
   customMessages: [{ role: 'user', content: '翻译' }],
@@ -182,7 +187,7 @@ const DEFAULT_CONFIG: AIConfig = {
   apiProtectionStateMachineV2: false,
   apiProtectionDurations: [30, 60, 120, 300, 600],
   apiProtectionDisableThreshold: 5,
-  exportSkippedAsOriginal: false,
+  exportSkippedAsOriginal: true,
   freehandPerfPhase1Enabled: true,
   freehandPerfPhase2Enabled: false,
   freehandLowResThresholdMp: 4,
@@ -303,53 +308,10 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // 2. AI Config State
   const [aiConfig, setAiConfig] = useState<AIConfig>(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (!parsed.customMessages) parsed.customMessages = DEFAULT_CONFIG.customMessages;
-        
-        // Merge with defaults
-        const merged = { ...DEFAULT_CONFIG, ...parsed };
-        
-        // --- Runtime Config Priority Logic ---
-        const runtime = getRuntimeConfig();
-
-        // 1. Text Detection API
-        // If runtime URL exists AND user is still using the default localhost URL, upgrade it.
-        // If user changed it manually, respect their choice.
-        if (runtime.TEXT_DETECTION_API_URL) {
-            if (parsed.textDetectionApiUrl === 'http://localhost:5000') {
-                merged.textDetectionApiUrl = runtime.TEXT_DETECTION_API_URL;
-            }
-        }
-
-        // 2. Inpainting API
-        if (runtime.IOPAINT_API_URL) {
-            if (parsed.inpaintingUrl === 'http://localhost:8080') {
-                merged.inpaintingUrl = runtime.IOPAINT_API_URL;
-            }
-        }
-
-        // 3. Migrate old flat config to endpoints array
-        if (!parsed.endpoints || !Array.isArray(parsed.endpoints) || parsed.endpoints.length === 0) {
-            merged.endpoints = [normalizeEndpointProtectionState({
-                id: crypto.randomUUID(),
-                name: parsed.provider === 'openai' ? 'OpenAI (Migrated)' : 'Gemini (Migrated)',
-                enabled: true,
-                provider: parsed.provider || 'openai',
-                apiKey: parsed.apiKey || '',
-                baseUrl: parsed.baseUrl || '',
-                model: parsed.model || 'gemini-3-flash-preview',
-                modelSupportsFunctionCalling: parsed.modelSupportsFunctionCalling,
-                modelSupportsJsonMode: parsed.modelSupportsJsonMode,
-            })];
-        }
-
-        merged.endpoints = (Array.isArray(merged.endpoints) ? merged.endpoints : [])
-          .map((ep: APIEndpoint) => normalizeEndpointProtectionState(ep));
-
-        return merged;
-      }
+      return loadAiConfigFromStorage(localStorage, {
+        defaultConfig: DEFAULT_CONFIG,
+        runtimeConfig: getRuntimeConfig(),
+      });
     } catch (e) { console.warn("Failed to load settings", e); }
     return DEFAULT_CONFIG;
   });
@@ -357,7 +319,7 @@ export const ProjectProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const aiConfigRef = useRef(aiConfig);
   useEffect(() => {
     aiConfigRef.current = aiConfig;
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(aiConfig)); } catch (e) { console.warn("Failed to save settings", e); }
+    try { saveAiConfigToStorage(localStorage, aiConfig); } catch (e) { console.warn("Failed to save settings", e); }
   }, [aiConfig]);
 
   // Destroy screenshot container when switching away from screenshot mode

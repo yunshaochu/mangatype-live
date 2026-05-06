@@ -107,6 +107,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
         const top = contourY - contourH / 2;
         return {
           id: contour.id,
+          sourceMaskId: contour.sourceMaskId,
           base64: contour.base64,
           contourX,
           contourY,
@@ -120,6 +121,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       })
       .filter((contour): contour is {
         id: string;
+        sourceMaskId?: string;
         base64: string;
         contourX: number;
         contourY: number;
@@ -149,6 +151,7 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       const maskBottom = maskTop + region.height;
 
       for (const contour of preparedContours) {
+        if (contour.sourceMaskId && contour.sourceMaskId !== region.id) continue;
         const contourLeft = contour.left;
         const contourTop = contour.top;
         const contourRight = contour.right;

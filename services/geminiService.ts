@@ -1,7 +1,8 @@
 
 import { GoogleGenAI, FunctionDeclaration, Type, FunctionCallingConfigMode } from "@google/genai";
-import { AIConfig, DetectedBubble, MaskRegion } from "../types";
+import { AIConfig, BubbleTranslationContext, DEFAULT_TRANSLATION_PROMPT_PRESET, DetectedBubble, MaskRegion } from "../types";
 import { FAILURE_CODE_PARSE_BUBBLES_INVALID, isProtectableError } from "./apiProtection";
+import { getTranslationPromptPresetDefinition } from "./translationPromptPresets";
 
 export const DEFAULT_FONT_SELECTION_PROMPT = `### 字体选择指南：
 
@@ -73,47 +74,7 @@ export const DEFAULT_FONT_SIZE_DIRECT_PROMPT = `### 字号选择指南（直接�
 别把字号给太大了，不然会超出气泡的。
 `;
 
-export const DEFAULT_SYSTEM_PROMPT = `你是一位专业的漫画嵌字师和翻译师。
-你的任务是识别漫画中的对话气泡，翻译文本并提供布局坐标。
-
-### 工作步骤：
-1. **检测**：识别所有包含有意义对话的气泡。
-   - **忽略**音效（SFX），除非用户明确要求翻译。
-2. **翻译**：将文本翻译为**简体中文**。
-   - 风格：自然、口语化的漫画风格。
-   - **换行**：尽量在视觉上匹配原文的换行方式。**不要过度换行**，仅在语义需要或气泡形状必要时换行。
-3. **字体选择**：根据对话的情绪和语境选择最合适的字体。
-4. **遮罩定位**：计算覆盖原文的边界框（中心x、中心y、宽度、高度，单位为百分比）。
-   - **要求**：遮罩必须**紧密贴合**，完全覆盖文字像素但尽可能小。
-
-### 输出格式（仅JSON）：
-返回严格有效的JSON对象。
-
-示例：
-{
-  "bubbles": [
-    {
-      "text": "第一行\\n第二行",
-      "x": 50.5,
-      "y": 30.0,
-      "width": 10.0,
-      "height": 15.0,
-      "isVertical": true,
-      "fontFamily": "noto"
-    }
-  ]
-}
-
-### 重要约束：
-- **isVertical**：如果气泡是竖排文字（漫画通常如此），'isVertical' 设为 true。
-- **竖排排版**：即使 isVertical 为 true，也不要每2-3个字符就强制换行，应自然换行。
-- **坐标系**：0-100 范围，相对于图片尺寸。
-- **安全输出**：不要在JSON中输出字面的 "\\n" 字符串，使用实际的转义换行符。
-
-### 预检测文本区域：
-如果下方提供了坐标，表示这些是预先检测到的文本区域。
-请将它们作为**参考锚点**——你可以微调坐标以获得更好的贴合效果，如果预检测遗漏或误识别了区域，也可以增加或删除气泡。
-`;
+export const DEFAULT_SYSTEM_PROMPT = getTranslationPromptPresetDefinition(DEFAULT_TRANSLATION_PROMPT_PRESET).defaultSystemPrompt;
 
 // --- Tool Definitions Base ---
 
@@ -129,7 +90,20 @@ const baseGeminiToolSchema: FunctionDeclaration = {
         items: {
           type: Type.OBJECT,
           properties: {
-            text: { type: Type.STRING, description: 'The translated Chinese text.' },
+            sourceText: { type: Type.STRING, description: 'The original Japanese text only. Preserve original line breaks. Do not translate.' },
+            context: {
+              type: Type.OBJECT,
+              description: 'Translation context. Fill this before writing the final translated text.',
+              properties: {
+                speaker: { type: Type.STRING, description: "Who is speaking. Use a role name, or '旁白', '独白', '不明'." },
+                situation: { type: Type.STRING, description: 'Brief scene, tone, or situation for this line.' },
+                preText: { type: Type.STRING, description: 'The most relevant line before this one. Use an empty string if unavailable.' },
+                postText: { type: Type.STRING, description: 'The most relevant line after this one. Use an empty string if unavailable.' },
+                translationHint: { type: Type.STRING, description: 'Short hint for how to translate this line more accurately.' },
+              },
+              required: ['speaker', 'situation', 'preText', 'postText', 'translationHint'],
+            },
+            text: { type: Type.STRING, description: 'The final translated Chinese text. Fill this after sourceText and context are determined.' },
             x: { type: Type.NUMBER, description: 'Center X % (0-100).' },
             y: { type: Type.NUMBER, description: 'Center Y % (0-100).' },
             width: { type: Type.NUMBER, description: 'Width % (0-100).' },
@@ -150,7 +124,7 @@ const baseGeminiToolSchema: FunctionDeclaration = {
             },
             // Rotation will be injected here if enabled
           },
-          required: ['text', 'x', 'y', 'width', 'height', 'isVertical'],
+          required: ['sourceText', 'context', 'text', 'x', 'y', 'width', 'height', 'isVertical'],
         },
       },
     },
@@ -169,7 +143,20 @@ const baseOpenAIToolSchema = {
         items: {
           type: 'object',
           properties: {
-            text: { type: 'string', description: 'The translated Chinese text.' },
+            sourceText: { type: 'string', description: 'The original Japanese text only. Preserve original line breaks. Do not translate.' },
+            context: {
+              type: 'object',
+              description: 'Translation context. Fill this before writing the final translated text.',
+              properties: {
+                speaker: { type: 'string', description: "Who is speaking. Use a role name, or '旁白', '独白', '不明'." },
+                situation: { type: 'string', description: 'Brief scene, tone, or situation for this line.' },
+                preText: { type: 'string', description: 'The most relevant line before this one. Use an empty string if unavailable.' },
+                postText: { type: 'string', description: 'The most relevant line after this one. Use an empty string if unavailable.' },
+                translationHint: { type: 'string', description: 'Short hint for how to translate this line more accurately.' },
+              },
+              required: ['speaker', 'situation', 'preText', 'postText', 'translationHint'],
+            },
+            text: { type: 'string', description: 'The final translated Chinese text. Fill this after sourceText and context are determined.' },
             x: { type: 'number', description: 'Center X % (0-100).' },
             y: { type: 'number', description: 'Center Y % (0-100).' },
             width: { type: 'number', description: 'Width % (0-100).' },
@@ -190,12 +177,46 @@ const baseOpenAIToolSchema = {
             }
             // Rotation will be injected here if enabled
           },
-          required: ['text', 'x', 'y', 'width', 'height', 'isVertical'],
+          required: ['sourceText', 'context', 'text', 'x', 'y', 'width', 'height', 'isVertical'],
         },
       },
     },
     required: ['bubbles'],
   },
+};
+
+const LEGACY_TEXT_DESCRIPTION = 'The translated Chinese text.';
+const CONTEXTUAL_TEXT_DESCRIPTION = 'The final translated Chinese text. Fill this after sourceText and context are determined.';
+
+const applyTranslationContractToBubbleSchema = (bubbleSchema: any, contract: ReturnType<typeof getTranslationPromptPresetDefinition>['contract']) => {
+  bubbleSchema.required = [...contract.requiredBubbleFields];
+
+  if (!contract.supportsSourceText) {
+    delete bubbleSchema.properties.sourceText;
+  }
+
+  if (!contract.supportsContext) {
+    delete bubbleSchema.properties.context;
+  } else if (bubbleSchema.properties.context) {
+    bubbleSchema.properties.context.required = [...contract.contextFields];
+  }
+
+  if (bubbleSchema.properties.text) {
+    bubbleSchema.properties.text.description = contract.requiresContext
+      ? CONTEXTUAL_TEXT_DESCRIPTION
+      : LEGACY_TEXT_DESCRIPTION;
+  }
+};
+
+const createTranslationToolSchemas = (config: AIConfig) => {
+  const presetDefinition = getTranslationPromptPresetDefinition(config.translationPromptPreset);
+  const geminiToolSchema = JSON.parse(JSON.stringify(baseGeminiToolSchema));
+  const openAIToolSchema = JSON.parse(JSON.stringify(baseOpenAIToolSchema));
+
+  applyTranslationContractToBubbleSchema(geminiToolSchema.parameters.properties.bubbles.items, presetDefinition.contract);
+  applyTranslationContractToBubbleSchema(openAIToolSchema.parameters.properties.bubbles.items, presetDefinition.contract);
+
+  return { presetDefinition, geminiToolSchema, openAIToolSchema };
 };
 
 // --- Helpers ---
@@ -207,6 +228,44 @@ const getGeminiClient = (apiKey?: string) => {
 const cleanDetectedText = (text: string): string => {
   if (!text) return "";
   return text.replace(/\\n/g, '\n');
+};
+
+const normalizeOptionalText = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') return undefined;
+  const cleaned = cleanDetectedText(value).trim();
+  return cleaned.length > 0 ? cleaned : undefined;
+};
+
+const normalizeBubbleContext = (bubble: any): BubbleTranslationContext | undefined => {
+  const rawContext = bubble?.context;
+  const contextObject = rawContext && typeof rawContext === 'object' && !Array.isArray(rawContext)
+    ? rawContext
+    : undefined;
+
+  const normalizedContext: BubbleTranslationContext = {
+    speaker: normalizeOptionalText(contextObject?.speaker ?? contextObject?.char ?? bubble?.speaker ?? bubble?.char),
+    situation: normalizeOptionalText(
+      contextObject?.situation
+      ?? contextObject?.scene
+      ?? (typeof rawContext === 'string' ? rawContext : undefined)
+    ),
+    preText: normalizeOptionalText(contextObject?.preText ?? contextObject?.pre_text ?? bubble?.preText ?? bubble?.pre_text),
+    postText: normalizeOptionalText(contextObject?.postText ?? contextObject?.post_text ?? bubble?.postText ?? bubble?.post_text),
+    translationHint: normalizeOptionalText(
+      contextObject?.translationHint
+      ?? contextObject?.hint
+      ?? contextObject?.note
+      ?? contextObject?.think
+      ?? bubble?.translationHint
+      ?? bubble?.think
+    ),
+  };
+
+  if (Object.values(normalizedContext).every(value => value == null || value.length === 0)) {
+    return undefined;
+  }
+
+  return normalizedContext;
 };
 
 const createParseBubblesError = (message: string, cause?: unknown): Error => {
@@ -342,7 +401,12 @@ export const extractAndValidateBubblesFromText = (text: string | undefined | nul
 };
 
 const mapDetectedBubbles = (bubbles: any[]): any[] => {
-  return bubbles.map((b: any) => ({ ...b, text: cleanDetectedText(b.text || b.translation) }));
+  return bubbles.map((bubble: any) => ({
+    ...bubble,
+    sourceText: normalizeOptionalText(bubble.sourceText || bubble.source_text || bubble.ori_text),
+    context: normalizeBubbleContext(bubble),
+    text: cleanDetectedText(bubble.text || bubble.translation),
+  }));
 };
 
 export const parseOpenAIToolCallArguments = (toolCall: any): any => {
@@ -570,7 +634,13 @@ export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: strin
             const w = (widthPx / imgW) * 100;
             const h = (heightPx / imgH) * 100;
             
-            return { x, y, width: w, height: h, maskContourBase64: block.mask_refined_region_base64 ?? undefined };
+            return {
+                x,
+                y,
+                width: w,
+                height: h,
+                maskContourBase64: block.mask_refined_region_base64 ?? undefined,
+            };
         });
 
         return { rects, maskBase64: data.mask_refined_base64 };
@@ -578,6 +648,66 @@ export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: strin
     } catch (e) {
         console.warn("External detection API failed:", e);
         throw e; // Re-throw to let the UI know it failed
+    }
+};
+
+// --- Detection API V2 Helper (RT-DETR-v2) ---
+
+export const fetchRawDetectedRegionsV2 = async (base64Image: string, apiUrl: string): Promise<{
+    rects: {x:number, y:number, width:number, height:number, className?: string}[],
+    maskBase64?: string
+}> => {
+    try {
+        const payload = {
+            image: `data:image/jpeg;base64,${base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "")}`,
+            conf_threshold: 0.5,
+        };
+
+        const response = await fetch(`${apiUrl}/detect`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            throw new Error(`Detection API V2 responded with ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!data.success) {
+            throw new Error(data.error || "API V2 returned failure");
+        }
+
+        if (!data.detections || !data.image_size) return { rects: [] };
+
+        const { width: imgW, height: imgH } = data.image_size;
+
+        const rects = data.detections.map((det: any) => {
+            const [x1, y1, x2, y2] = det.bbox;
+            const widthPx = x2 - x1;
+            const heightPx = y2 - y1;
+            const cxPx = x1 + widthPx / 2;
+            const cyPx = y1 + heightPx / 2;
+
+            const x = (cxPx / imgW) * 100;
+            const y = (cyPx / imgH) * 100;
+            const w = (widthPx / imgW) * 100;
+            const h = (heightPx / imgH) * 100;
+
+            return {
+                x,
+                y,
+                width: w,
+                height: h,
+                className: det.class_name,
+            };
+        });
+
+        return { rects };
+
+    } catch (e) {
+        console.warn("External detection API V2 failed:", e);
+        throw e;
     }
 };
 
@@ -590,7 +720,8 @@ export const detectAndTypesetComic = async (
     maskRegions?: MaskRegion[]
 ): Promise<DetectedBubble[]> => {
   const data = base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "");
-  let systemPrompt = config.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+  const { presetDefinition, geminiToolSchema, openAIToolSchema } = createTranslationToolSchemas(config);
+  let systemPrompt = config.systemPrompt || presetDefinition.defaultSystemPrompt;
 
   if (signal?.aborted) throw createAbortByUserError();
 
@@ -604,10 +735,6 @@ export const detectAndTypesetComic = async (
   if (config.allowAiRotation) {
       systemPrompt += `\n- DETECT ROTATION: Examine the visual orientation of the text. If the text line is tilted, estimate the 'rotation' angle in degrees (e.g., -15 for counter-clockwise, 10 for clockwise). Default is 0.`;
   }
-
-  // Clone schemas so we can modify them non-destructively
-  const geminiToolSchema = JSON.parse(JSON.stringify(baseGeminiToolSchema));
-  const openAIToolSchema = JSON.parse(JSON.stringify(baseOpenAIToolSchema));
 
   if (config.allowAiRotation) {
     geminiToolSchema.parameters.properties.bubbles.items.properties.rotation = { 
@@ -789,27 +916,35 @@ export const detectAndTypesetComic = async (
     const { history } = getCustomMessages(config, 'openai');
     
     try {
+      const openAIRequestBody: Record<string, any> = {
+        model: config.model,
+        messages: [
+          ...history,
+          {
+            role: "user",
+            content: [
+              { type: "text", text: systemPrompt + "\nRespond with a JSON object containing the bubbles." },
+              { type: "image_url", image_url: { url: `data:image/jpeg;base64,${data}` } }
+            ]
+          }
+        ],
+        stream: false,
+      };
+
+      if (config.modelSupportsFunctionCalling !== false) {
+        openAIRequestBody.tools = [{ type: 'function', function: openAIToolSchema }];
+        openAIRequestBody.tool_choice = 'auto';
+      }
+
+      if (config.modelSupportsJsonMode !== false) {
+        openAIRequestBody.response_format = { type: "json_object" };
+      }
+
       const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${config.apiKey}` },
         signal: signal,
-        body: JSON.stringify({
-          model: config.model,
-          messages: [
-            ...history,
-            {
-              role: "user",
-              content: [
-                { type: "text", text: systemPrompt + "\nRespond with a JSON object containing the bubbles." },
-                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${data}` } }
-              ]
-            }
-          ],
-          stream: false,
-          tools: [{ type: 'function', function: openAIToolSchema }],
-          tool_choice: 'auto',
-          response_format: { type: "json_object" }
-        })
+        body: JSON.stringify(openAIRequestBody)
       });
 
       let resData: any;

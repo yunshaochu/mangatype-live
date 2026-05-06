@@ -114,12 +114,54 @@ export const DetectionTab: React.FC<TabProps> = ({ config, setConfig, lang }) =>
 
           {config.useTextDetectionApi && (
             <div className="animate-fade-in-down pl-11 space-y-4">
+              {/* API Version Selector */}
+              <div>
+                <label className="text-xs font-medium text-gray-300 mb-1.5 block">{t('detectApiVersion', lang)}</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...config, detectApiVersion: 'v1' as const };
+                      if (!config.textDetectionApiUrl || config.textDetectionApiUrl === 'http://localhost:5001') {
+                        updated.textDetectionApiUrl = 'http://localhost:5000';
+                      }
+                      setConfig(updated);
+                    }}
+                    className={`flex-1 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                      (config.detectApiVersion || 'v1') === 'v1'
+                        ? 'bg-orange-500/20 border-orange-500/50 text-orange-300'
+                        : 'bg-gray-900 border-gray-700 text-gray-500 hover:border-gray-600'
+                    }`}
+                  >
+                    V1 <span className="opacity-60">ComicTextDetector</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const updated = { ...config, detectApiVersion: 'v2' as const };
+                      if (!config.textDetectionApiUrl || config.textDetectionApiUrl === 'http://localhost:5000') {
+                        updated.textDetectionApiUrl = 'http://localhost:5001';
+                      }
+                      setConfig(updated);
+                    }}
+                    className={`flex-1 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                      config.detectApiVersion === 'v2'
+                        ? 'bg-orange-500/20 border-orange-500/50 text-orange-300'
+                        : 'bg-gray-900 border-gray-700 text-gray-500 hover:border-gray-600'
+                    }`}
+                  >
+                    V2 <span className="opacity-60">RT-DETR-v2</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1">{t('detectApiVersionHint', lang)}</p>
+              </div>
+
               <div>
                 <input
                   type="text"
                   value={config.textDetectionApiUrl}
                   onChange={(e) => setConfig({ ...config, textDetectionApiUrl: e.target.value })}
-                  placeholder="http://localhost:5000"
+                  placeholder={(config.detectApiVersion || 'v1') === 'v1' ? 'http://localhost:5000' : 'http://localhost:5001'}
                   className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2.5 text-xs text-white focus:border-orange-500 outline-none placeholder-gray-600 font-mono"
                 />
                 <p className="text-[10px] text-gray-500 mt-1">

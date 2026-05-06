@@ -1,11 +1,10 @@
 ﻿
-import React, { useState } from 'react';
-import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon, Eraser, Brush, Pipette, Hash, PaintBucket, MousePointerClick, History, BookOpen } from 'lucide-react';
+import React from 'react';
+import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon, Eraser, Brush, Pipette, Hash, PaintBucket, MousePointerClick } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { createBubble } from '../utils/editorUtils';
 import { compositeImageWithCanvas, downloadAllAsZip, downloadSingleImage, compositeDispatch, ExportOptions } from '../services/exportService';
-import { ExportReaderModal } from './ExportReaderModal';
 
 const PRESET_BRUSH_COLORS = ['#ffffff', '#000000', '#f3f4f6', '#d1d5db'];
 
@@ -35,7 +34,6 @@ export const ControlPanel: React.FC = () => {
   const lang = aiConfig.language;
   const bubbles = currentImage?.bubbles || [];
   const [showZipCancelConfirm, setShowZipCancelConfirm] = React.useState(false);
-  const [showExportReader, setShowExportReader] = useState(false);
   const zipCancelRef = React.useRef(false);
   const zipCancelTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -88,7 +86,7 @@ export const ControlPanel: React.FC = () => {
       defaultMaskCornerRadius: aiConfig.defaultMaskCornerRadius,
       defaultMaskFeather: aiConfig.defaultMaskFeather,
       exportMethod: aiConfig.exportMethod || 'canvas',
-      exportSkippedAsOriginal: aiConfig.exportSkippedAsOriginal === true,
+      exportSkippedAsOriginal: true,
   });
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -325,21 +323,23 @@ export const ControlPanel: React.FC = () => {
                   <Square size={12} fill="currentColor" /> {t('stop', lang)}
                 </button>
               ) : (
-                <div className="grid grid-cols-2 gap-1 h-8">
-                  <button
-                    onClick={() => handleLocalDetectionScan(currentImage, false, concurrency)}
-                    className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                    title={t('scanCurrent', lang)}
-                  >
-                    <ScanText size={14} /> {t('scanCurrent', lang)}
-                  </button>
-                  <button
-                    onClick={() => handleLocalDetectionScan(currentImage, true, concurrency)}
-                    className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
-                    title={t('scanAll', lang)}
-                  >
-                    <Layers size={14} /> {t('scanAll', lang)}
-                  </button>
+                <div className="space-y-1">
+                  <div className="grid grid-cols-2 gap-1 h-8">
+                    <button
+                      onClick={() => handleLocalDetectionScan(currentImage, false, concurrency)}
+                      className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
+                      title={t('scanCurrent', lang)}
+                    >
+                      <ScanText size={14} /> {t('scanCurrent', lang)}
+                    </button>
+                    <button
+                      onClick={() => handleLocalDetectionScan(currentImage, true, concurrency)}
+                      className="bg-orange-900/40 hover:bg-orange-800/60 border border-orange-800 text-orange-200 rounded text-xs flex items-center justify-center gap-1 disabled:opacity-50"
+                      title={t('scanAll', lang)}
+                    >
+                      <Layers size={14} /> {t('scanAll', lang)}
+                    </button>
+                  </div>
                 </div>
               )}
             </>
@@ -534,14 +534,6 @@ export const ControlPanel: React.FC = () => {
 
           <div className="flex gap-1">
             <button
-              onClick={() => setShowExportReader(true)}
-              disabled={images.length === 0}
-              className="p-2 text-purple-400 hover:bg-gray-800 rounded disabled:opacity-30 transition-colors"
-              title={lang === 'zh' ? '导出阅读器' : 'Export Reader'}
-            >
-              <BookOpen size={16} />
-            </button>
-            <button
               onClick={onMergeLayers}
               disabled={!currentImage || isMerging || currentImage.bubbles.length === 0}
               className="p-2 text-orange-400 hover:bg-gray-800 rounded disabled:opacity-30 transition-colors"
@@ -591,8 +583,6 @@ export const ControlPanel: React.FC = () => {
           </div>
         </div>
       </div>
-
-      {showExportReader && <ExportReaderModal onClose={() => setShowExportReader(false)} />}
     </div>
   );
 };

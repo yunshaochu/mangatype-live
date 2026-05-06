@@ -606,7 +606,7 @@ const App: React.FC = () => {
 
       {showSettings && <SettingsModal config={aiConfig} onChange={(newConfig) => { const old = aiConfig.autoDetectBackground; setAiConfig(newConfig); if (newConfig.autoDetectBackground !== old) { if (newConfig.autoDetectBackground) handleGlobalColorDetection(concurrency); else handleGlobalColorReset(); } }} onClose={() => setShowSettings(false)} />}
       {showHelp && <HelpModal lang={lang} onClose={() => setShowHelp(false)} />}
-      {showManualJson && currentId && <ManualJsonModal config={aiConfig} maskRegions={currentImage?.maskRegions} onApply={(detected) => { const newBubbles: Bubble[] = detected.map(d => ({ id: crypto.randomUUID(), x: d.x, y: d.y, width: d.width, height: d.height, text: d.text, isVertical: d.isVertical, fontFamily: 'noto', fontSize: aiConfig.defaultFontSize, color: '#000000', strokeColor: '#ffffff', backgroundColor: '#ffffff', rotation: 0 })); updateImageBubbles(currentId, newBubbles); setShowManualJson(false); }} onClose={() => setShowManualJson(false)} />}
+      {showManualJson && currentId && <ManualJsonModal config={aiConfig} maskRegions={currentImage?.maskRegions} onApply={(detected) => { const newBubbles: Bubble[] = detected.map(d => ({ id: crypto.randomUUID(), x: d.x, y: d.y, width: d.width, height: d.height, sourceText: d.sourceText || d.source_text || d.ori_text || '', context: d.context && typeof d.context === 'object' ? d.context : undefined, text: d.text, isVertical: d.isVertical, fontFamily: 'noto', fontSize: aiConfig.defaultFontSize, color: '#000000', strokeColor: '#ffffff', backgroundColor: '#ffffff', rotation: 0 })); updateImageBubbles(currentId, newBubbles); setShowManualJson(false); }} onClose={() => setShowManualJson(false)} />}
     </div>
   );
 };

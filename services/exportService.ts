@@ -2,6 +2,7 @@
 import { ImageState, Bubble, MaskRegion, FONTS, getFontStack } from '../types';
 import JSZip from 'jszip';
 import { domToPng } from 'modern-screenshot';
+import { shouldExportOriginalImage } from './translationSemantics';
 import { getVerticalPunctuationTune } from '../utils/verticalPunctuation';
 
 // Helper to escape HTML characters to prevent breaking SVG XML
@@ -573,6 +574,7 @@ const resolveExportFillMasks = (imageState: ImageState): MaskRegion[] => {
             const top = contourY - contourH / 2;
             return {
                 id: contour.id,
+                sourceMaskId: contour.sourceMaskId,
                 base64: contour.base64,
                 contourX,
                 contourY,
@@ -588,6 +590,7 @@ const resolveExportFillMasks = (imageState: ImageState): MaskRegion[] => {
         })
         .filter((contour): contour is {
             id: string;
+            sourceMaskId?: string;
             base64: string;
             contourX: number;
             contourY: number;
@@ -617,6 +620,7 @@ const resolveExportFillMasks = (imageState: ImageState): MaskRegion[] => {
         let usedContourPool = false;
 
         for (const contour of preparedContours) {
+            if (contour.sourceMaskId && contour.sourceMaskId !== m.id) continue;
             const contourX = contour.contourX;
             const contourY = contour.contourY;
             const contourW = contour.contourW;
@@ -1927,8 +1931,8 @@ export const compositeImageWithScreenshot = async (imageState: ImageState, optio
  * Dispatcher: routes to canvas or screenshot export based on options.
  */
 export const compositeDispatch = async (imageState: ImageState, options?: ExportOptions): Promise<Blob | null> => {
-    // Optional behavior: skipped images can be exported as untouched original.
-    if (options?.exportSkippedAsOriginal && imageState.skipped) {
+    // Skip is a hard semantic: skipped images always export the untouched original.
+    if (shouldExportOriginalImage(imageState.skipped)) {
         const originalSrc = imageState.originalUrl
             || imageState.url
             || (imageState.originalBase64 ? imageState.originalBase64 : `data:image/png;base64,${imageState.base64}`);

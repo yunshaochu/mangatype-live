@@ -11,12 +11,35 @@ export type FontFamily =
   | 'longcang'  // 龙藏体 - 手写日记
   | 'liujian';  // 流浪毛草 - 草书艺术
 
+export type TranslationPromptPreset = 'contextual_v1' | 'legacy_loose_v0';
+
+export const DEFAULT_TRANSLATION_PROMPT_PRESET: TranslationPromptPreset = 'contextual_v1';
+
+export const isTranslationPromptPreset = (value: unknown): value is TranslationPromptPreset => (
+  value === 'contextual_v1' || value === 'legacy_loose_v0'
+);
+
+export const normalizeTranslationPromptPreset = (
+  value: unknown,
+  fallback: TranslationPromptPreset = DEFAULT_TRANSLATION_PROMPT_PRESET,
+): TranslationPromptPreset => (isTranslationPromptPreset(value) ? value : fallback);
+
+export interface BubbleTranslationContext {
+  speaker?: string;
+  situation?: string;
+  preText?: string;
+  postText?: string;
+  translationHint?: string;
+}
+
 export interface Bubble {
   id: string;
   x: number; // Center X percentage 0-100
   y: number; // Center Y percentage 0-100
   width: number; // Width percentage relative to image width
   height: number; // Height percentage relative to image height
+  sourceText?: string;
+  context?: BubbleTranslationContext;
   text: string;
   isVertical: boolean;
   fontFamily: FontFamily;
@@ -58,6 +81,8 @@ export interface MaskRegion {
 }
 
 export interface DetectedBubble {
+  sourceText?: string;
+  context?: BubbleTranslationContext;
   text: string;
   x: number;
   y: number;
@@ -74,7 +99,7 @@ export interface DetectedBubble {
 
 export interface ContourRegion {
   id: string;
-  base64: string;
+  base64?: string;
   anchor: { x: number; y: number };
   size: { w: number; h: number };
   rects?: Array<{ x: number; y: number; w: number; h: number }>;
@@ -300,6 +325,7 @@ export interface AIConfig {
   model: string;
   endpoints: APIEndpoint[];
   systemPrompt?: string;
+  translationPromptPreset?: TranslationPromptPreset;
   defaultFontSize: number;
   
   // Detection & Masks Tab
@@ -308,6 +334,7 @@ export interface AIConfig {
   drawMasksOnImage?: boolean; // Draw red boxes on image before sending to AI
   appendMasksToManualJson?: boolean; // Append mask coordinates to manual JSON prompt
   useTextDetectionApi?: boolean; // Toggle Local OCR
+  detectApiVersion?: 'v1' | 'v2'; // API version selector (default: 'v1')
   textDetectionApiUrl?: string;
   detectionExpansionRatio?: number; // New: 0.0 - 0.5 (Expansion rate for detected boxes)
   usePreciseFill?: boolean;       // Use text contour mask for fill instead of whole rect
@@ -367,7 +394,7 @@ export interface AIConfig {
 
   // Export
   exportMethod?: 'canvas' | 'screenshot'; // Default: 'canvas'
-  exportSkippedAsOriginal?: boolean; // If true, skipped images export as original image
+  exportSkippedAsOriginal?: boolean; // Persisted for compatibility; skipped images always export the original image
 
   // Freehand Performance Rollout
   freehandPerfPhase1Enabled?: boolean; // Phase 1: hot-path + async save + history merge
