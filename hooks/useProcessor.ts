@@ -94,6 +94,8 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
     // Always-fresh reference to latest aiConfig to avoid stale closure inside async workers.
     const aiConfigRef = useRef(aiConfig);
     useEffect(() => { aiConfigRef.current = aiConfig; }, [aiConfig]);
+    const imagesRef = useRef(images);
+    useEffect(() => { imagesRef.current = images; }, [images]);
     const protectionEventQueueRef = useRef<ReturnType<typeof createEndpointProtectionEventQueue> | null>(null);
     const endpointEventSeqRef = useRef<Map<string, number>>(new Map());
     const inFlightControllersByEndpointRef = useRef<Map<string, Set<AbortController>>>(new Map());
@@ -281,24 +283,22 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
         runId?: number
     ): Promise<DetectionRunResult> => {
         const effectiveConfig = configOverride || aiConfig;
-        const retries = getTranslateRetryBudget(effectiveConfig);
 
-        for (let attempt = 0; attempt <= retries; attempt++) {
-            if (signal?.aborted) {
-                return {
-                    ok: false,
-                    protectableFailure: false,
-                    abortedByTrip: signal.reason === 'endpoint_trip',
-                    abortedByDisable: signal.reason === 'endpoint_disabled',
-                };
-            }
-            setImagesIfActive(
-                prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing', errorMessage: attempt > 0 ? `Retry ${attempt}/${retries}...` : undefined } : p),
-                runId,
-                signal
-            );
+        if (signal?.aborted) {
+            return {
+                ok: false,
+                protectableFailure: false,
+                abortedByTrip: signal.reason === 'endpoint_trip',
+                abortedByDisable: signal.reason === 'endpoint_disabled',
+            };
+        }
+        setImagesIfActive(
+            prev => prev.map(p => p.id === img.id ? { ...p, status: 'processing' } : p),
+            runId,
+            signal
+        );
 
-            try {
+        try {
             // Always use original image for detection analysis
             let sourceBase64 = img.originalBase64 || img.base64;
             const useMaskedImage = effectiveConfig.enableMaskedImageMode && img.maskRegions && img.maskRegions.length > 0;
@@ -315,7 +315,6 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
 
             if (effectiveConfig.enableDialogSnap) {
                 if (img.maskRegions && img.maskRegions.length > 0) {
-                    // Build all (bubble, mask, distance) pairs within threshold
                     const pairs: { bi: number; mi: number; dist: number }[] = [];
                     detected.forEach((b, bi) => {
                         img.maskRegions!.forEach((mask, mi) => {
@@ -323,10 +322,8 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                             if (dist < 15) pairs.push({ bi, mi, dist });
                         });
                     });
-                    // Sort by distance so closest pairs match first
                     pairs.sort((a, b) => a.dist - b.dist);
 
-                    // Greedy one-to-one matching: each bubble and each mask used at most once
                     const usedBubbles = new Set<number>();
                     const usedMasks = new Set<number>();
                     const bubbleUpdates = new Map<number, MaskRegion>();
@@ -351,14 +348,11 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 }
             }
 
-            // Check for cleaned masks BEFORE color detection to avoid unnecessary work
             const cleanedMasks = (img.maskRegions || []).filter(isMaskCleaned);
 
             const processedBubbles = await Promise.all(finalDetected.map(async (d) => {
-                // First check if this bubble overlaps with any cleaned mask
                 const overlapsCleanedMask = cleanedMasks.some(m => isBubbleInsideMask(d.x, d.y, m.x, m.y, m.width, m.height));
 
-                // If overlapping cleaned mask, skip color detection and use transparent
                 let color = '#ffffff';
                 if (!overlapsCleanedMask && effectiveConfig.autoDetectBackground !== false) {
                     color = await detectBubbleColor(
@@ -399,7 +393,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     maskShape: effectiveConfig.defaultMaskShape,
                     maskCornerRadius: effectiveConfig.defaultMaskCornerRadius,
                     maskFeather: effectiveConfig.defaultMaskFeather,
-                    autoDetectBackground: false // Explicitly set to prevent later auto-detection from overriding
+                    autoDetectBackground: false
                 } as Bubble;
             }));
 
@@ -413,12 +407,11 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 signal
             );
 
-            // Success: Reset endpoint error count
             if (protectionMode === 'request' && endpointId && updateEndpoint) {
                 dispatchEndpointProtectionUpdate(endpointId, 'BATCH_SUCCEEDED', (endpoint) => handleEndpointSuccess(endpoint));
             }
 
-            return { ok: true, protectableFailure: false }; // Success, exit retry loop
+            return { ok: true, protectableFailure: false };
 
         } catch (e: any) {
             if (e?.name === 'AbortError' || signal?.aborted || (e.message && e.message.includes('Aborted'))) {
@@ -436,14 +429,12 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     errorMessage: e.message,
                 };
             }
-            console.error(`AI Error for ${img.name} (attempt ${attempt + 1}/${retries + 1})`, e);
+            console.error(`AI Error for ${img.name}`, e);
 
             const protectionEnabled = aiConfigRef.current.apiProtectionEnabled ?? true;
             const failure = classifyEndpointFailure(e);
             const shouldProtectNow = protectionEnabled && failure.shouldProtect;
 
-            // IMPORTANT: Protectable errors (429/503 etc.) should pause immediately and stop retrying,
-            // otherwise we keep pressuring the provider.
             if (shouldProtectNow && endpointId && updateEndpoint && protectionMode === 'request') {
                 const protectionConfig = {
                     durations: aiConfigRef.current.apiProtectionDurations,
@@ -492,8 +483,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 };
             }
 
-            // Non-protectable errors: only update protection state on last attempt
-            if (attempt === retries && endpointId && updateEndpoint && protectionEnabled && protectionMode === 'request') {
+            if (endpointId && updateEndpoint && protectionEnabled && protectionMode === 'request') {
                 const protectionConfig = {
                     durations: aiConfigRef.current.apiProtectionDurations,
                     disableThreshold: aiConfigRef.current.apiProtectionDisableThreshold,
@@ -504,11 +494,6 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 });
             }
 
-            if (attempt < retries) {
-                // Wait before retry (exponential backoff: 1s, 2s, 4s...)
-                await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
-                continue;
-            }
             setImagesIfActive(
                 prev => prev.map(p => p.id === img.id ? { ...p, status: 'error', errorMessage: e.message || 'Unknown error occurred' } : p),
                 runId,
@@ -521,8 +506,6 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                 errorMessage: e.message || 'Unknown error occurred',
             };
         }
-        } // end retry loop
-        return { ok: false, protectableFailure: false };
     };
 
     // --- Core Logic: Inpaint a Single Image ---
@@ -649,8 +632,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             const enabledEndpoints = translateEndpointState?.enabledEndpoints || [];
 
             const useStateMachineV2 = aiConfigRef.current.apiProtectionStateMachineV2 ?? false;
-            const retryBudget = task === 'translate' ? getTranslateRetryBudget() : 0;
-            const maxFailoverAttempts = retryBudget + 1;
+            const maxFailoverAttempts = 1;
             const retryStateByImage = new Map<string, { attemptCount: number; attemptedEndpointIds: string[]; lastErrorMessage?: string }>();
 
             const clearRetryState = (imageId: string) => {
@@ -1021,12 +1003,33 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
             }
             await processQueue([currentImage], 'translate', 1);
         } else {
-            const queue = images.filter(img => shouldTranslateImage(img.skipped) && (img.status === 'idle' || img.status === 'error'));
-            if (queue.length === 0) {
-                alert("All images are already processed or skipped.");
-                return;
+            const maxRounds = getTranslateRetryBudget() + 1;
+
+            for (let round = 0; round < maxRounds; round++) {
+                let nextQueue: ImageState[] = [];
+                let shouldBreak = false;
+
+                await new Promise<void>(resolve => {
+                    setImages(prev => {
+                        nextQueue = prev.filter(img => !img.skipped && img.status !== 'done');
+                        if (nextQueue.length === 0) {
+                            shouldBreak = true;
+                            resolve();
+                            return prev;
+                        }
+                        const updated = prev.map(img =>
+                            nextQueue.some(nd => nd.id === img.id)
+                                ? { ...img, status: 'idle' as const, errorMessage: undefined }
+                                : img
+                        );
+                        resolve();
+                        return updated;
+                    });
+                });
+
+                if (shouldBreak) break;
+                await processQueue(nextQueue, 'translate', concurrency);
             }
-            await processQueue(queue, 'translate', concurrency);
         }
     };
 
