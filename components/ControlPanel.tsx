@@ -1,6 +1,6 @@
 ﻿
 import React from 'react';
-import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon, Eraser, Brush, Pipette, Hash, PaintBucket, MousePointerClick } from 'lucide-react';
+import { MousePointer2, MessageSquareDashed, Scan, Square, Sparkles, Layers, RefreshCw, FileJson, ScanText, Palette, Zap, Loader2, FileStack, Image as ImageIcon, Archive, Type, Minus, Plus, ChevronDown, Plus as PlusIcon, Eraser, Brush, Pipette, Hash, PaintBucket, MousePointerClick, History } from 'lucide-react';
 import { t } from '../services/i18n';
 import { useProjectContext } from '../contexts/ProjectContext';
 import { createBubble } from '../utils/editorUtils';
