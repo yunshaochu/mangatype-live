@@ -151,7 +151,6 @@ export const Workspace: React.FC<WorkspaceProps> = ({
       const maskBottom = maskTop + region.height;
 
       for (const contour of preparedContours) {
-        if (contour.sourceMaskId && contour.sourceMaskId !== region.id) continue;
         const contourLeft = contour.left;
         const contourTop = contour.top;
         const contourRight = contour.right;

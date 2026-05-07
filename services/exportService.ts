@@ -620,7 +620,6 @@ const resolveExportFillMasks = (imageState: ImageState): MaskRegion[] => {
         let usedContourPool = false;
 
         for (const contour of preparedContours) {
-            if (contour.sourceMaskId && contour.sourceMaskId !== m.id) continue;
             const contourX = contour.contourX;
             const contourY = contour.contourY;
             const contourW = contour.contourW;

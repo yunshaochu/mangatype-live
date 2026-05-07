@@ -91,7 +91,6 @@ const buildContourIntersectionMasks = (image: ImageState, targetMasks: MaskRegio
     const intersections: MaskRegion[] = [];
 
     for (const contour of preparedContours) {
-      if (contour.sourceMaskId && contour.sourceMaskId !== mask.id) continue;
       const contourX = contour.contourX;
       const contourY = contour.contourY;
       const contourW = contour.contourW;
