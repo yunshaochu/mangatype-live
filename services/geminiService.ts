@@ -594,7 +594,7 @@ export const fetchAvailableModels = async (config: AIConfig): Promise<string[]> 
 // --- Detection API Helper ---
 
 export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: string): Promise<{
-    rects: {x:number, y:number, width:number, height:number, maskContourBase64?: string}[],
+    rects: {x:number, y:number, width:number, height:number, maskContourBase64?: string, className?: string, contourX?: number, contourY?: number, contourW?: number, contourH?: number}[],
     maskBase64?: string
 }> => {
     try {
@@ -653,15 +653,57 @@ export const fetchRawDetectedRegions = async (base64Image: string, apiUrl: strin
 
 // --- Detection API V2 Helper (RT-DETR-v2) ---
 
-export const fetchRawDetectedRegionsV2 = async (base64Image: string, apiUrl: string): Promise<{
-    rects: {x:number, y:number, width:number, height:number, className?: string}[],
+const boxIoU = (a: number[], b: number[]): number => {
+    const ax1 = Math.min(a[0], a[2]), ay1 = Math.min(a[1], a[3]);
+    const ax2 = Math.max(a[0], a[2]), ay2 = Math.max(a[1], a[3]);
+    const bx1 = Math.min(b[0], b[2]), by1 = Math.min(b[1], b[3]);
+    const bx2 = Math.max(b[0], b[2]), by2 = Math.max(b[1], b[3]);
+    const ix1 = Math.max(ax1, bx1), iy1 = Math.max(ay1, by1);
+    const ix2 = Math.min(ax2, bx2), iy2 = Math.min(ay2, by2);
+    const iw = Math.max(0, ix2 - ix1), ih = Math.max(0, iy2 - iy1);
+    const inter = iw * ih;
+    if (inter === 0) return 0;
+    const areaA = (ax2 - ax1) * (ay2 - ay1);
+    const areaB = (bx2 - bx1) * (by2 - by1);
+    return inter / (areaA + areaB - inter);
+};
+
+const loadMaskImage = (base64: string): Promise<HTMLImageElement> =>
+    new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = `data:image/png;base64,${base64}`;
+    });
+
+const cropMaskRegion = (
+    maskImg: HTMLImageElement,
+    x1: number, y1: number, x2: number, y2: number
+): string | undefined => {
+    const w = Math.round(x2 - x1);
+    const h = Math.round(y2 - y1);
+    if (w <= 0 || h <= 0) return undefined;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return undefined;
+    ctx.drawImage(maskImg, Math.round(x1), Math.round(y1), w, h, 0, 0, w, h);
+    return canvas.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+};
+
+export const fetchRawDetectedRegionsV2 = async (base64Image: string, apiUrl: string, returnTextContours: boolean = false): Promise<{
+    rects: {x:number, y:number, width:number, height:number, className?: string, maskContourBase64?: string, contourX?: number, contourY?: number, contourW?: number, contourH?: number}[],
     maskBase64?: string
 }> => {
     try {
-        const payload = {
+        const payload: Record<string, any> = {
             image: `data:image/jpeg;base64,${base64Image.replace(/^data:image\/(png|jpeg|jpg|webp);base64,/, "")}`,
             conf_threshold: 0.5,
         };
+        if (returnTextContours) {
+            payload.return_text_contours = true;
+        }
 
         const response = await fetch(`${apiUrl}/detect`, {
             method: 'POST',
@@ -682,6 +724,20 @@ export const fetchRawDetectedRegionsV2 = async (base64Image: string, apiUrl: str
 
         const { width: imgW, height: imgH } = data.image_size;
 
+        const textContoursData = data.text_contours;
+
+        const foldMaskBase64 = textContoursData?.mask_refined_base64 as string | undefined;
+        let maskImg: HTMLImageElement | null = null;
+        const contourBlocks: Array<{ xyxy: number[] }> = textContoursData?.text_blocks ?? [];
+
+        if (foldMaskBase64 && contourBlocks.length > 0) {
+            try {
+                maskImg = await loadMaskImage(foldMaskBase64);
+            } catch {
+                console.warn('Failed to load V2 contour mask image');
+            }
+        }
+
         const rects = data.detections.map((det: any) => {
             const [x1, y1, x2, y2] = det.bbox;
             const widthPx = x2 - x1;
@@ -694,16 +750,51 @@ export const fetchRawDetectedRegionsV2 = async (base64Image: string, apiUrl: str
             const w = (widthPx / imgW) * 100;
             const h = (heightPx / imgH) * 100;
 
+            let maskContourBase64: string | undefined;
+            let contourX: number | undefined;
+            let contourY: number | undefined;
+            let contourW: number | undefined;
+            let contourH: number | undefined;
+            if (maskImg && contourBlocks.length > 0) {
+                let bestIoU = 0;
+                let bestBlk: typeof contourBlocks[0] | null = null;
+                for (const blk of contourBlocks) {
+                    const iou = boxIoU(det.bbox, blk.xyxy);
+                    if (iou > bestIoU) {
+                        bestIoU = iou;
+                        bestBlk = blk;
+                    }
+                }
+                if (bestBlk && bestIoU > 0.3) {
+                    const [bx1, by1, bx2, by2] = bestBlk.xyxy;
+                    maskContourBase64 = cropMaskRegion(maskImg, bx1, by1, bx2, by2);
+                    const blkW = bx2 - bx1;
+                    const blkH = by2 - by1;
+                    contourX = ((bx1 + blkW / 2) / imgW) * 100;
+                    contourY = ((by1 + blkH / 2) / imgH) * 100;
+                    contourW = (blkW / imgW) * 100;
+                    contourH = (blkH / imgH) * 100;
+                }
+            }
+
             return {
                 x,
                 y,
                 width: w,
                 height: h,
                 className: det.class_name,
+                maskContourBase64,
+                contourX,
+                contourY,
+                contourW,
+                contourH,
             };
         });
 
-        return { rects };
+        return {
+            rects,
+            maskBase64: foldMaskBase64,
+        };
 
     } catch (e) {
         console.warn("External detection API V2 failed:", e);

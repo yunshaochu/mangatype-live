@@ -145,6 +145,7 @@ const DEFAULT_CONFIG: AIConfig = {
   defaultFontSize: 1.0,
   useTextDetectionApi: false,
   detectApiVersion: 'v1',
+  v2DetectTextContour: false,
   textDetectionApiUrl: runtimeConfig.TEXT_DETECTION_API_URL || 'http://localhost:5000',
   language: 'zh',
   customMessages: [{ role: 'user', content: '翻译' }],

@@ -337,6 +337,7 @@ export interface AIConfig {
   detectApiVersion?: 'v1' | 'v2'; // API version selector (default: 'v1')
   textDetectionApiUrl?: string;
   detectionExpansionRatio?: number; // New: 0.0 - 0.5 (Expansion rate for detected boxes)
+  v2DetectTextContour?: boolean;  // V2 only: enable text contour detection (return_text_contours). Slower.
   usePreciseFill?: boolean;       // Use text contour mask for fill instead of whole rect
   showContourPreview?: boolean;   // Show orange contour overlay in editor as reference
   useCharRects?: boolean;         // true = per-char bounding rects; false = dilated raw contour mask

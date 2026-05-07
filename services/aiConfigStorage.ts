@@ -36,6 +36,7 @@ const AI_CONFIG_STORAGE_FIELDS = [
   'detectApiVersion',
   'textDetectionApiUrl',
   'detectionExpansionRatio',
+  'v2DetectTextContour',
   'usePreciseFill',
   'showContourPreview',
   'useCharRects',

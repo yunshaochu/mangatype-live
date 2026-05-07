@@ -1125,7 +1125,7 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                         try {
                             const detectionSource = img.originalBase64 || img.base64;
                             const data = aiConfig.detectApiVersion === 'v2'
-                                ? await fetchRawDetectedRegionsV2(detectionSource, aiConfig.textDetectionApiUrl!)
+                                ? await fetchRawDetectedRegionsV2(detectionSource, aiConfig.textDetectionApiUrl!, aiConfig.v2DetectTextContour)
                                 : await fetchRawDetectedRegions(detectionSource, aiConfig.textDetectionApiUrl!);
 
                             // Process Rects (Expansion Logic)
@@ -1156,8 +1156,14 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                                         id: crypto.randomUUID(),
                                         sourceMaskId: maskId,
                                         base64: r.maskContourBase64,
-                                        anchor: { x: r.x, y: r.y },
-                                        size: { w: r.width, h: r.height },
+                                        anchor: {
+                                            x: r.contourX ?? r.x,
+                                            y: r.contourY ?? r.y,
+                                        },
+                                        size: {
+                                            w: r.contourW ?? r.width,
+                                            h: r.contourH ?? r.height,
+                                        },
                                     });
                                 }
                             });
