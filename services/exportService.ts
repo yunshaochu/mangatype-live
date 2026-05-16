@@ -862,6 +862,95 @@ export const dilateMaskImage = async (maskBase64: string, radius = 3): Promise<s
 };
 
 /**
+ * Computes per-mask contour intersection masks.
+ * For each target mask, finds contours that geometrically overlap it,
+ * producing synthetic MaskRegion entries that carry the contour data.
+ *
+ * Returned `perMask` is keyed by the original mask id; `all` is the flattened list.
+ */
+export const buildContourIntersectionMasks = (image: ImageState, targetMasks: MaskRegion[]) => {
+  const perMask = new Map<string, MaskRegion[]>();
+  const contours = image.contours || [];
+  if (contours.length === 0 || targetMasks.length === 0) {
+    return { perMask, all: [] as MaskRegion[] };
+  }
+
+  const preparedContours = contours.flatMap((contour) => {
+    if (!contour.base64) return [];
+    const contourX = contour.anchor?.x;
+    const contourY = contour.anchor?.y;
+    const contourW = contour.size?.w;
+    const contourH = contour.size?.h;
+    if (
+      typeof contourX !== 'number' || typeof contourY !== 'number' ||
+      typeof contourW !== 'number' || typeof contourH !== 'number' ||
+      contourW <= 0 || contourH <= 0
+    ) {
+      return [];
+    }
+    const left = contourX - contourW / 2;
+    const top = contourY - contourH / 2;
+    return [{
+      id: contour.id,
+      sourceMaskId: contour.sourceMaskId,
+      base64: contour.base64,
+      contourX,
+      contourY,
+      contourW,
+      contourH,
+      left,
+      top,
+      right: left + contourW,
+      bottom: top + contourH,
+    }];
+  });
+  if (preparedContours.length === 0) {
+    return { perMask, all: [] as MaskRegion[] };
+  }
+
+  for (const mask of targetMasks) {
+    const maskLeft = mask.x - mask.width / 2;
+    const maskTop = mask.y - mask.height / 2;
+    const maskRight = maskLeft + mask.width;
+    const maskBottom = maskTop + mask.height;
+    const intersections: MaskRegion[] = [];
+
+    for (const contour of preparedContours) {
+      const contourX = contour.contourX;
+      const contourY = contour.contourY;
+      const contourW = contour.contourW;
+      const contourH = contour.contourH;
+      const contourLeft = contour.left;
+      const contourTop = contour.top;
+      const contourRight = contour.right;
+      const contourBottom = contour.bottom;
+      const intersects = contourRight > maskLeft && contourBottom > maskTop && contourLeft < maskRight && contourTop < maskBottom;
+      if (!intersects) continue;
+
+      intersections.push({
+        id: `${mask.id}::${contour.id}`,
+        x: mask.x,
+        y: mask.y,
+        width: mask.width,
+        height: mask.height,
+        method: 'fill',
+        maskContourBase64: contour.base64,
+        maskContourX: contourX,
+        maskContourY: contourY,
+        maskContourW: contourW,
+        maskContourH: contourH,
+      });
+    }
+
+    if (intersections.length > 0) {
+      perMask.set(mask.id, intersections);
+    }
+  }
+
+  return { perMask, all: Array.from(perMask.values()).flat() };
+};
+
+/**
  * Pre-fills text contour pixels (white) onto the source image before inpainting.
  * Helps IOPaint API remove stroke pixels more thoroughly.
  */

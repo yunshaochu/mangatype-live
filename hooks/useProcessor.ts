@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ImageState, AIConfig, APIEndpoint, MaskRegion, Bubble, ContourRegion, mergeEndpointConfig } from '../types';
 import { detectAndTypesetComic, fetchRawDetectedRegions, fetchRawDetectedRegionsV2 } from '../services/geminiService';
-import { generateMaskedImage, generateAnnotatedImage, detectBubbleColor, generateInpaintMask } from '../services/exportService';
+import { generateMaskedImage, generateAnnotatedImage, detectBubbleColor, generateInpaintMask, applyContourPreFill, buildContourIntersectionMasks } from '../services/exportService';
 import { inpaintImage } from '../services/inpaintingService';
 import { isBubbleInsideMask, isMaskCleaned } from '../utils/editorUtils';
 import {
@@ -509,7 +509,9 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
     };
 
     // --- Core Logic: Inpaint a Single Image ---
-    // Updated: Supports filtering mask generation by method='inpaint'
+    // Updated: Supports filtering mask generation by method='inpaint',
+    // contour pre-fill (preInpaintContour), and two-phase commit so that
+    // pre-filled pixels persist even if the API call fails.
     const runInpaintingForImage = async (img: ImageState, signal?: AbortSignal, options: { onlyInpaintMethod?: boolean } = {}) => {
         if (!aiConfig.enableInpainting || !aiConfig.inpaintingUrl) return;
 
@@ -522,13 +524,60 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
 
         if (relevantMasks.length === 0) return;
 
+        const affectedMaskIds = new Set(relevantMasks.map(m => m.id));
+
+        const applyCleanedSideEffects = (p: ImageState): { maskRegions: MaskRegion[]; bubbles: Bubble[] } => {
+            const newMasks = (p.maskRegions || []).map(m =>
+                affectedMaskIds.has(m.id) ? { ...m, isCleaned: true } : m
+            );
+            const newBubbles = p.bubbles.map(b => {
+                const overlaps = relevantMasks.some(mask =>
+                    isBubbleInsideMask(b.x, b.y, mask.x, mask.y, mask.width, mask.height)
+                );
+                return overlaps
+                    ? { ...b, backgroundColor: 'transparent', autoDetectBackground: false }
+                    : b;
+            });
+            return { maskRegions: newMasks, bubbles: newBubbles };
+        };
+
+        // Phase 1: Pre-fill contour ONCE per image (not per retry attempt).
+        // Pre-filled state is committed immediately so retries continue from it
+        // and the user keeps the white-painted result even if every retry fails.
+        let didPreFill = false;
+        let preFilledSource: string | null = null;
+        if (aiConfigRef.current.preInpaintContour) {
+            const contourMasks = buildContourIntersectionMasks(img, relevantMasks).all;
+            if (contourMasks.length > 0 && !signal?.aborted) {
+                try {
+                    const baseSource = img.inpaintedBase64 || img.originalBase64 || img.base64;
+                    const preFilledRaw = await applyContourPreFill(baseSource, contourMasks, img.width, img.height);
+                    const preFilledDataUrl = preFilledRaw.startsWith('data:')
+                        ? preFilledRaw
+                        : `data:image/png;base64,${preFilledRaw}`;
+                    const preFilledBase64 = preFilledDataUrl.replace(/^data:image\/\w+;base64,/, '');
+
+                    setImages(prev => prev.map(p => p.id === img.id ? {
+                        ...p,
+                        inpaintedBase64: preFilledBase64,
+                        inpaintedUrl: preFilledDataUrl,
+                    } : p));
+                    preFilledSource = preFilledRaw;
+                    didPreFill = true;
+                } catch (preFillError) {
+                    console.error(`Pre-fill failed for ${img.name}, continuing with raw source`, preFillError);
+                }
+            }
+        }
+
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
             if (signal?.aborted) return;
             setImages(prev => prev.map(p => p.id === img.id ? { ...p, inpaintingStatus: 'processing' } : p));
 
             try {
-                // Iterative Inpaint: Use existing inpainted image as source if available, otherwise original
-                const sourceBase64 = img.inpaintedBase64 || img.originalBase64 || img.base64;
+                // Use the locally-tracked pre-filled source if Phase 1 succeeded;
+                // otherwise fall back to the latest inpainted/original layer.
+                const sourceBase64 = preFilledSource ?? (img.inpaintedBase64 || img.originalBase64 || img.base64);
 
                 // Generate mask: Pass the onlyInpaintMethod flag
                 const maskBase64 = await generateInpaintMask(img, { useRefinedMask: false, onlyInpaintMethod });
@@ -546,30 +595,15 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     ? cleanedBase64Raw
                     : `data:image/png;base64,${cleanedBase64Raw}`;
 
-                // We need to mark only the relevant masks as cleaned
-                const affectedMaskIds = new Set(relevantMasks.map(m => m.id));
-
                 setImages(prev => prev.map(p => {
                     if (p.id !== img.id) return p;
-
-                    // Update specific masks to clean
-                    const newMasks = (p.maskRegions || []).map(m => affectedMaskIds.has(m.id) ? { ...m, isCleaned: true } : m);
-
-                    // Update bubbles overlapping with newly cleaned masks
-                    const newBubbles = p.bubbles.map(b => {
-                        const overlaps = relevantMasks.some(mask => isBubbleInsideMask(b.x, b.y, mask.x, mask.y, mask.width, mask.height));
-                        if (overlaps) {
-                            return { ...b, backgroundColor: 'transparent', autoDetectBackground: false };
-                        }
-                        return b;
-                    });
-
+                    const sideEffects = applyCleanedSideEffects(p);
                     return {
                         ...p,
                         inpaintedBase64: cleanedBase64.replace(/^data:image\/\w+;base64,/, ""),
                         inpaintedUrl: cleanedBase64,
-                        bubbles: newBubbles,
-                        maskRegions: newMasks,
+                        bubbles: sideEffects.bubbles,
+                        maskRegions: sideEffects.maskRegions,
                         inpaintingStatus: 'done'
                     };
                 }));
@@ -585,7 +619,22 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                     await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
                     continue;
                 }
-                setImages(prev => prev.map(p => p.id === img.id ? { ...p, inpaintingStatus: 'error' } : p));
+                // Final attempt failed. If we pre-filled, promote that state so the
+                // user keeps the white-painted result; mask metadata reflects "cleaned".
+                if (didPreFill) {
+                    setImages(prev => prev.map(p => {
+                        if (p.id !== img.id) return p;
+                        const sideEffects = applyCleanedSideEffects(p);
+                        return {
+                            ...p,
+                            inpaintingStatus: 'error',
+                            bubbles: sideEffects.bubbles,
+                            maskRegions: sideEffects.maskRegions,
+                        };
+                    }));
+                } else {
+                    setImages(prev => prev.map(p => p.id === img.id ? { ...p, inpaintingStatus: 'error' } : p));
+                }
             }
         } // end retry loop
     };
@@ -1145,13 +1194,17 @@ export const useProcessor = ({ images, setImages, aiConfig, updateEndpoint }: Us
                                 const expandedWidth = r.width * (1 + expansion);
                                 const expandedHeight = r.height * (1 + expansion);
 
+                                // V2 routes free-floating text (outside bubbles) to API erase.
+                                // text_bubble (and V1, which has no className) stays as fill.
+                                const method: 'fill' | 'inpaint' = r.className === 'text_free' ? 'inpaint' : 'fill';
+
                                 maskRegions.push({
                                     id: maskId,
                                     x: r.x,
                                     y: r.y,
                                     width: expandedWidth,
                                     height: expandedHeight,
-                                    method: 'fill',
+                                    method,
                                 });
 
                                 if (r.maskContourBase64) {
